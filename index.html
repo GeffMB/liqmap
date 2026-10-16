@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LiqMap — Mapa de Liquidações</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js"></script>
+<style>
+:root{--bg:#0b0e14;--panel:#121722;--line:#1e2430;--txt:#d6d9e0;--sub:#8a93a6;--short:#ffd600;--long:#00e5ff;--err:#ff7b72}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,"Segoe UI",Arial,sans-serif}
+header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+h1{font-size:18px;margin:0}
+.sub{color:var(--sub);font-size:13px}
+.ctrl{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:12px;align-items:end;font-size:13px}
+.ctrl label{display:flex;flex-direction:column;gap:4px;color:var(--sub)}
+select,input,button{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit}
+input[type=number]{width:70px}
+button{cursor:pointer}
+button:hover{border-color:#3a4458}
+details{padding:0 16px;font-size:13px;color:var(--sub)}
+details summary{cursor:pointer;padding:8px 0}
+.pesos{display:flex;flex-wrap:wrap;gap:10px;padding-bottom:10px}
+.pesos label{display:flex;flex-direction:column;gap:2px}
+section{padding:12px 16px;border-bottom:1px solid var(--line)}
+h2{font-size:16px;margin:0 0 6px}
+.resumo{font-size:14px;margin:0 0 10px}
+.zonas{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px}
+.tw{overflow-x:auto;max-width:100%}
+table{border-collapse:collapse;font-size:13px}
+td,th{padding:3px 10px;text-align:right;white-space:nowrap}
+th{color:var(--sub);font-weight:500}
+td:first-child,th:first-child{text-align:left}
+.s{color:var(--short)} .l{color:var(--long)} .e{color:var(--err)}
+.plot{width:100%;height:560px}
+.nota{color:var(--sub);font-size:12px;padding:10px 16px 24px;line-height:1.5}
+@media (max-width:600px){.plot{height:440px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>LiqMap — mapa de liquidações estimado</h1>
+  <div class="sub" id="status">Carregando…</div>
+</header>
+
+<div class="ctrl">
+  <label>Tempo gráfico
+    <select id="tf">
+      <option value="5m">5m</option><option value="15m" selected>15m</option><option value="30m">30m</option>
+      <option value="1h">1h</option><option value="2h">2h</option><option value="4h">4h</option>
+    </select>
+  </label>
+  <label>Candles
+    <select id="barras"><option>300</option><option>500</option><option selected>1000</option><option>1500</option></select>
+  </label>
+  <label>Filtro de ruído
+    <input id="filtro" type="number" min="0" step="0.1" value="1.0">
+  </label>
+  <label>Atualizar a cada
+    <select id="auto"><option value="0">desligado</option><option value="5">5 min</option><option value="15" selected>15 min</option><option value="60">60 min</option></select>
+  </label>
+  <button id="atualizar">Atualizar agora</button>
+</div>
+
+<details>
+  <summary>Distribuição de alavancagem (pesos)</summary>
+  <div class="pesos" id="pesos"></div>
+</details>
+
+<div id="moedas"></div>
+
+<div class="nota">
+  Estimativa própria a partir do Open Interest público da Binance Futures (histórico de até ~30 dias).
+  Mostra onde posições alavancadas <b>seriam</b> liquidadas — não são ordens reais, os valores são aproximados e o mapa não prevê direção.
+  Amarelo/claro = mais concentração. Passe o mouse no mapa para ver o valor estimado de cada nível. Não é recomendação de investimento.
+</div>
+
+<script>
+"use strict";
+const BASE = "https://fapi.binance.com";
+const SIMBOLOS = ["BTCUSDT", "ETHUSDT"];
+const TF_MS = {"5m":3e5,"15m":9e5,"30m":18e5,"1h":36e5,"2h":72e5,"4h":144e5};
+const LEVS = [3, 5, 10, 25, 50, 100];
+const PESOS_PADRAO = [5, 10, 25, 30, 20, 10];
+const MMR = 0.005;
+const OI_MAX_DIAS = 29;
+const FAIXAS = 250;
+const DEMO = new URLSearchParams(location.search).has("demo");
+
+// ---------- preferências do visitante (só neste navegador) ----------
+function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap") || "{}"); } catch(e){ return {}; } }
+function salvarPrefs(p){ try { localStorage.setItem("liqmap", JSON.stringify(p)); } catch(e){} }
+
+const $ = id => document.getElementById(id);
+const pesosBox = $("pesos");
+LEVS.forEach((L, i) => {
+  const lb = document.createElement("label");
+  lb.textContent = L + "×";
+  const inp = document.createElement("input");
+  inp.type = "number"; inp.min = "0"; inp.step = "1"; inp.value = PESOS_PADRAO[i]; inp.id = "w" + i;
+  lb.appendChild(inp); pesosBox.appendChild(lb);
+});
+(function aplicarPrefs(){
+  const p = lerPrefs();
+  if (p.tf) $("tf").value = p.tf;
+  if (p.barras) $("barras").value = p.barras;
+  if (p.filtro != null) $("filtro").value = p.filtro;
+  if (p.auto != null) $("auto").value = p.auto;
+  if (Array.isArray(p.pesos) && p.pesos.length === 6) p.pesos.forEach((v, i) => $("w" + i).value = v);
+})();
+
+function config(){
+  const c = {
+    tf: $("tf").value,
+    barras: +$("barras").value,
+    filtro: Math.max(0, +$("filtro").value || 0),
+    auto: +$("auto").value,
+    pesos: LEVS.map((_, i) => Math.max(0, +$("w" + i).value || 0))
+  };
+  salvarPrefs(c);
+  return c;
+}
+
+// ---------- dados ----------
+async function getJSON(path, params){
+  const url = BASE + path + "?" + new URLSearchParams(params);
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("Binance respondeu " + r.status + (r.status === 451 || r.status === 403 ? " (acesso bloqueado nesta região)" : ""));
+  return r.json();
+}
+async function buscarCandles(sym, tf, n){
+  const d = await getJSON("/fapi/v1/klines", {symbol: sym, interval: tf, limit: Math.min(n, 1500)});
+  return d.map(k => ({t: +k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4]}));
+}
+async function buscarOI(sym, tf, ini, fim){
+  ini = Math.max(ini, Date.now() - OI_MAX_DIAS * 864e5);
+  const passo = TF_MS[tf] * 500, oi = new Map();
+  for (let s = ini; s <= fim; ) {
+    const e = Math.min(s + passo - 1, fim);
+    const d = await getJSON("/futures/data/openInterestHist", {symbol: sym, period: tf, limit: 500, startTime: s, endTime: e});
+    for (const x of d) oi.set(+x.timestamp, +x.sumOpenInterestValue);
+    s = e + 1;
+  }
+  return oi;
+}
+function dadosDemo(tf, n, semente){
+  let seed = semente;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+  const tfms = TF_MS[tf], t0 = (Math.floor(Date.now() / tfms) - n) * tfms;
+  let p = semente === 7 ? 65000 : 3200, o = 8e9;
+  const kl = [], oi = new Map();
+  for (let i = 0; i < n; i++) {
+    const t = t0 + i * tfms; oi.set(t, o);
+    const ab = p; p *= Math.exp(gauss() * 0.004);
+    kl.push({t, o: ab, h: Math.max(ab, p) * (1 + Math.abs(gauss()) * 0.0015), l: Math.min(ab, p) * (1 - Math.abs(gauss()) * 0.0015), c: p});
+    o *= Math.exp(0.0004 + gauss() * 0.004);
+  }
+  oi.set(t0 + n * tfms, o);
+  return {kl, oi};
+}
+
+// ---------- modelo (mesmo do liqmap.py) ----------
+function montarMapa(kl, oi, tf, filtro, pesos){
+  const tfms = TF_MS[tf];
+  let lo = Infinity, hi = -Infinity;
+  for (const k of kl) { if (k.l < lo) lo = k.l; if (k.h > hi) hi = k.h; }
+  const pmin = lo * 0.92, pmax = hi * 1.08, w = (pmax - pmin) / FAIXAS;
+  const idx = p => Math.floor((p - pmin) / w);
+  const longs = new Float64Array(FAIXAS), shorts = new Float64Array(FAIXAS);
+  const colunas = [], hist = [];
+  const somaP = pesos.reduce((a, b) => a + b, 0);
+
+  for (const k of kl) {
+    for (let b = Math.max(idx(k.l), 0); b < FAIXAS; b++) longs[b] = 0;
+    for (let b = 0; b <= Math.min(idx(k.h), FAIXAS - 1); b++) shorts[b] = 0;
+
+    const o0 = oi.get(k.t), o1 = oi.get(k.t + tfms);
+    if (o0 != null && o1 != null && somaP > 0) {
+      const d = o1 - o0;
+      const ult = hist.slice(-50);
+      const ref = ult.length ? ult.reduce((a, b) => a + b, 0) / ult.length : 0;
+      hist.push(Math.max(d, 0));
+      if (d > 0 && d >= ref * filtro) {
+        const ent = (k.h + k.l + k.c) / 3;
+        LEVS.forEach((L, i) => {
+          if (pesos[i] <= 0) return;
+          const s = d * pesos[i] / somaP;
+          const bl = idx(ent * (1 - 1 / L + MMR)), bs = idx(ent * (1 + 1 / L - MMR));
+          if (bl >= 0 && bl < FAIXAS) longs[bl] += s;
+          if (bs >= 0 && bs < FAIXAS) shorts[bs] += s;
+        });
+      }
+    }
+    const col = new Float64Array(FAIXAS);
+    for (let b = 0; b < FAIXAS; b++) col[b] = longs[b] + shorts[b];
+    colunas.push(col);
+  }
+
+  const centros = Array.from({length: FAIXAS}, (_, b) => pmin + (b + 0.5) * w);
+  let mx = 0;
+  for (const c of colunas) for (const v of c) if (v > mx) mx = v;
+  mx = mx || 1;
+  const z = [], v = [];
+  for (let b = 0; b < FAIXAS; b++) {
+    const zr = new Array(colunas.length), vr = new Array(colunas.length);
+    for (let t = 0; t < colunas.length; t++) { zr[t] = Math.sqrt(colunas[t][b] / mx); vr[t] = colunas[t][b] / 1e6; }
+    z.push(zr); v.push(vr);
+  }
+  const ultimo = kl[kl.length - 1].c;
+  const mxAtual = Math.max(...longs, ...shorts) || 1;
+  const top = arr => [...arr].map((val, b) => [val, b]).filter(x => x[0] > 0).sort((a, b) => b[0] - a[0]).slice(0, 5)
+    .map(([val, b]) => ({preco: centros[b], dist: (centros[b] / ultimo - 1) * 100, forca: val / mxAtual * 100, valor: val}));
+  const perto = (arr, pct) => { let s = 0; for (let b = 0; b < FAIXAS; b++) if (Math.abs(centros[b] / ultimo - 1) * 100 <= pct) s += arr[b]; return s; };
+  const soma = arr => arr.reduce((a, b) => a + b, 0);
+  return {z, v, y: centros, ultimo, lo, hi, shorts: top(shorts), longs: top(longs), barrasOI: hist.length,
+          totS: soma(shorts), totL: soma(longs), s5: perto(shorts, 5), l5: perto(longs, 5)};
+}
+
+// ---------- exibição ----------
+const usd = x => x >= 1e9 ? "$" + (x / 1e9).toFixed(2) + "B" : x >= 1e6 ? "$" + (x / 1e6).toFixed(1) + "M" : x >= 1e3 ? "$" + (x / 1e3).toFixed(1) + "K" : "$" + x.toFixed(0);
+const num = (x, d = 2) => x.toLocaleString("pt-BR", {minimumFractionDigits: d, maximumFractionDigits: d});
+const pct = x => (x >= 0 ? "+" : "") + num(x) + "%";
+function el(tag, attrs, ...filhos){
+  const e = document.createElement(tag);
+  for (const k in attrs || {}) e.setAttribute(k, attrs[k]);
+  for (const f of filhos) e.append(f instanceof Node ? f : document.createTextNode(String(f)));
+  return e;
+}
+function tabela(zonas, cls, titulo){
+  const t = el("table", {}, el("tr", {}, el("th", {}, titulo), el("th", {}, "Distância"), el("th", {}, "Valor estimado"), el("th", {}, "Força")));
+  if (!zonas.length) t.append(el("tr", {}, el("td", {colspan: "4"}, "—")));
+  for (const z of zonas) t.append(el("tr", {}, el("td", {class: cls}, num(z.preco)), el("td", {}, pct(z.dist)), el("td", {}, el("b", {}, usd(z.valor))), el("td", {}, z.forca.toFixed(0) + "%")));
+  return el("div", {class: "tw"}, t);
+}
+function fmtHora(t){
+  const d = new Date(t), p = n => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+function desenhar(sym, cfg, kl, m){
+  const sec = el("section", {},
+    el("h2", {}, sym + " · " + cfg.tf + " · último " + num(m.ultimo)),
+    el("div", {class: "resumo"}, "Até 5% do preço: ", el("span", {class: "s"}, "shorts " + usd(m.s5)), " acima · ",
+       el("span", {class: "l"}, "longs " + usd(m.l5)), " abaixo  |  Total no mapa: ",
+       el("span", {class: "s"}, usd(m.totS)), " / ", el("span", {class: "l"}, usd(m.totL))),
+    el("div", {class: "zonas"}, tabela(m.shorts, "s", "Shorts acima ↑"), tabela(m.longs, "l", "Longs abaixo ↓")));
+  const div = el("div", {class: "plot"});
+  sec.append(div);
+  if (m.barrasOI === 0) sec.insertBefore(el("p", {class: "e"}, "Sem dados de Open Interest para este período — tente um tempo gráfico maior ou menos candles."), div);
+  $("moedas").append(sec);
+  if (!window.Plotly) { div.textContent = "Não foi possível carregar a biblioteca do gráfico (verifique a internet)."; return; }
+  const x = kl.map(k => fmtHora(k.t));
+  Plotly.newPlot(div, [
+    {type: "heatmap", x, y: m.y, z: m.z, customdata: m.v, showscale: false, zmin: 0, zmax: 1,
+     colorscale: [[0,"#0b0e14"],[0.08,"#1d1147"],[0.3,"#5c1a80"],[0.55,"#b8336a"],[0.8,"#f68f45"],[1,"#fcfdbf"]],
+     hovertemplate: "Preço %{y:,.2f}<br>Liquidação estimada: $%{customdata:,.2f}M<extra></extra>"},
+    {type: "candlestick", x, open: kl.map(k => k.o), high: kl.map(k => k.h), low: kl.map(k => k.l), close: kl.map(k => k.c),
+     increasing: {line: {color: "#26a69a"}}, decreasing: {line: {color: "#ef5350"}}, hoverinfo: "x+y"}
+  ], {
+    paper_bgcolor: "#0b0e14", plot_bgcolor: "#0b0e14", font: {color: "#c9ced8"}, margin: {l: 64, r: 12, t: 8, b: 40},
+    showlegend: false, dragmode: "zoom", xaxis: {rangeslider: {visible: false}, gridcolor: "#1a1f2b"},
+    yaxis: {range: [m.lo * 0.96, m.hi * 1.04], gridcolor: "#1a1f2b", tickformat: ",.0f"},
+    shapes: [{type: "line", xref: "paper", x0: 0, x1: 1, y0: m.ultimo, y1: m.ultimo, line: {color: "#ffffff", width: 1, dash: "dot"}}]
+  }, {responsive: true, displaylogo: false});
+}
+
+// ---------- ciclo ----------
+let timer = null, ocupado = false;
+async function atualizar(){
+  if (ocupado) return;
+  ocupado = true;
+  const cfg = config();
+  $("status").textContent = "Buscando dados…";
+  const novos = [], erros = [];
+  for (const [i, sym] of SIMBOLOS.entries()) {
+    try {
+      let kl, oi;
+      if (DEMO) ({kl, oi} = dadosDemo(cfg.tf, cfg.barras, i === 0 ? 7 : 11));
+      else {
+        kl = await buscarCandles(sym, cfg.tf, cfg.barras);
+        oi = await buscarOI(sym, cfg.tf, kl[0].t, kl[kl.length - 1].t + TF_MS[cfg.tf]);
+      }
+      novos.push([sym, kl, montarMapa(kl, oi, cfg.tf, cfg.filtro, cfg.pesos)]);
+    } catch (e) { erros.push(sym + ": " + (e.message || e)); }
+  }
+  if (novos.length) {
+    document.querySelectorAll("#moedas .plot").forEach(d => window.Plotly && Plotly.purge(d));
+    $("moedas").replaceChildren();
+    for (const [sym, kl, m] of novos) desenhar(sym, cfg, kl, m);
+  }
+  const agora = new Date().toLocaleString("pt-BR");
+  $("status").textContent = (erros.length ? "Erro — " + erros.join(" | ") + " · " : "") +
+    (novos.length ? "Atualizado " + agora : "Nenhum dado obtido") + " · Binance Futures" + (DEMO ? " · DADOS DE TESTE" : "");
+  $("status").className = "sub" + (erros.length ? " e" : "");
+  clearInterval(timer);
+  if (cfg.auto > 0) timer = setInterval(atualizar, cfg.auto * 60000);
+  ocupado = false;
+}
+$("atualizar").addEventListener("click", atualizar);
+["tf", "barras", "auto"].forEach(id => $(id).addEventListener("change", atualizar));
+atualizar();
+</script>
+</body>
+</html>
