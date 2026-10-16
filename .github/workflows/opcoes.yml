@@ -1,0 +1,31 @@
+name: Atualizar opções B3
+
+on:
+  schedule:
+    - cron: "0 11 * * 1-5"   # 08:00 em Brasília, dias úteis
+    - cron: "0 23 * * 1-5"   # 20:00 em Brasília, dias úteis
+  workflow_dispatch:          # botão "Run workflow" para rodar na hora
+
+permissions:
+  contents: write
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Baixar dados da B3 e gerar opcoes.json
+        run: python b3_opcoes.py --ativos BBAS3 AZEV3 --saida opcoes.json
+
+      - name: Salvar no repositório
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add opcoes.json
+          git diff --cached --quiet || git commit -m "Atualiza opcoes.json"
+          git push
