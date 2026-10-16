@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapa de Opções B3</title>
+<style>
+:root{--bg:#0b0e14;--panel:#121722;--line:#1e2430;--txt:#d6d9e0;--sub:#8a93a6;--call:#ffd600;--put:#00e5ff;--mp:#ff5fd2;--err:#ff7b72}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,"Segoe UI",Arial,sans-serif}
+header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+h1{font-size:18px;margin:0}
+a{color:#8ab4ff}
+.sub{color:var(--sub);font-size:13px}
+.ctrl{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:12px;align-items:end;font-size:13px}
+.ctrl label{display:flex;flex-direction:column;gap:4px;color:var(--sub)}
+select,button{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit}
+button{cursor:pointer}
+.abas{display:flex;gap:6px;flex-wrap:wrap}
+.abas button[aria-pressed=true]{border-color:var(--call);color:var(--call)}
+main{padding:12px 16px}
+h2{font-size:16px;margin:0 0 8px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.card .t{color:var(--sub);font-size:12px}
+.card .v{font-size:18px;font-weight:600;margin-top:2px}
+.card .d{color:var(--sub);font-size:12px}
+.c{color:var(--call)} .p{color:var(--put)} .m{color:var(--mp)} .e{color:var(--err)}
+.plot{width:100%;height:620px}
+.tw{overflow-x:auto;max-width:100%;margin-top:12px}
+table{border-collapse:collapse;font-size:13px}
+td,th{padding:3px 10px;text-align:right;white-space:nowrap}
+th{color:var(--sub);font-weight:500}
+td:first-child,th:first-child{text-align:left}
+.aviso{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px;line-height:1.5}
+.nota{color:var(--sub);font-size:12px;padding:10px 16px 24px;line-height:1.5}
+@media (max-width:600px){.plot{height:520px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Mapa de Opções B3 — posições em aberto</h1>
+  <div class="sub"><span id="status">Carregando…</span> · <a href="./">LiqMap cripto</a></div>
+</header>
+
+<div class="ctrl">
+  <div class="abas" id="abas"></div>
+  <label>Vencimento <select id="venc"></select></label>
+  <label>Faixa de strikes
+    <select id="faixa"><option value="15">±15% do preço</option><option value="25" selected>±25% do preço</option><option value="50">±50% do preço</option><option value="999">Todos</option></select>
+  </label>
+</div>
+
+<main id="conteudo"></main>
+
+<div class="nota">
+  Fonte: arquivos públicos da B3 (posições em aberto, cadastro de instrumentos e negócios consolidados), atualizados uma vez por dia após o pregão — não são dados intradiários.
+  Quantidades em número de opções (1 opção = 1 ação). <b>Parede de call</b>: strike acima do preço com mais calls em aberto (costuma agir como resistência).
+  <b>Parede de put</b>: strike abaixo do preço com mais puts (costuma agir como suporte). <b>Max pain</b>: preço em que o conjunto das opções do vencimento valeria menos — o preço às vezes é "puxado" para perto dele na semana do vencimento.
+  É contexto, não recomendação de investimento.
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+let DADOS = null, ativo = null;
+
+function lerPrefs(){ try { return JSON.parse(localStorage.getItem("opcoesb3") || "{}"); } catch(e){ return {}; } }
+function salvarPrefs(p){ try { localStorage.setItem("opcoesb3", JSON.stringify(p)); } catch(e){} }
+
+const brl = x => x == null ? "—" : "R$ " + x.toLocaleString("pt-BR", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const qtd = x => x >= 1e6 ? (x / 1e6).toLocaleString("pt-BR", {maximumFractionDigits: 1}) + " mi" : x >= 1e3 ? (x / 1e3).toLocaleString("pt-BR", {maximumFractionDigits: 1}) + " mil" : String(x);
+const pct = x => x == null ? "" : (x >= 0 ? "+" : "") + x.toLocaleString("pt-BR", {minimumFractionDigits: 1, maximumFractionDigits: 1}) + "%";
+const dataBR = s => s ? s.split("-").reverse().join("/") : "—";
+function el(tag, attrs, ...filhos){
+  const e = document.createElement(tag);
+  for (const k in attrs || {}) e.setAttribute(k, attrs[k]);
+  for (const f of filhos) e.append(f instanceof Node ? f : document.createTextNode(String(f)));
+  return e;
+}
+function card(titulo, valor, cls, detalhe){
+  return el("div", {class: "card"}, el("div", {class: "t"}, titulo), el("div", {class: "v " + (cls || "")}, valor), el("div", {class: "d"}, detalhe || ""));
+}
+
+// ---------- biblioteca do gráfico (várias fontes) ----------
+const FONTES = ["https://cdn.plot.ly/plotly-2.35.2.min.js", "https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js",
+  "https://unpkg.com/plotly.js-dist-min@2.35.2/plotly.min.js", "https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js"];
+function carregarPlotly(){
+  return new Promise(res => {
+    let i = 0;
+    const tentar = () => {
+      if (window.Plotly) return res(true);
+      if (i >= FONTES.length) return res(false);
+      const s = document.createElement("script");
+      s.src = FONTES[i++];
+      s.onload = () => window.Plotly ? res(true) : tentar();
+      s.onerror = () => { s.remove(); tentar(); };
+      document.head.appendChild(s);
+    };
+    tentar();
+  });
+}
+
+// ---------- montagem ----------
+function montarAbas(){
+  const abas = $("abas"); abas.replaceChildren();
+  for (const a of Object.keys(DADOS.ativos)) {
+    const b = el("button", {"aria-pressed": String(a === ativo)}, a);
+    b.addEventListener("click", () => { ativo = a; salvarPrefs({...lerPrefs(), ativo}); montarAbas(); montarVencimentos(); desenhar(); });
+    abas.append(b);
+  }
+}
+function montarVencimentos(){
+  const sel = $("venc"); sel.replaceChildren();
+  const info = DADOS.ativos[ativo];
+  const hoje = new Date().toISOString().slice(0, 10);
+  const vs = info.vencimentos;
+  vs.forEach((v, i) => {
+    const total = v.totalCall + v.totalPut;
+    const o = el("option", {value: String(i)}, dataBR(v.venc) + " · " + qtd(total) + (v.venc < hoje ? " (vencido)" : ""));
+    sel.append(o);
+  });
+  // padrão: vencimento futuro mais próximo com posição relevante (≥ 5% do maior)
+  const futuros = vs.map((v, i) => [v, i]).filter(([v]) => v.venc >= hoje);
+  const maior = Math.max(0, ...futuros.map(([v]) => v.totalCall + v.totalPut));
+  const pref = futuros.find(([v]) => v.totalCall + v.totalPut >= maior * 0.05);
+  if (pref) sel.value = String(pref[1]);
+  sel.disabled = !vs.length;
+}
+
+function desenhar(){
+  const box = $("conteudo"); box.replaceChildren();
+  const info = DADOS.ativos[ativo];
+  box.append(el("h2", {}, ativo + " · fechamento " + brl(info.preco) + " ", el("span", {class: info.var >= 0 ? "c" : "p"}, pct(info.var)),
+    el("span", {class: "sub"}, "  pregão de " + dataBR(DADOS.data))));
+
+  if (info.semOpcoes) {
+    box.append(el("div", {class: "aviso"},
+      el("b", {}, ativo + " não tem opções com posição em aberto na B3."), el("br"),
+      "Sem opções listadas não existe mapa de strikes para este ativo." +
+      (info.termoContratos ? " Há " + info.termoContratos + " contrato(s) a termo em aberto, que não mostram níveis de preço." : "") +
+      " Alternativas: acompanhar o aluguel de ações (posição vendida) ou usar o mapa de um ativo com opções líquidas."));
+    return;
+  }
+
+  const v = info.vencimentos[+$("venc").value || 0];
+  const faixa = +$("faixa").value;
+  const p = info.preco;
+  const sk = v.strikes.filter(s => faixa >= 999 || Math.abs(s[0] / p - 1) * 100 <= faixa);
+  const dist = k => k == null ? "" : pct((k / p - 1) * 100) + " do preço";
+
+  box.append(el("div", {class: "cards"},
+    card("Parede de call (resistência)", brl(v.paredeCall), "c", dist(v.paredeCall)),
+    card("Parede de put (suporte)", brl(v.paredePut), "p", dist(v.paredePut)),
+    card("Max pain", brl(v.maxPain), "m", dist(v.maxPain)),
+    card("Put/Call (quantidade)", v.pcr == null ? "—" : v.pcr.toLocaleString("pt-BR"), "", v.pcr == null ? "" : v.pcr > 1 ? "mais puts que calls" : "mais calls que puts"),
+    card("Calls em aberto", qtd(v.totalCall), "c", "vencimento " + dataBR(v.venc)),
+    card("Puts em aberto", qtd(v.totalPut), "p", "")));
+
+  const div = el("div", {class: "plot"});
+  box.append(div);
+  if (!window.Plotly) div.textContent = "Não foi possível carregar a biblioteca do gráfico (verifique a internet).";
+  else {
+    const y = sk.map(s => s[0]);
+    const linhas = [[p, "#ffffff", "dot", "Preço " + brl(p)], [v.maxPain, "#ff5fd2", "dash", "Max pain " + brl(v.maxPain)]]
+      .filter(l => l[0] != null);
+    Plotly.newPlot(div, [
+      {type: "bar", orientation: "h", name: "Calls", y, x: sk.map(s => s[1]), marker: {color: "#ffd600"},
+       customdata: sk.map(s => s[3]), hovertemplate: "Strike R$ %{y:.2f}<br>Calls: %{x:,}<br>descobertas: %{customdata:,}<extra></extra>"},
+      {type: "bar", orientation: "h", name: "Puts", y, x: sk.map(s => -s[2]), marker: {color: "#00e5ff"},
+       customdata: sk.map(s => [s[2], s[4]]), hovertemplate: "Strike R$ %{y:.2f}<br>Puts: %{customdata[0]:,}<br>descobertas: %{customdata[1]:,}<extra></extra>"}
+    ], {
+      barmode: "overlay", bargap: 0.15, paper_bgcolor: "#0b0e14", plot_bgcolor: "#0b0e14", font: {color: "#c9ced8"},
+      margin: {l: 64, r: 12, t: 30, b: 40}, legend: {orientation: "h", y: 1.06, x: 0},
+      xaxis: {title: "← puts   |   calls →  (quantidade de opções)", gridcolor: "#1a1f2b", zerolinecolor: "#3a4458", tickformat: "~s"},
+      yaxis: {title: "Strike (R$)", gridcolor: "#1a1f2b", tickformat: ".2f"},
+      shapes: linhas.map(l => ({type: "line", xref: "paper", x0: 0, x1: 1, y0: l[0], y1: l[0], line: {color: l[1], width: 1.5, dash: l[2]}})),
+      annotations: linhas.map(l => ({xref: "paper", x: 1, y: l[0], text: l[3], showarrow: false, xanchor: "right", yanchor: "bottom", font: {size: 11, color: l[1]}}))
+    }, {responsive: true, displaylogo: false});
+  }
+
+  // tabela: 10 strikes com mais posição
+  const top = [...sk].sort((a, b) => (b[1] + b[2]) - (a[1] + a[2])).slice(0, 10);
+  const t = el("table", {}, el("tr", {}, el("th", {}, "Strike"), el("th", {}, "Distância"), el("th", {}, "Calls"), el("th", {}, "Puts"), el("th", {}, "Total")));
+  for (const s of top) t.append(el("tr", {}, el("td", {}, brl(s[0])), el("td", {}, pct((s[0] / p - 1) * 100)),
+    el("td", {class: "c"}, qtd(s[1])), el("td", {class: "p"}, qtd(s[2])), el("td", {}, qtd(s[1] + s[2]))));
+  box.append(el("h2", {style: "margin-top:14px"}, "Strikes com mais posição em aberto"), el("div", {class: "tw"}, t));
+}
+
+async function carregar(){
+  try {
+    const r = await fetch("opcoes.json?t=" + Date.now(), {cache: "no-store"});
+    if (!r.ok) throw new Error("opcoes.json não encontrado (" + r.status + ")");
+    DADOS = await r.json();
+    const nomes = Object.keys(DADOS.ativos);
+    const pref = lerPrefs().ativo;
+    ativo = nomes.includes(ativo) ? ativo : nomes.includes(pref) ? pref : nomes.find(a => !DADOS.ativos[a].semOpcoes) || nomes[0];
+    montarAbas(); montarVencimentos(); desenhar();
+    $("status").textContent = "Pregão de " + dataBR(DADOS.data) + " · atualizado " + new Date(DADOS.geradoEm).toLocaleString("pt-BR");
+    $("status").className = "";
+  } catch (e) {
+    $("status").textContent = "Erro: " + (e.message || e);
+    $("status").className = "e";
+  }
+}
+$("venc").addEventListener("change", desenhar);
+$("faixa").addEventListener("change", desenhar);
+carregarPlotly().then(carregar);
+setInterval(carregar, 30 * 60000); // os dados mudam 1x por dia; confere a cada 30 min
+</script>
+</body>
+</html>
