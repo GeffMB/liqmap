@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LiqMap — Mapa de Liquidações</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js"></script>
 <style>
 :root{--bg:#0b0e14;--panel:#121722;--line:#1e2430;--txt:#d6d9e0;--sub:#8a93a6;--short:#ffd600;--long:#00e5ff;--err:#ff7b72}
 *{box-sizing:border-box}
@@ -296,9 +295,32 @@ async function atualizar(){
   if (cfg.auto > 0) timer = setInterval(atualizar, cfg.auto * 60000);
   ocupado = false;
 }
+// ---------- biblioteca do gráfico: tenta várias fontes, uma após a outra ----------
+const FONTES_PLOTLY = [
+  "https://cdn.plot.ly/plotly-2.35.2.min.js",
+  "https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js",
+  "https://unpkg.com/plotly.js-dist-min@2.35.2/plotly.min.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js"
+];
+function carregarPlotly(){
+  return new Promise(resolve => {
+    let i = 0;
+    const tentar = () => {
+      if (window.Plotly) return resolve(true);
+      if (i >= FONTES_PLOTLY.length) return resolve(false);
+      const s = document.createElement("script");
+      s.src = FONTES_PLOTLY[i++];
+      s.onload = () => window.Plotly ? resolve(true) : tentar();
+      s.onerror = () => { s.remove(); tentar(); };
+      document.head.appendChild(s);
+    };
+    tentar();
+  });
+}
+
 $("atualizar").addEventListener("click", atualizar);
 ["tf", "barras", "auto"].forEach(id => $(id).addEventListener("change", atualizar));
-atualizar();
+carregarPlotly().then(atualizar);
 </script>
 </body>
 </html>
