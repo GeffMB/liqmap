@@ -79,15 +79,42 @@ button,select,input{font:inherit;color:inherit}
 .pesos label{flex-direction:column;align-items:stretch;margin:0;font-size:11px}
 .pesos input{width:100%}
 .pop .ok{margin-top:10px;width:100%;background:var(--accent);border:0;border-radius:4px;padding:7px;color:#fff;cursor:pointer}
-/* ---------- celular ---------- */
+/* ---------- ferramentas de desenho (esquerda) ---------- */
+.ferr{flex:0 0 46px;width:46px;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;overflow-y:auto;scrollbar-width:none;background:var(--bg)}
+.ferr::-webkit-scrollbar{display:none}
+.ferr button{width:36px;height:36px;flex:0 0 36px;border:0;border-radius:6px;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--txt);padding:0}
+.ferr button:hover{background:var(--hover)}
+.ferr button[aria-pressed=true]{background:#e3effd;color:var(--accent)}
+.ferr button:disabled{opacity:.35;cursor:default}
+.ferr svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.ferr hr{width:28px;border:0;border-top:1px solid var(--line);margin:4px 0}
+#des{position:absolute;left:0;top:0;z-index:2;pointer-events:none;touch-action:none}
+#des.ativo{pointer-events:auto;cursor:crosshair}
+#des.borracha{cursor:not-allowed}
+.aviso{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:4;background:#131722;color:#fff;font-size:12px;padding:6px 10px;border-radius:6px;pointer-events:none;opacity:0;transition:opacity .2s;white-space:nowrap}
+.aviso.on{opacity:.92}
+#tfSel{display:none;background:transparent;border:0;font-weight:600;padding:6px 4px}
+.rodape{display:none}
+/* ---------- celular (estilo app da TradingView) ---------- */
 @media (max-width:820px){
-  body{overflow:auto}
-  .area{flex-direction:column}
-  .graf{flex:0 0 auto}
-  .principal{height:55vh;flex:0 0 auto}
-  .painel{flex-basis:100px}
-  .lado{width:auto;flex:0 0 auto;border-left:0;border-top:1px solid var(--line)}
-  .marca{display:none}
+  body{height:100dvh}
+  .top{height:46px;padding:0 4px}
+  .marca,.txt,.top .status{display:none}
+  #tfs{display:none !important}
+  #tfSel{display:block}
+  .btn{padding:8px 7px;font-size:15px}
+  .ferr{flex-basis:42px;width:42px}
+  .ferr button{width:34px;height:34px;flex-basis:34px}
+  .legenda{font-size:12px;line-height:1.5;left:4px;top:4px;padding:2px 6px}
+  .legenda .t{font-size:13px}
+  .painel{flex-basis:84px}
+  .lado{position:fixed;left:0;right:0;bottom:44px;width:auto;max-height:62dvh;z-index:15;border:0;border-top:1px solid var(--line);
+        box-shadow:0 -8px 24px rgba(19,23,34,.15);border-radius:12px 12px 0 0;transform:translateY(105%);transition:transform .25s ease;visibility:hidden}
+  .lado.aberta{transform:none;visibility:visible}
+  .rodape{display:flex;align-items:center;justify-content:space-between;gap:8px;height:44px;flex:0 0 44px;border-top:1px solid var(--line);padding:0 12px;background:var(--bg);font-size:14px}
+  .rodape button{border:0;background:transparent;font-weight:500;padding:8px 0;cursor:pointer}
+  .rodape .rel{color:var(--txt);font-variant-numeric:tabular-nums}
+  .pop{left:8px !important;right:8px;width:auto;max-height:70dvh;overflow-y:auto}
 }
 </style>
 </head>
@@ -98,11 +125,13 @@ button,select,input{font:inherit;color:inherit}
   <button class="btn simbolo" id="bSimb" title="Trocar ativo">BTCUSDT ▾</button>
   <div class="sep"></div>
   <div id="tfs" style="display:flex"></div>
+  <select id="tfSel" aria-label="Tempo gráfico"></select>
   <div class="sep"></div>
-  <button class="btn" id="bInd" title="Indicadores">ƒx Indicadores</button>
-  <button class="btn" id="bHeat" aria-pressed="true" title="Mostrar/ocultar mapa de liquidações">▦ Mapa de liquidações</button>
-  <button class="btn" id="bAjustes" title="Ajustes do modelo">⚙ Ajustes</button>
+  <button class="btn" id="bInd" title="Indicadores">ƒx<span class="txt"> Indicadores</span></button>
+  <button class="btn" id="bHeat" aria-pressed="true" title="Mostrar/ocultar mapa de liquidações">▦<span class="txt"> Mapa de liquidações</span></button>
+  <button class="btn" id="bAjustes" title="Ajustes do modelo">⚙<span class="txt"> Ajustes</span></button>
   <button class="btn" id="bAtualizar" title="Recalcular agora">⟳</button>
+  <button class="btn" id="bFoto" title="Salvar imagem do gráfico">📷</button>
   <div class="direita">
     <span class="status" id="status">Carregando…</span>
     <span class="ponto" id="ponto" title="Preço ao vivo"></span>
@@ -111,15 +140,18 @@ button,select,input{font:inherit;color:inherit}
 </div>
 
 <div class="area">
+  <nav class="ferr" id="ferr" aria-label="Ferramentas de desenho"></nav>
   <div class="graf" id="graf">
     <div class="principal" id="principal">
       <canvas id="heat"></canvas>
       <div id="chart"></div>
+      <canvas id="des"></canvas>
+      <div class="aviso" id="aviso"></div>
       <div class="legenda" id="legenda"></div>
       <div class="carregando" id="carregando">Carregando dados da Binance…</div>
     </div>
   </div>
-  <aside class="lado">
+  <aside class="lado" id="lado">
     <div class="bloco">
       <h3>Lista de observação <small>Binance Futures</small></h3>
       <table class="wl" id="wl"></table>
@@ -135,6 +167,12 @@ button,select,input{font:inherit;color:inherit}
       Volume, delta e CVD usam o volume de compradores agressivos (taker) informado pela Binance em cada candle. Não é recomendação de investimento.
     </div>
   </aside>
+</div>
+
+<div class="rodape">
+  <button id="bLado">Lista e zonas ▴</button>
+  <span class="status" id="status2"></span>
+  <span class="rel" id="relogio"></span>
 </div>
 
 <div class="pop" id="popInd">
@@ -478,7 +516,8 @@ function loopDesenho(){
     const sig = [ts.logicalToCoordinate(0), ts.logicalToCoordinate(100), serie.priceToCoordinate(velas.length ? velas[0].close : 1),
       serie.priceToCoordinate(velas.length ? velas[0].close * 1.01 : 2), principal.clientWidth, principal.clientHeight,
       cfg.heat, cfg.ind.vpvr, mapa ? mapa.runs.length : 0, velas.length ? velas[velas.length - 1].close : 0].join("|");
-    if (sig !== assinatura) { assinatura = sig; desenharCanvas(); }
+    if (sig !== assinatura) { assinatura = sig; desenharCanvas(); desVersao++; }
+    if (desVersao !== desDesenhada) { desDesenhada = desVersao; desenharDesenhos(); }
   }
   requestAnimationFrame(loopDesenho);
 }
@@ -532,7 +571,7 @@ function desenharCanvas(){
     let mx = 0, poc = -1;
     for (let b = 0; b < N; b++) { const t = compra[b] + venda[b]; if (t > mx) { mx = t; poc = b; } }
     if (!mx) return;
-    const larg = W * 0.24;
+    const larg = W * (W < 500 ? 0.15 : 0.24);
     for (let b = 0; b < N; b++) {
       const t = compra[b] + venda[b]; if (!t) continue;
       const y1 = serie.priceToCoordinate(baixo + (b + 1) * passoP), y0 = serie.priceToCoordinate(baixo + b * passoP);
@@ -705,7 +744,7 @@ async function recalcular(manterZoom){
   if (ocupado) return;
   ocupado = true;
   const meu = ++pedido;
-  $("status").textContent = "Calculando…"; $("status").className = "status";
+  $("status").textContent = "Calculando…"; $("status").className = "status"; $("status2").textContent = "Calculando…";
   if (!manterZoom) $("carregando").style.display = "flex";
   try {
     let kl, oi;
@@ -729,8 +768,9 @@ async function recalcular(manterZoom){
     assinatura = "";
     atualizarLegenda(); desenharZonas();
     $("status").textContent = (mapa.barrasOI ? "" : "Sem Open Interest para o período · ") + "Mapa de " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}) + (DEMO ? " · DADOS DE TESTE" : "");
+    $("status2").textContent = (DEMO ? "Teste · " : "") + "Mapa " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"});
   } catch (e) {
-    $("status").textContent = "Erro: " + (e.message || e); $("status").className = "status err";
+    $("status").textContent = "Erro: " + (e.message || e); $("status").className = "status err"; $("status2").textContent = "Erro ao carregar";
   } finally {
     ocupado = false;
     $("carregando").style.display = "none";
@@ -741,12 +781,13 @@ async function recalcular(manterZoom){
 function trocar(mud){
   Object.assign(cfg, mud); salvarPrefs();
   $("bSimb").textContent = cfg.simbolo + " ▾";
-  montarTfs(); desenharLista(); conectarWS();
+  montarTfs(); desenharLista(); conectarWS(); carregarDesenhos();
   ocupado = false; recalcular(false);
 }
 
 // ---------- controles ----------
 function montarTfs(){
+  const sel = $("tfSel"); sel.replaceChildren(...TFS.map(tf => el("option", {value: tf}, tf))); sel.value = cfg.tf;
   const box = $("tfs"); box.replaceChildren();
   for (const tf of TFS) {
     const b = el("button", {class: "btn", "aria-pressed": String(tf === cfg.tf)}, tf);
@@ -815,9 +856,330 @@ function carregarLib(){
 $("bHeat").setAttribute("aria-pressed", String(cfg.heat));
 $("bSimb").textContent = cfg.simbolo + " ▾";
 montarTfs(); desenharLista();
+// ================= ferramentas de desenho (barra da esquerda) =================
+const desCanvas = $("des"), dctx = desCanvas.getContext("2d");
+let ferramenta = "cursor", desenhos = [], rascunho = null, medida = null, desVersao = 1, desDesenhada = 0;
+let ima = false, travado = false, ocultos = false;
+const COR_DES = "#2962ff";
+const FIB = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+
+const ICONES = {
+  cursor: '<path d="M11 3v6M11 13v6M3 11h6M13 11h6"/>',
+  linha: '<path d="M4 18L18 4"/><circle cx="4" cy="18" r="1.8"/><circle cx="18" cy="4" r="1.8"/>',
+  horizontal: '<path d="M2 11h18"/><circle cx="11" cy="11" r="1.8"/>',
+  retangulo: '<rect x="4" y="6" width="14" height="10" rx="1"/>',
+  fib: '<path d="M3 4h16M3 8h16M3 12h16M3 18h16"/><path d="M5 18L17 4" stroke-dasharray="2 2"/>',
+  pincel: '<path d="M4 18c2 0 3-1 3-3 0-1.5 1-2.5 2.5-2.5S12 14 12 15.5 10.5 18 9 18"/><path d="M11 12L18 4"/>',
+  texto: '<path d="M5 5h12M11 5v13M8 18h6"/>',
+  regua: '<path d="M3 15L15 3l4 4L7 19z"/><path d="M7 11l2 2M10 8l2 2M13 5l2 2"/>',
+  zoomMais: '<circle cx="10" cy="10" r="6"/><path d="M15 15l4 4M7.5 10h5M10 7.5v5"/>',
+  zoomMenos: '<circle cx="10" cy="10" r="6"/><path d="M15 15l4 4M7.5 10h5"/>',
+  ajustar: '<path d="M3 8V3h5M14 3h5v5M19 14v5h-5M8 19H3v-5"/>',
+  ima: '<path d="M5 4v7a6 6 0 0 0 12 0V4h-4v7a2 2 0 0 1-4 0V4z"/><path d="M5 8h4M13 8h4"/>',
+  borracha: '<path d="M8 18h11M4 14l8-8 6 6-6 6H8z"/><path d="M8 10l6 6"/>',
+  travar: '<rect x="5" y="10" width="12" height="9" rx="1.5"/><path d="M8 10V7a3 3 0 0 1 6 0v3"/>',
+  destravar: '<rect x="5" y="10" width="12" height="9" rx="1.5"/><path d="M8 10V7a3 3 0 0 1 6 0"/>',
+  olho: '<path d="M2 11s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="11" cy="11" r="2.5"/>',
+  olhoFechado: '<path d="M2 11s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><path d="M4 18L18 4"/>',
+  desfazer: '<path d="M8 6L4 10l4 4"/><path d="M4 10h9a5 5 0 0 1 0 10h-3"/>',
+  lixo: '<path d="M4 6h14M9 6V4h4v2M6 6l1 13h8l1-13"/>'
+};
+const svg = nome => '<svg viewBox="0 0 22 22" aria-hidden="true">' + ICONES[nome] + '</svg>';
+
+// [id, ícone, título, tipo] — tipo "f" = ferramenta de desenho, "a" = ação, "t" = liga/desliga
+const BARRA = [
+  ["cursor", "cursor", "Cursor (cruz)", "f"],
+  ["linha", "linha", "Linha de tendência", "f"],
+  ["horizontal", "horizontal", "Linha horizontal", "f"],
+  ["retangulo", "retangulo", "Retângulo", "f"],
+  ["fib", "fib", "Retração de Fibonacci", "f"],
+  ["pincel", "pincel", "Pincel", "f"],
+  ["texto", "texto", "Texto", "f"],
+  null,
+  ["regua", "regua", "Régua (medir preço e tempo)", "f"],
+  ["zoomMais", "zoomMais", "Aproximar", "a"],
+  ["zoomMenos", "zoomMenos", "Afastar", "a"],
+  ["ajustar", "ajustar", "Voltar aos candles recentes", "a"],
+  null,
+  ["ima", "ima", "Ímã (prende nos preços do candle)", "t"],
+  ["borracha", "borracha", "Borracha (toque num desenho para apagar)", "f"],
+  ["travar", "travar", "Travar desenhos", "t"],
+  ["ocultar", "olho", "Ocultar desenhos", "t"],
+  ["desfazer", "desfazer", "Desfazer último desenho", "a"],
+  null,
+  ["lixo", "lixo", "Apagar todos os desenhos", "a"]
+];
+
+function montarBarra(){
+  const nav = $("ferr"); nav.replaceChildren();
+  for (const item of BARRA) {
+    if (!item) { nav.append(el("hr")); continue; }
+    const [id, icone, titulo] = item;
+    const b = el("button", {id: "f_" + id, title: titulo, "aria-label": titulo});
+    b.innerHTML = svg(icone);
+    b.addEventListener("click", () => acaoBarra(id));
+    nav.append(b);
+  }
+  atualizarBarra();
+}
+function atualizarBarra(){
+  for (const item of BARRA) {
+    if (!item) continue;
+    const [id, , , tipo] = item, b = $("f_" + id);
+    if (tipo === "f") b.setAttribute("aria-pressed", String(ferramenta === id));
+  }
+  $("f_ima").setAttribute("aria-pressed", String(ima));
+  $("f_travar").setAttribute("aria-pressed", String(travado));
+  $("f_travar").innerHTML = svg(travado ? "travar" : "destravar");
+  $("f_ocultar").setAttribute("aria-pressed", String(ocultos));
+  $("f_ocultar").innerHTML = svg(ocultos ? "olhoFechado" : "olho");
+  for (const id of ["borracha", "desfazer", "lixo"]) $("f_" + id).disabled = travado || !desenhos.length;
+  desCanvas.classList.toggle("ativo", ferramenta !== "cursor");
+  desCanvas.classList.toggle("borracha", ferramenta === "borracha");
+}
+let avisoTimer = null;
+function avisar(txt){
+  const a = $("aviso"); a.textContent = txt; a.classList.add("on");
+  clearTimeout(avisoTimer); avisoTimer = setTimeout(() => a.classList.remove("on"), 2200);
+}
+const DICAS = {
+  linha: "Toque no ponto inicial e depois no final (ou arraste)",
+  horizontal: "Toque no preço da linha",
+  retangulo: "Toque em dois cantos opostos (ou arraste)",
+  fib: "Toque no topo/fundo e depois no outro extremo",
+  pincel: "Arraste para desenhar",
+  texto: "Toque onde o texto deve ficar",
+  regua: "Toque no início e no fim do trecho a medir",
+  borracha: "Toque num desenho para apagar"
+};
+function acaoBarra(id){
+  const ts = chart && chart.timeScale();
+  switch (id) {
+    case "zoomMais": if (ts) ts.applyOptions({barSpacing: Math.min(50, ts.options().barSpacing * 1.3)}); return;
+    case "zoomMenos": if (ts) ts.applyOptions({barSpacing: Math.max(1, ts.options().barSpacing / 1.3)}); return;
+    case "ajustar": if (ts && velas.length) { ts.applyOptions({barSpacing: 6}); ts.setVisibleLogicalRange({from: velas.length - 150, to: velas.length + 12}); } return;
+    case "ima": ima = !ima; avisar(ima ? "Ímã ligado" : "Ímã desligado"); break;
+    case "travar": travado = !travado; if (travado && ferramenta === "borracha") ferramenta = "cursor"; avisar(travado ? "Desenhos travados" : "Desenhos destravados"); break;
+    case "ocultar": ocultos = !ocultos; desVersao++; break;
+    case "desfazer": if (!travado && desenhos.length) { desenhos.pop(); salvarDesenhos(); } break;
+    case "lixo":
+      if (!travado && desenhos.length) { desenhos = []; salvarDesenhos(); avisar("Desenhos apagados"); }
+      break;
+    default:
+      ferramenta = ferramenta === id && id !== "cursor" ? "cursor" : id;
+      rascunho = null; medida = null; desVersao++;
+      if (DICAS[ferramenta]) avisar(DICAS[ferramenta]);
+  }
+  atualizarBarra();
+}
+
+// ---------- salvar/carregar (por ativo, só neste navegador) ----------
+function carregarDesenhos(){
+  try { desenhos = JSON.parse(localStorage.getItem("liqmap-des-" + cfg.simbolo) || "[]"); } catch(e) { desenhos = []; }
+  if (!Array.isArray(desenhos)) desenhos = [];
+  rascunho = null; medida = null; desVersao++;
+  if ($("f_cursor")) atualizarBarra();
+}
+function salvarDesenhos(){
+  try { localStorage.setItem("liqmap-des-" + cfg.simbolo, JSON.stringify(desenhos)); } catch(e) {}
+  desVersao++; atualizarBarra();
+}
+
+// ---------- conversão tempo/preço <-> tela ----------
+function geo(){
+  if (!chart || !velas.length) return null;
+  const ts = chart.timeScale();
+  const x0 = ts.logicalToCoordinate(0), x1 = ts.logicalToCoordinate(1);
+  if (x0 == null || x1 == null || x1 === x0) return null;
+  return {x0, passo: x1 - x0, t0: velas[0].time, tf: TF_MS[cfg.tf] / 1000};
+}
+const xDe = (g, t) => g.x0 + (t - g.t0) / g.tf * g.passo;
+const tDe = (g, x) => g.t0 + (x - g.x0) / g.passo * g.tf;
+function pontoDe(ev){
+  const g = geo(); if (!g) return null;
+  const r = desCanvas.getBoundingClientRect();
+  let x = ev.clientX - r.left, y = ev.clientY - r.top;
+  let t = tDe(g, x), p = serie.coordinateToPrice(y);
+  if (p == null) return null;
+  if (ima) {   // prende na abertura/máxima/mínima/fechamento do candle mais próximo
+    const i = Math.max(0, Math.min(velas.length - 1, Math.round((x - g.x0) / g.passo)));
+    const k = velas[i];
+    let melhor = k.close, dist = Infinity;
+    for (const v of [k.open, k.high, k.low, k.close]) { const d = Math.abs(serie.priceToCoordinate(v) - y); if (d < dist) { dist = d; melhor = v; } }
+    t = k.time; p = melhor;
+  }
+  return {t, p};
+}
+
+// ---------- interação ----------
+let arrastando = false, inicioToque = null;
+const DOIS_PONTOS = ["linha", "retangulo", "fib", "regua"];
+function finalizar(d){
+  if (d.tipo === "regua") { medida = d; }
+  else { desenhos.push(d); salvarDesenhos(); }
+  rascunho = null; ferramenta = "cursor"; desVersao++; atualizarBarra();
+}
+desCanvas.addEventListener("pointerdown", ev => {
+  ev.preventDefault();
+  const pt = pontoDe(ev); if (!pt) return;
+  if (ferramenta === "borracha") { apagarPerto(ev); return; }
+  if (ferramenta === "horizontal") { finalizar({tipo: "horizontal", pts: [pt]}); return; }
+  if (ferramenta === "texto") {
+    const txt = window.prompt("Texto:");
+    if (txt && txt.trim()) finalizar({tipo: "texto", pts: [pt], texto: txt.trim().slice(0, 80)});
+    else { ferramenta = "cursor"; atualizarBarra(); }
+    return;
+  }
+  if (ferramenta === "pincel") { rascunho = {tipo: "pincel", pts: [pt]}; arrastando = true; desCanvas.setPointerCapture(ev.pointerId); desVersao++; return; }
+  if (DOIS_PONTOS.includes(ferramenta)) {
+    if (rascunho) { rascunho.pts[1] = pt; finalizar(rascunho); return; }   // segundo toque
+    rascunho = {tipo: ferramenta, pts: [pt, pt]};
+    arrastando = true; inicioToque = {x: ev.clientX, y: ev.clientY};
+    desCanvas.setPointerCapture(ev.pointerId); desVersao++;
+  }
+});
+desCanvas.addEventListener("pointermove", ev => {
+  if (!rascunho) return;
+  const pt = pontoDe(ev); if (!pt) return;
+  if (rascunho.tipo === "pincel") { if (arrastando) { rascunho.pts.push(pt); desVersao++; } return; }
+  rascunho.pts[1] = pt; desVersao++;
+});
+desCanvas.addEventListener("pointerup", ev => {
+  if (!rascunho) return;
+  if (rascunho.tipo === "pincel") { arrastando = false; if (rascunho.pts.length > 1) finalizar(rascunho); else rascunho = null; return; }
+  // arrastou o suficiente = desenho pronto; toque curto = espera o segundo toque
+  if (arrastando && inicioToque && Math.hypot(ev.clientX - inicioToque.x, ev.clientY - inicioToque.y) > 12) finalizar(rascunho);
+  arrastando = false;
+});
+// com o cursor, um toque no gráfico apaga a medição da régua
+principal.addEventListener("pointerdown", () => { if (ferramenta === "cursor" && medida) { medida = null; desVersao++; } }, true);
+
+function distSeg(px, py, ax, ay, bx, by){
+  const dx = bx - ax, dy = by - ay, l = dx * dx + dy * dy;
+  const u = l ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l)) : 0;
+  return Math.hypot(px - (ax + u * dx), py - (ay + u * dy));
+}
+function apagarPerto(ev){
+  if (travado) return;
+  const g = geo(); if (!g) return;
+  const r = desCanvas.getBoundingClientRect(), px = ev.clientX - r.left, py = ev.clientY - r.top;
+  let melhor = -1, menor = 14;
+  desenhos.forEach((d, i) => {
+    const P = d.pts.map(q => [xDe(g, q.t), serie.priceToCoordinate(q.p)]);
+    let dist = Infinity;
+    if (d.tipo === "horizontal") dist = Math.abs(py - P[0][1]);
+    else if (d.tipo === "texto") dist = Math.hypot(px - P[0][0] - 20, py - P[0][1]) - 20;
+    else if (d.tipo === "linha") dist = distSeg(px, py, ...P[0], ...P[1]);
+    else if (d.tipo === "pincel") for (let k = 1; k < P.length; k++) dist = Math.min(dist, distSeg(px, py, ...P[k - 1], ...P[k]));
+    else if (d.tipo === "retangulo" || d.tipo === "fib") {
+      const [a, b] = P, xs = [a[0], b[0]], cantos = [[a[0], a[1]], [b[0], a[1]], [b[0], b[1]], [a[0], b[1]]];
+      for (let k = 0; k < 4; k++) dist = Math.min(dist, distSeg(px, py, ...cantos[k], ...cantos[(k + 1) % 4]));
+      if (d.tipo === "fib") for (const n of FIB) { const y = serie.priceToCoordinate(d.pts[1].p + (d.pts[0].p - d.pts[1].p) * n); dist = Math.min(dist, distSeg(px, py, Math.min(...xs), y, Math.max(...xs), y)); }
+    }
+    if (dist < menor) { menor = dist; melhor = i; }
+  });
+  if (melhor >= 0) { desenhos.splice(melhor, 1); salvarDesenhos(); }
+  else avisar("Nenhum desenho aqui");
+}
+
+// ---------- desenho na tela ----------
+function etiqueta(c, txt, x, y, fundo, cor){
+  c.font = "11px -apple-system,Segoe UI,Roboto,sans-serif";
+  const w = c.measureText(txt).width + 8;
+  c.fillStyle = fundo; c.fillRect(x, y - 9, w, 18);
+  c.fillStyle = cor || "#fff"; c.fillText(txt, x + 4, y + 4);
+  return w;
+}
+function desenharUm(c, g, d, W){
+  const P = d.pts.map(q => [xDe(g, q.t), serie.priceToCoordinate(q.p)]);
+  if (P.some(q => q[1] == null)) return;
+  c.strokeStyle = COR_DES; c.fillStyle = COR_DES; c.lineWidth = 2; c.setLineDash([]);
+  if (d.tipo === "linha") {
+    c.beginPath(); c.moveTo(...P[0]); c.lineTo(...P[1]); c.stroke();
+    for (const q of P) { c.beginPath(); c.arc(q[0], q[1], 3, 0, 7); c.fill(); }
+  } else if (d.tipo === "horizontal") {
+    c.lineWidth = 1.5; c.beginPath(); c.moveTo(0, P[0][1]); c.lineTo(W, P[0][1]); c.stroke();
+    const txt = pr(d.pts[0].p); c.font = "11px sans-serif";
+    etiqueta(c, txt, W - c.measureText(txt).width - 12, P[0][1], COR_DES);
+  } else if (d.tipo === "retangulo") {
+    const x = Math.min(P[0][0], P[1][0]), y = Math.min(P[0][1], P[1][1]), w = Math.abs(P[1][0] - P[0][0]), h = Math.abs(P[1][1] - P[0][1]);
+    c.fillStyle = "rgba(41,98,255,0.12)"; c.fillRect(x, y, w, h); c.lineWidth = 1.5; c.strokeRect(x, y, w, h);
+  } else if (d.tipo === "fib") {
+    const xa = Math.min(P[0][0], P[1][0]), xb = Math.max(P[0][0], P[1][0]);
+    const cores = ["#787b86", "#f23645", "#ff9800", "#4caf50", "#089981", "#00bcd4", "#787b86"];
+    FIB.forEach((n, k) => {
+      const preco = d.pts[1].p + (d.pts[0].p - d.pts[1].p) * n, y = serie.priceToCoordinate(preco);
+      c.strokeStyle = cores[k]; c.lineWidth = 1; c.beginPath(); c.moveTo(xa, y); c.lineTo(xb, y); c.stroke();
+      c.fillStyle = cores[k]; c.font = "11px sans-serif"; c.fillText(n.toFixed(3).replace(".", ",") + " (" + pr(preco) + ")", xa + 4, y - 3);
+    });
+    c.strokeStyle = "rgba(120,123,134,0.6)"; c.setLineDash([4, 4]); c.beginPath(); c.moveTo(...P[0]); c.lineTo(...P[1]); c.stroke(); c.setLineDash([]);
+  } else if (d.tipo === "pincel") {
+    c.beginPath(); P.forEach((q, k) => k ? c.lineTo(...q) : c.moveTo(...q)); c.stroke();
+  } else if (d.tipo === "texto") {
+    c.font = "600 14px -apple-system,Segoe UI,Roboto,sans-serif"; c.fillStyle = COR_DES; c.fillText(d.texto, P[0][0], P[0][1]);
+  } else if (d.tipo === "regua") {
+    const [a, b] = P, sobe = d.pts[1].p >= d.pts[0].p;
+    const x = Math.min(a[0], b[0]), y = Math.min(a[1], b[1]), w = Math.abs(b[0] - a[0]), h = Math.abs(b[1] - a[1]);
+    c.fillStyle = sobe ? "rgba(8,153,129,0.15)" : "rgba(242,54,69,0.15)"; c.fillRect(x, y, w, h);
+    c.strokeStyle = sobe ? "#089981" : "#f23645"; c.lineWidth = 1; c.strokeRect(x, y, w, h);
+    const dp = d.pts[1].p - d.pts[0].p, pc = dp / d.pts[0].p * 100;
+    const barras = Math.round((d.pts[1].t - d.pts[0].t) / g.tf), seg = Math.abs(d.pts[1].t - d.pts[0].t);
+    const dur = seg >= 86400 ? (seg / 86400).toFixed(1).replace(".", ",") + " d" : seg >= 3600 ? (seg / 3600).toFixed(1).replace(".", ",") + " h" : Math.round(seg / 60) + " min";
+    const txt = (dp >= 0 ? "+" : "") + pr(dp) + " (" + pct(pc) + ") · " + Math.abs(barras) + " candles, " + dur;
+    c.font = "12px sans-serif";
+    const tw = c.measureText(txt).width + 12, ty = sobe ? y - 14 : y + h + 14;
+    etiqueta(c, txt, Math.max(2, x + w / 2 - tw / 2), ty, sobe ? "#089981" : "#f23645");
+  }
+}
+function desenharDesenhos(){
+  const dpr = window.devicePixelRatio || 1;
+  const ts = chart ? chart.timeScale() : null; if (!ts) return;
+  const W = principal.clientWidth - chart.priceScale("right").width();
+  const H = principal.clientHeight - (ts.options().visible ? ts.height() : 0);
+  if (W <= 0 || H <= 0) return;
+  if (desCanvas.width !== Math.round(W * dpr) || desCanvas.height !== Math.round(H * dpr)) {
+    desCanvas.width = Math.round(W * dpr); desCanvas.height = Math.round(H * dpr);
+    desCanvas.style.width = W + "px"; desCanvas.style.height = H + "px";
+  }
+  dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  dctx.clearRect(0, 0, W, H);
+  const g = geo(); if (!g) return;
+  if (!ocultos) for (const d of desenhos) desenharUm(dctx, g, d, W);
+  if (rascunho) desenharUm(dctx, g, rascunho, W);
+  if (medida) desenharUm(dctx, g, medida, W);
+}
+
+// ---------- foto do gráfico (mapa + candles + desenhos) ----------
+$("bFoto").addEventListener("click", () => {
+  if (!chart) return;
+  const shot = chart.takeScreenshot();
+  const out = document.createElement("canvas"); out.width = shot.width; out.height = shot.height;
+  const c = out.getContext("2d");
+  const k = shot.width / principal.clientWidth;               // pixels da foto por pixel de tela
+  const cola = cv => c.drawImage(cv, 0, 0, parseFloat(cv.style.width) * k, parseFloat(cv.style.height) * k);
+  c.fillStyle = "#ffffff"; c.fillRect(0, 0, out.width, out.height);
+  if (canvas.style.width) cola(canvas);                        // mapa de liquidações e perfil de volume
+  c.drawImage(shot, 0, 0);                                    // candles, eixos e indicadores
+  if (desCanvas.style.width) cola(desCanvas);                 // desenhos
+  const a = document.createElement("a");
+  a.download = "liqmap-" + cfg.simbolo + "-" + cfg.tf + ".png";
+  a.href = out.toDataURL("image/png"); a.click();
+});
+
+// ---------- celular: gaveta da lista/zonas, seletor de tempo e relógio ----------
+$("bLado").addEventListener("click", () => {
+  const aberta = $("lado").classList.toggle("aberta");
+  $("bLado").textContent = aberta ? "Lista e zonas ▾" : "Lista e zonas ▴";
+});
+$("tfSel").addEventListener("change", e => trocar({tf: e.target.value}));
+const FUSO = (() => { const m = -new Date().getTimezoneOffset(), h = m / 60; return "UTC" + (h >= 0 ? "+" : "−") + Math.abs(h); })();
+setInterval(() => { $("relogio").textContent = new Date().toLocaleTimeString("pt-BR") + " " + FUSO; }, 1000);
+montarBarra();
+
 carregarLib().then(ok => {
   if (!ok) { $("carregando").textContent = "Não foi possível carregar a biblioteca do gráfico (verifique a internet)."; return; }
   criarGrafico();
+  carregarDesenhos();
   carregarTickers();
   conectarWS();
   recalcular(false);
