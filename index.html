@@ -6,9 +6,9 @@
 <title>LiqMap — Mapa de Liquidações</title>
 <style>
 :root{
-  --bg:#131722;--panel:#1e222d;--panel2:#171b26;--line:#2a2e39;--hover:#2a2e39;
-  --txt:#d1d4dc;--sub:#787b86;--up:#089981;--down:#f23645;--accent:#2962ff;
-  --short:#ffd600;--long:#00e5ff;
+  --bg:#ffffff;--panel:#ffffff;--panel2:#f0f3fa;--line:#e0e3eb;--hover:#f0f3fa;
+  --txt:#131722;--sub:#787b86;--up:#089981;--down:#f23645;--accent:#2962ff;
+  --short:#d97706;--long:#0284c7;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -39,12 +39,12 @@ button,select,input{font:inherit;color:inherit}
 .painel .c{position:absolute;inset:0}
 .rot{position:absolute;left:12px;top:4px;z-index:2;pointer-events:none;font-size:12px;text-shadow:0 0 3px var(--bg)}
 .rot .v{color:var(--sub)}
-.legenda{position:absolute;left:8px;top:6px;z-index:2;pointer-events:none;font-size:13px;line-height:1.6;background:rgba(19,23,34,.82);padding:2px 8px 4px;border-radius:4px}
+.legenda{position:absolute;left:8px;top:6px;z-index:2;pointer-events:none;font-size:13px;line-height:1.6;background:rgba(255,255,255,.88);padding:2px 8px 4px;box-shadow:0 1px 3px rgba(19,23,34,.08);border-radius:4px}
 .legenda .t{font-size:15px;font-weight:600}
 .legenda b{font-weight:500}
 .legenda .v{color:var(--sub)}
 .up{color:var(--up)} .down{color:var(--down)} .s{color:var(--short)} .l{color:var(--long)}
-.carregando{position:absolute;inset:0;z-index:3;display:flex;align-items:center;justify-content:center;color:var(--sub);background:rgba(19,23,34,.6)}
+.carregando{position:absolute;inset:0;z-index:3;display:flex;align-items:center;justify-content:center;color:var(--sub);background:rgba(255,255,255,.7)}
 /* ---------- painel lateral ---------- */
 .lado{width:300px;flex:0 0 300px;border-left:1px solid var(--line);background:var(--bg);display:flex;flex-direction:column;overflow-y:auto}
 .bloco{border-bottom:1px solid var(--line);padding:10px 12px}
@@ -66,7 +66,7 @@ button,select,input{font:inherit;color:inherit}
 .zt tr.cab td{color:var(--sub);padding-top:8px;text-align:left}
 .nota{color:var(--sub);font-size:11px;line-height:1.5}
 /* ---------- menus ---------- */
-.pop{position:fixed;top:48px;z-index:20;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px;width:290px;box-shadow:0 8px 24px rgba(0,0,0,.4);display:none}
+.pop{position:fixed;top:48px;z-index:20;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px;width:290px;box-shadow:0 8px 24px rgba(19,23,34,.15);display:none}
 .pop.aberto{display:block}
 .pop h4{margin:0 0 8px;font-size:13px}
 .pop label{display:flex;justify-content:space-between;align-items:center;margin:6px 0;color:var(--sub);gap:8px}
@@ -312,7 +312,7 @@ function calcIndicadores(v, oiPorT){
 
 // ---------- cores do mapa ----------
 const PALETA = (() => {
-  const st = [[0,[19,23,34,0]],[0.15,[40,30,120,0.18]],[0.35,[90,30,150,0.45]],[0.6,[190,55,125,0.75]],[0.82,[250,150,60,0.9]],[1,[252,253,191,0.98]]];
+  const st = [[0,[255,255,255,0]],[0.15,[120,140,255,0.16]],[0.35,[124,92,230,0.34]],[0.6,[214,64,140,0.55]],[0.82,[245,140,30,0.75]],[1,[220,38,38,0.92]]];
   const out = [];
   for (let q = 0; q <= NIVEIS; q++) {
     const x = q / NIVEIS;
@@ -332,14 +332,14 @@ const paineis = {};   // id -> {div, chart, serie, rot}
 function opcoesBase(){
   return {
     autoSize: true,
-    layout: {background: {type: "solid", color: "transparent"}, textColor: "#d1d4dc", fontSize: 12,
+    layout: {background: {type: "solid", color: "transparent"}, textColor: "#131722", fontSize: 12,
              fontFamily: '-apple-system,BlinkMacSystemFont,"Trebuchet MS",Roboto,Ubuntu,sans-serif', attributionLogo: true},
-    grid: {vertLines: {color: "rgba(42,46,57,0.5)"}, horzLines: {color: "rgba(42,46,57,0.5)"}},
+    grid: {vertLines: {color: "rgba(224,227,235,0.7)"}, horzLines: {color: "rgba(224,227,235,0.7)"}},
     crosshair: {mode: LWC.CrosshairMode.Normal,
-                vertLine: {color: "#9598a1", width: 1, style: LWC.LineStyle.Dashed, labelBackgroundColor: "#2a2e39"},
-                horzLine: {color: "#9598a1", width: 1, style: LWC.LineStyle.Dashed, labelBackgroundColor: "#2a2e39"}},
-    rightPriceScale: {borderColor: "#2a2e39", minimumWidth: LARG_ESCALA},
-    timeScale: {borderColor: "#2a2e39", timeVisible: true, secondsVisible: false, rightOffset: 12, barSpacing: 6},
+                vertLine: {color: "#9598a1", width: 1, style: LWC.LineStyle.Dashed, labelBackgroundColor: "#131722"},
+                horzLine: {color: "#9598a1", width: 1, style: LWC.LineStyle.Dashed, labelBackgroundColor: "#131722"}},
+    rightPriceScale: {borderColor: "#e0e3eb", minimumWidth: LARG_ESCALA},
+    timeScale: {borderColor: "#e0e3eb", timeVisible: true, secondsVisible: false, rightOffset: 12, barSpacing: 6},
     localization: {locale: "pt-BR"}
   };
 }
@@ -372,8 +372,8 @@ function criarPainel(id){
   const fmt = {type: "custom", formatter: usd, minMove: 1};
   const s = id === "delta"
     ? ch.addHistogramSeries({priceFormat: fmt, priceLineVisible: false})
-    : ch.addLineSeries({color: id === "cvd" ? "#f7a600" : "#b388ff", lineWidth: 2, priceFormat: fmt, priceLineVisible: false, crosshairMarkerVisible: true});
-  if (id === "cvd") s.createPriceLine({price: 0, color: "#4a4f5c", lineWidth: 1, lineStyle: LWC.LineStyle.Dotted, axisLabelVisible: false});
+    : ch.addLineSeries({color: id === "cvd" ? "#f57c00" : "#7e57c2", lineWidth: 2, priceFormat: fmt, priceLineVisible: false, crosshairMarkerVisible: true});
+  if (id === "cvd") s.createPriceLine({price: 0, color: "#b2b5be", lineWidth: 1, lineStyle: LWC.LineStyle.Dotted, axisLabelVisible: false});
   ch.subscribeCrosshairMove(p => { atualizarLegenda(p); espelharCursor(ch, p); });
   ch.timeScale().subscribeVisibleLogicalRangeChange(r => espelharFaixa(ch, r));
   paineis[id] = {div, chart: ch, serie: s, rot};
@@ -507,9 +507,9 @@ function desenharCanvas(){
       ctx.fillRect(W - wv, y, wv, h);
     }
     const yPoc = serie.priceToCoordinate(baixo + (poc + 0.5) * passoP);
-    ctx.strokeStyle = "rgba(255,255,255,0.55)"; ctx.setLineDash([4, 3]); ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(19,23,34,0.55)"; ctx.setLineDash([4, 3]); ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(0, yPoc); ctx.lineTo(W, yPoc); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.font = "11px sans-serif";
+    ctx.fillStyle = "rgba(19,23,34,0.75)"; ctx.font = "11px sans-serif";
     ctx.fillText("POC " + pr(baixo + (poc + 0.5) * passoP), 8, yPoc - 4);
   }
 }
