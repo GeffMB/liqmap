@@ -44,6 +44,7 @@ button,select,input{font:inherit;color:inherit}
 .legenda b{font-weight:500}
 .legenda .v{color:var(--sub)}
 .up{color:var(--up)} .down{color:var(--down)} .s{color:var(--short)} .l{color:var(--long)}
+.contagem{position:absolute;right:0;z-index:3;pointer-events:none;color:#fff;font:11px/16px -apple-system,BlinkMacSystemFont,"Trebuchet MS",Roboto,sans-serif;text-align:left;padding:0 6px;font-variant-numeric:tabular-nums;display:none}
 .carregando{position:absolute;inset:0;z-index:3;display:flex;align-items:center;justify-content:center;color:var(--sub);background:rgba(255,255,255,.7)}
 /* ---------- painel lateral ---------- */
 .lado{width:300px;flex:0 0 300px;border-left:1px solid var(--line);background:var(--bg);display:flex;flex-direction:column;overflow-y:auto}
@@ -160,6 +161,7 @@ button,select,input{font:inherit;color:inherit}
       <div class="aviso" id="aviso"></div>
       <div class="selbar" id="selbar"><span id="selNome"></span><button id="selApagar" title="Apagar desenho (Delete)">🗑 Apagar</button><button id="selFechar" title="Tirar seleção (Esc)">✕</button></div>
       <div class="legenda" id="legenda"></div>
+      <div class="contagem" id="contagem"></div>
       <div class="carregando" id="carregando">Carregando dados da Binance…</div>
     </div>
   </div>
@@ -208,8 +210,31 @@ button,select,input{font:inherit;color:inherit}
 const BASE = "https://fapi.binance.com";
 const WS = "wss://fstream.binance.com/market/stream?streams=";
 const SIMBOLOS = ["BTCUSDT", "ETHUSDT"];
-const TFS = ["5m", "15m", "30m", "1h", "2h", "4h"];
-const TF_MS = {"5m":3e5,"15m":9e5,"30m":18e5,"1h":36e5,"2h":72e5,"4h":144e5};
+const TFS = ["5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w", "1M", "3M", "6M", "12M"];
+// duração aproximada (meses variam; o fechamento exato vem de proximoFechamento)
+const TF_MS = {"5m":3e5,"15m":9e5,"30m":18e5,"1h":36e5,"2h":72e5,"4h":144e5,"1d":864e5,"1w":6048e5,"1M":2592e6,"3M":7776e6,"6M":15552e6,"12M":31536e6};
+const ROTULO_TF = {"5m":"5m","15m":"15m","30m":"30m","1h":"1h","2h":"2h","4h":"4h","1d":"1D","1w":"1S","1M":"1M","3M":"3M","6M":"6M","12M":"12M"};
+const MESES_TF = {"1M": 1, "3M": 3, "6M": 6, "12M": 12};
+const OI_PERIODOS = ["5m", "15m", "30m", "1h", "2h", "4h", "1d"];   // a Binance só fornece Open Interest até 1 dia
+const intervaloBinance = tf => MESES_TF[tf] ? "1M" : tf;              // 3M, 6M e 12M são montados a partir do mensal
+function proximoFechamento(abertura, tf = cfg.tf){                   // abertura em ms -> fechamento do candle em ms
+  const m = MESES_TF[tf];
+  if (!m) return abertura + TF_MS[tf];
+  const d = new Date(abertura);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + m, 1);
+}
+// junta candles mensais em trimestres, semestres ou anos
+function agruparMeses(base, m){
+  const out = [];
+  for (const k of base) {
+    const d = new Date(k.t), ini = Date.UTC(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / m) * m, 1);
+    const u = out[out.length - 1];
+    if (u && u.t === ini) { u.h = Math.max(u.h, k.h); u.l = Math.min(u.l, k.l); u.c = k.c; u.q += k.q; u.b += k.b; }
+    else out.push({t: ini, o: k.o, h: k.h, l: k.l, c: k.c, q: k.q, b: k.b});
+  }
+  return out;
+}
+let mensais = [];   // candles mensais de base quando o tempo gráfico é 3M, 6M ou 12M
 const LEVS = [3, 5, 10, 25, 50, 100];
 const PESOS_PADRAO = [5, 10, 25, 30, 20, 10];
 const MMR = 0.005, OI_MAX_DIAS = 29, FAIXAS = 300, NIVEIS = 48, LARG_ESCALA = 84;
@@ -256,10 +281,13 @@ async function getJSON(path, params){
 }
 // q = volume em USDT; b = volume de compradores agressivos (taker buy) em USDT
 async function buscarCandles(sym, tf, n){
-  const d = await getJSON("/fapi/v1/klines", {symbol: sym, interval: tf, limit: Math.min(n, 1500)});
-  return d.map(k => ({t: +k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], q: +k[7], b: +k[10]}));
+  const d = await getJSON("/fapi/v1/klines", {symbol: sym, interval: intervaloBinance(tf), limit: MESES_TF[tf] ? 1500 : Math.min(n, 1500)});
+  const kl = d.map(k => ({t: +k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], q: +k[7], b: +k[10]}));
+  if (MESES_TF[tf] > 1) { mensais = kl; return agruparMeses(kl, MESES_TF[tf]); }
+  return kl;
 }
 async function buscarOI(sym, tf, ini, fim){
+  if (!OI_PERIODOS.includes(tf)) return new Map();
   ini = Math.max(ini, Date.now() - OI_MAX_DIAS * 864e5);
   const passo = TF_MS[tf] * 500, oi = new Map();
   for (let s = ini; s <= fim; ) {
@@ -271,6 +299,17 @@ async function buscarOI(sym, tf, ini, fim){
   return oi;
 }
 function dadosDemo(sym, tf, n){
+  if (MESES_TF[tf]) {   // teste: candles mensais de calendário (e agrupados para 3M/6M/12M)
+    const base = dadosDemo(sym, "1d", 2).kl, agora = new Date(), kl = [];
+    let p = base[0].o;
+    for (let i = 83; i >= 0; i--) {
+      const t = Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth() - i, 1), ab = p;
+      p *= Math.exp((Math.sin(i * 1.7) + Math.cos(i * 0.9)) * 0.08);
+      kl.push({t, o: ab, h: Math.max(ab, p) * 1.06, l: Math.min(ab, p) * 0.94, c: p, q: 3e10 * (1 + Math.abs(Math.sin(i))), b: 1.5e10});
+    }
+    if (MESES_TF[tf] > 1) { mensais = kl; return {kl: agruparMeses(kl, MESES_TF[tf]), oi: new Map()}; }
+    return {kl, oi: new Map()};
+  }
   let seed = sym === "BTCUSDT" ? 7 : 11;
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const g = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
@@ -609,7 +648,7 @@ function atualizarLegenda(param){
   if (param && param.time != null) { const j = velas.findIndex(v => v.time === param.time); if (j >= 0) i = j; }
   const k = velas[i], cls = k.close >= k.open ? "up" : "down";
   const linhas = [
-    el("div", {}, el("span", {class: "t"}, cfg.simbolo + " · " + cfg.tf + " · Binance Futures  ")),
+    el("div", {}, el("span", {class: "t"}, cfg.simbolo + " · " + ROTULO_TF[cfg.tf] + " · Binance Futures  ")),
     el("div", {}, el("span", {class: "v"}, "A "), el("b", {class: cls}, pr(k.open)), el("span", {class: "v"}, "  M "), el("b", {class: cls}, pr(k.high)),
       el("span", {class: "v"}, "  m "), el("b", {class: cls}, pr(k.low)), el("span", {class: "v"}, "  F "), el("b", {class: cls}, pr(k.close)),
       el("span", {class: cls}, "  " + pct((k.close / k.open - 1) * 100)))
@@ -654,7 +693,7 @@ function desenharLista(){
   }
 }
 function desenharZonas(){
-  $("zTf").textContent = cfg.simbolo + " · " + cfg.tf;
+  $("zTf").textContent = cfg.simbolo + " · " + ROTULO_TF[cfg.tf];
   const res = $("res"); res.replaceChildren();
   const z = $("zonas"); z.replaceChildren();
   if (!mapa) return;
@@ -679,7 +718,7 @@ function conectarWS(){
   const antigo = ws; ws = null;
   if (antigo) antigo.close();
   const sym = cfg.simbolo.toLowerCase();
-  const streams = SIMBOLOS.map(s => s.toLowerCase() + "@miniTicker").concat(sym + "@kline_" + cfg.tf, sym + "@aggTrade");
+  const streams = SIMBOLOS.map(s => s.toLowerCase() + "@miniTicker").concat(sym + "@kline_" + intervaloBinance(cfg.tf), sym + "@aggTrade");
   const sock = new WebSocket(WS + streams.join("/"));
   ws = sock;
   sock.onclose = () => { if (ws === sock) { ws = null; $("ponto").classList.remove("on"); setTimeout(conectarWS, 5000); } };
@@ -690,8 +729,18 @@ function conectarWS(){
     ultimoDado = Date.now(); $("ponto").classList.add("on");
     if (d.e === "aggTrade" && d.s === cfg.simbolo) aplicarPreco(+d.p, +d.T);
     else if (d.e === "24hrMiniTicker") { tickers[d.s] = {c: +d.c, p: (+d.c / +d.o - 1) * 100}; desenharLista(); }
-    else if (d.e === "kline" && d.s === cfg.simbolo && d.k.i === cfg.tf && velas.length) {
-      const k = d.k, t = Math.floor(k.t / 1000);
+    else if (d.e === "kline" && d.s === cfg.simbolo && d.k.i === intervaloBinance(cfg.tf) && velas.length) {
+      const k = d.k;
+      if (MESES_TF[cfg.tf] > 1 && mensais.length) {   // 3M/6M/12M: atualiza o mês e remonta o candle do período
+        const mv = {t: +k.t, o: +k.o, h: +k.h, l: +k.l, c: +k.c, q: +k.q, b: +k.Q}, um = mensais[mensais.length - 1];
+        if (mv.t === um.t) mensais[mensais.length - 1] = mv; else if (mv.t > um.t) mensais.push(mv); else return;
+        const g = agruparMeses(mensais.slice(-12), MESES_TF[cfg.tf]), a = g[g.length - 1];
+        const v = {time: Math.floor(a.t / 1000), open: a.o, high: a.h, low: a.l, close: a.c, q: a.q, b: a.b};
+        const ult = velas[velas.length - 1];
+        if (v.time === ult.time) velas[velas.length - 1] = v; else if (v.time > ult.time) velas.push(v); else return;
+        agendarTick(true); return;
+      }
+      const t = Math.floor(k.t / 1000);
       const ult = velas[velas.length - 1];
       const v = {time: t, open: +k.o, high: +k.h, low: +k.l, close: +k.c, q: +k.q, b: +k.Q};
       if (t === ult.time) { v.high = Math.max(v.high, ult.high); v.low = Math.min(v.low, ult.low); velas[velas.length - 1] = v; }
@@ -705,7 +754,7 @@ function aplicarPreco(preco, T){
   if (!velas.length) return;
   const ult = velas[velas.length - 1];
   if (T < ult.time * 1000) return;
-  if (T >= ult.time * 1000 + TF_MS[cfg.tf]) return;   // candle novo chega pelo stream de kline
+  if (T >= proximoFechamento(ult.time * 1000)) return;   // candle novo chega pelo stream de kline
   ult.close = preco;
   if (preco > ult.high) ult.high = preco;
   if (preco < ult.low) ult.low = preco;
@@ -714,6 +763,32 @@ function aplicarPreco(preco, T){
 }
 // junta várias atualizações num único redesenho por quadro de tela
 let recalcInd = false;
+// contagem até o fechamento do candle, logo abaixo do preço na escala (como na TradingView)
+function formatarRestante(ms){
+  const s = Math.max(0, Math.floor(ms / 1000)), d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60;
+  const z = n => String(n).padStart(2, "0");
+  if (d >= 1) return d + "d " + z(h) + "h";
+  if (h >= 1) return z(h) + ":" + z(m) + ":" + z(ss);
+  return z(m) + ":" + z(ss);
+}
+const medidor = document.createElement("canvas").getContext("2d");
+function atualizarContagem(){
+  const box = $("contagem");
+  if (!chart || !serie || !velas.length) { box.style.display = "none"; return; }
+  const u = velas[velas.length - 1], y = serie.priceToCoordinate(u.close);
+  const larg = chart.priceScale("right").width(), alt = principal.clientHeight;
+  if (y == null || y < 0 || y > alt - 40 || !larg) { box.style.display = "none"; return; }
+  box.textContent = formatarRestante(proximoFechamento(u.time * 1000) - Date.now());
+  medidor.font = '12px -apple-system,BlinkMacSystemFont,"Trebuchet MS",Roboto,Ubuntu,sans-serif';
+  const largEtiqueta = Math.ceil(medidor.measureText(pr(u.close)).width) + 18;   // mesma largura da etiqueta do preço
+  box.style.right = "auto";
+  box.style.left = (principal.clientWidth - larg) + "px";
+  box.style.width = Math.min(larg, Math.max(largEtiqueta, 44)) + "px";
+  box.style.top = Math.round(y + 9) + "px";
+  box.style.background = u.close >= u.open ? "#089981" : "#f23645";
+  box.style.display = "block";
+}
+setInterval(atualizarContagem, 250);
 function agendarTick(comIndicadores){
   recalcInd = recalcInd || comIndicadores;
   if (tickPendente) return;
@@ -779,7 +854,7 @@ async function recalcular(manterZoom){
     espelharFaixa(chart, alvo);
     assinatura = "";
     atualizarLegenda(); desenharZonas();
-    $("status").textContent = (mapa.barrasOI ? "" : "Sem Open Interest para o período · ") + "Mapa de " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}) + (DEMO ? " · DADOS DE TESTE" : "");
+    $("status").textContent = (mapa.barrasOI ? "" : OI_PERIODOS.includes(cfg.tf) ? "Sem Open Interest para o período · " : "Mapa de liquidações só até 1D · ") + "Mapa de " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}) + (DEMO ? " · DADOS DE TESTE" : "");
     $("status2").textContent = (DEMO ? "Teste · " : "") + "Mapa " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"});
   } catch (e) {
     $("status").textContent = "Erro: " + (e.message || e); $("status").className = "status err"; $("status2").textContent = "Erro ao carregar";
@@ -799,10 +874,10 @@ function trocar(mud){
 
 // ---------- controles ----------
 function montarTfs(){
-  const sel = $("tfSel"); sel.replaceChildren(...TFS.map(tf => el("option", {value: tf}, tf))); sel.value = cfg.tf;
+  const sel = $("tfSel"); sel.replaceChildren(...TFS.map(tf => el("option", {value: tf}, ROTULO_TF[tf]))); sel.value = cfg.tf;
   const box = $("tfs"); box.replaceChildren();
   for (const tf of TFS) {
-    const b = el("button", {class: "btn", "aria-pressed": String(tf === cfg.tf)}, tf);
+    const b = el("button", {class: "btn", "aria-pressed": String(tf === cfg.tf), title: {"1d":"1 dia","1w":"1 semana","1M":"1 mês","3M":"3 meses","6M":"6 meses","12M":"12 meses"}[tf] || tf}, ROTULO_TF[tf]);
     b.addEventListener("click", () => trocar({tf}));
     box.append(b);
   }
@@ -1006,8 +1081,23 @@ function geo(){
   if (x0 == null || x1 == null || x1 === x0) return null;
   return {x0, passo: x1 - x0, t0: velas[0].time, tf: TF_MS[cfg.tf] / 1000};
 }
-const xDe = (g, t) => g.x0 + (t - g.t0) / g.tf * g.passo;
-const tDe = (g, x) => g.t0 + (x - g.x0) / g.passo * g.tf;
+function idxDeT(t){
+  const n = velas.length, tf = TF_MS[cfg.tf] / 1000;
+  if (t <= velas[0].time) return (t - velas[0].time) / tf;
+  if (t >= velas[n - 1].time) return n - 1 + (t - velas[n - 1].time) / tf;
+  let a = 0, b = n - 1;
+  while (b - a > 1) { const m = (a + b) >> 1; if (velas[m].time <= t) a = m; else b = m; }
+  return a + (t - velas[a].time) / (velas[b].time - velas[a].time);
+}
+function tDeIdx(i){
+  const n = velas.length, tf = TF_MS[cfg.tf] / 1000;
+  if (i <= 0) return velas[0].time + i * tf;
+  if (i >= n - 1) return velas[n - 1].time + (i - (n - 1)) * tf;
+  const a = Math.floor(i);
+  return velas[a].time + (i - a) * (velas[a + 1].time - velas[a].time);
+}
+const xDe = (g, t) => g.x0 + idxDeT(t) * g.passo;
+const tDe = (g, x) => tDeIdx((x - g.x0) / g.passo);
 function pontoDe(ev, semIma){
   const g = geo(); if (!g) return null;
   const r = desCanvas.getBoundingClientRect();
@@ -1206,7 +1296,7 @@ function desenharUm(c, g, d, W){
     c.fillStyle = sobe ? "rgba(8,153,129,0.15)" : "rgba(242,54,69,0.15)"; c.fillRect(x, y, w, h);
     c.strokeStyle = sobe ? "#089981" : "#f23645"; c.lineWidth = 1; c.strokeRect(x, y, w, h);
     const dp = d.pts[1].p - d.pts[0].p, pc = dp / d.pts[0].p * 100;
-    const barras = Math.round((d.pts[1].t - d.pts[0].t) / g.tf), seg = Math.abs(d.pts[1].t - d.pts[0].t);
+    const barras = Math.round(idxDeT(d.pts[1].t) - idxDeT(d.pts[0].t)), seg = Math.abs(d.pts[1].t - d.pts[0].t);
     const dur = seg >= 86400 ? (seg / 86400).toFixed(1).replace(".", ",") + " d" : seg >= 3600 ? (seg / 3600).toFixed(1).replace(".", ",") + " h" : Math.round(seg / 60) + " min";
     const txt = (dp >= 0 ? "+" : "") + pr(dp) + " (" + pct(pc) + ") · " + Math.abs(barras) + " candles, " + dur;
     c.font = "12px sans-serif";
