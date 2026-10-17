@@ -20,7 +20,7 @@ button,select,input{font:inherit;color:inherit}
 .marca{font-weight:700;letter-spacing:.2px;padding:0 10px 0 4px;white-space:nowrap}
 .marca span{color:var(--accent)}
 .sep{width:1px;height:24px;background:var(--line);margin:0 6px;flex:0 0 auto}
-.btn{background:transparent;border:0;border-radius:4px;padding:6px 8px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.btn{background:transparent;border:0;border-radius:4px;padding:6px 8px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px;text-decoration:none;color:var(--txt)}
 .btn:hover{background:var(--hover)}
 .btn[aria-pressed=true]{color:var(--accent)}
 .simbolo{font-weight:600;font-size:14px}
@@ -31,10 +31,15 @@ button,select,input{font:inherit;color:inherit}
 .ponto.on{background:var(--up)}
 /* ---------- área principal ---------- */
 .area{flex:1 1 auto;display:flex;min-height:0}
-.graf{position:relative;flex:1 1 auto;min-width:0;background:var(--bg)}
+.graf{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;background:var(--bg)}
+.principal{position:relative;flex:1 1 auto;min-height:200px}
 #heat{position:absolute;left:0;top:0;z-index:0;pointer-events:none}
 #chart{position:absolute;inset:0;z-index:1}
-.legenda{position:absolute;left:12px;top:8px;z-index:2;pointer-events:none;font-size:13px;line-height:1.6;text-shadow:0 0 3px var(--bg)}
+.painel{position:relative;flex:0 0 120px;border-top:1px solid var(--line)}
+.painel .c{position:absolute;inset:0}
+.rot{position:absolute;left:12px;top:4px;z-index:2;pointer-events:none;font-size:12px;text-shadow:0 0 3px var(--bg)}
+.rot .v{color:var(--sub)}
+.legenda{position:absolute;left:8px;top:6px;z-index:2;pointer-events:none;font-size:13px;line-height:1.6;background:rgba(19,23,34,.82);padding:2px 8px 4px;border-radius:4px}
 .legenda .t{font-size:15px;font-weight:600}
 .legenda b{font-weight:500}
 .legenda .v{color:var(--sub)}
@@ -60,12 +65,16 @@ button,select,input{font:inherit;color:inherit}
 .zt th:first-child,.zt td:first-child{text-align:left}
 .zt tr.cab td{color:var(--sub);padding-top:8px;text-align:left}
 .nota{color:var(--sub);font-size:11px;line-height:1.5}
-/* ---------- ajustes (popover) ---------- */
-.pop{position:fixed;top:48px;z-index:20;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px;width:280px;box-shadow:0 8px 24px rgba(0,0,0,.4);display:none}
+/* ---------- menus ---------- */
+.pop{position:fixed;top:48px;z-index:20;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px;width:290px;box-shadow:0 8px 24px rgba(0,0,0,.4);display:none}
 .pop.aberto{display:block}
 .pop h4{margin:0 0 8px;font-size:13px}
-.pop label{display:flex;justify-content:space-between;align-items:center;margin:6px 0;color:var(--sub)}
+.pop label{display:flex;justify-content:space-between;align-items:center;margin:6px 0;color:var(--sub);gap:8px}
 .pop input,.pop select{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:4px 6px;width:90px;color:var(--txt)}
+.pop .ind{justify-content:flex-start;color:var(--txt);cursor:pointer;padding:4px;border-radius:4px;margin:2px 0}
+.pop .ind:hover{background:var(--hover)}
+.pop .ind input{width:auto}
+.pop .ind small{display:block;color:var(--sub);font-size:11px}
 .pesos{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:4px}
 .pesos label{flex-direction:column;align-items:stretch;margin:0;font-size:11px}
 .pesos input{width:100%}
@@ -74,7 +83,9 @@ button,select,input{font:inherit;color:inherit}
 @media (max-width:820px){
   body{overflow:auto}
   .area{flex-direction:column}
-  .graf{height:62vh;flex:0 0 auto}
+  .graf{flex:0 0 auto}
+  .principal{height:55vh;flex:0 0 auto}
+  .painel{flex-basis:100px}
   .lado{width:auto;flex:0 0 auto;border-left:0;border-top:1px solid var(--line)}
   .marca{display:none}
 }
@@ -88,22 +99,25 @@ button,select,input{font:inherit;color:inherit}
   <div class="sep"></div>
   <div id="tfs" style="display:flex"></div>
   <div class="sep"></div>
+  <button class="btn" id="bInd" title="Indicadores">ƒx Indicadores</button>
   <button class="btn" id="bHeat" aria-pressed="true" title="Mostrar/ocultar mapa de liquidações">▦ Mapa de liquidações</button>
   <button class="btn" id="bAjustes" title="Ajustes do modelo">⚙ Ajustes</button>
   <button class="btn" id="bAtualizar" title="Recalcular agora">⟳</button>
   <div class="direita">
     <span class="status" id="status">Carregando…</span>
     <span class="ponto" id="ponto" title="Preço ao vivo"></span>
-    <a class="btn" href="opcoes.html" title="Mapa de opções B3" style="text-decoration:none;color:var(--txt)">Opções B3 ↗</a>
+    <a class="btn" href="opcoes.html" title="Mapa de opções B3">Opções B3 ↗</a>
   </div>
 </div>
 
 <div class="area">
   <div class="graf" id="graf">
-    <canvas id="heat"></canvas>
-    <div id="chart"></div>
-    <div class="legenda" id="legenda"></div>
-    <div class="carregando" id="carregando">Carregando dados da Binance…</div>
+    <div class="principal" id="principal">
+      <canvas id="heat"></canvas>
+      <div id="chart"></div>
+      <div class="legenda" id="legenda"></div>
+      <div class="carregando" id="carregando">Carregando dados da Binance…</div>
+    </div>
   </div>
   <aside class="lado">
     <div class="bloco">
@@ -116,11 +130,16 @@ button,select,input{font:inherit;color:inherit}
       <table class="zt" id="zonas"></table>
     </div>
     <div class="bloco nota">
-      Estimativa própria a partir do Open Interest público da Binance Futures (até ~30 dias de histórico).
-      Mostra onde posições alavancadas <b>seriam</b> liquidadas — não são ordens reais, os valores são aproximados e o mapa não prevê direção.
-      Faixas claras = mais concentração. Passe o mouse no gráfico para ver o valor estimado em cada nível. Não é recomendação de investimento.
+      Mapa de liquidações: estimativa própria a partir do Open Interest público da Binance Futures (até ~30 dias de histórico).
+      Mostra onde posições alavancadas <b>seriam</b> liquidadas — não são ordens reais e o mapa não prevê direção.
+      Volume, delta e CVD usam o volume de compradores agressivos (taker) informado pela Binance em cada candle. Não é recomendação de investimento.
     </div>
   </aside>
+</div>
+
+<div class="pop" id="popInd">
+  <h4>Indicadores</h4>
+  <div id="listaInd"></div>
 </div>
 
 <div class="pop" id="pop">
@@ -142,9 +161,18 @@ const TFS = ["5m", "15m", "30m", "1h", "2h", "4h"];
 const TF_MS = {"5m":3e5,"15m":9e5,"30m":18e5,"1h":36e5,"2h":72e5,"4h":144e5};
 const LEVS = [3, 5, 10, 25, 50, 100];
 const PESOS_PADRAO = [5, 10, 25, 30, 20, 10];
-const MMR = 0.005, OI_MAX_DIAS = 29, FAIXAS = 300, NIVEIS = 48;
+const MMR = 0.005, OI_MAX_DIAS = 29, FAIXAS = 300, NIVEIS = 48, LARG_ESCALA = 84;
 const DEMO = new URLSearchParams(location.search).has("demo");
 const $ = id => document.getElementById(id);
+
+const INDICADORES = [
+  {id: "vol",   nome: "Volume",                 desc: "barras no rodapé do gráfico",        padrao: true},
+  {id: "vwap",  nome: "VWAP diária",            desc: "preço médio ponderado pelo volume",  padrao: true},
+  {id: "vpvr",  nome: "Perfil de volume (VPVR)", desc: "volume por faixa de preço + POC",   padrao: true},
+  {id: "delta", nome: "Delta de volume",        desc: "compras − vendas agressivas",        padrao: false},
+  {id: "cvd",   nome: "CVD",                    desc: "delta acumulado",                    padrao: true},
+  {id: "oi",    nome: "Open Interest",          desc: "contratos em aberto (USD)",          padrao: false}
+];
 
 // ---------- preferências (só neste navegador) ----------
 function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap2") || "{}"); } catch(e){ return {}; } }
@@ -153,9 +181,11 @@ const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 
 if (!SIMBOLOS.includes(cfg.simbolo)) cfg.simbolo = "BTCUSDT";
 if (!TFS.includes(cfg.tf)) cfg.tf = "15m";
 if (!Array.isArray(cfg.pesos) || cfg.pesos.length !== 6) cfg.pesos = PESOS_PADRAO.slice();
+if (!cfg.ind || typeof cfg.ind !== "object") cfg.ind = {};
+for (const i of INDICADORES) if (typeof cfg.ind[i.id] !== "boolean") cfg.ind[i.id] = i.padrao;
 
 // ---------- formatação ----------
-const usd = x => x >= 1e9 ? "$" + (x/1e9).toFixed(2) + "B" : x >= 1e6 ? "$" + (x/1e6).toFixed(1) + "M" : x >= 1e3 ? "$" + (x/1e3).toFixed(1) + "K" : "$" + x.toFixed(0);
+const usd = x => { const a = Math.abs(x), s = x < 0 ? "−" : ""; return a >= 1e9 ? s + "$" + (a/1e9).toFixed(2) + "B" : a >= 1e6 ? s + "$" + (a/1e6).toFixed(1) + "M" : a >= 1e3 ? s + "$" + (a/1e3).toFixed(1) + "K" : s + "$" + a.toFixed(0); };
 const casas = p => p >= 1000 ? 1 : p >= 10 ? 2 : 4;
 const pr = p => p == null ? "—" : p.toLocaleString("pt-BR", {minimumFractionDigits: casas(p), maximumFractionDigits: casas(p)});
 const pct = x => (x >= 0 ? "+" : "") + x.toFixed(2).replace(".", ",") + "%";
@@ -172,9 +202,10 @@ async function getJSON(path, params){
   if (!r.ok) throw new Error("Binance respondeu " + r.status + (r.status === 451 || r.status === 403 ? " (acesso bloqueado nesta região)" : ""));
   return r.json();
 }
+// q = volume em USDT; b = volume de compradores agressivos (taker buy) em USDT
 async function buscarCandles(sym, tf, n){
   const d = await getJSON("/fapi/v1/klines", {symbol: sym, interval: tf, limit: Math.min(n, 1500)});
-  return d.map(k => ({t: +k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4]}));
+  return d.map(k => ({t: +k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], q: +k[7], b: +k[10]}));
 }
 async function buscarOI(sym, tf, ini, fim){
   ini = Math.max(ini, Date.now() - OI_MAX_DIAS * 864e5);
@@ -196,15 +227,17 @@ function dadosDemo(sym, tf, n){
   const kl = [], oi = new Map();
   for (let i = 0; i < n; i++) {
     const t = t0 + i * tfms; oi.set(t, o);
-    const ab = p; p *= Math.exp(g() * 0.004);
-    kl.push({t, o: ab, h: Math.max(ab, p) * (1 + Math.abs(g()) * 0.0015), l: Math.min(ab, p) * (1 - Math.abs(g()) * 0.0015), c: p});
+    const ab = p, r = g() * 0.004; p *= Math.exp(r);
+    const q = 4e7 * (1 + Math.abs(g())) * (1 + Math.abs(r) * 150);
+    const b = q * Math.min(0.9, Math.max(0.1, 0.5 + r * 40 + g() * 0.05));
+    kl.push({t, o: ab, h: Math.max(ab, p) * (1 + Math.abs(g()) * 0.0015), l: Math.min(ab, p) * (1 - Math.abs(g()) * 0.0015), c: p, q, b});
     o *= Math.exp(0.0004 + g() * 0.004);
   }
   oi.set(t0 + n * tfms, o);
   return {kl, oi};
 }
 
-// ---------- modelo (mesmo do liqmap.py) ----------
+// ---------- modelo de liquidações (mesmo do liqmap.py) ----------
 function montarMapa(kl, oi, tf, filtro, pesos){
   const tfms = TF_MS[tf];
   let lo = Infinity, hi = -Infinity;
@@ -213,8 +246,7 @@ function montarMapa(kl, oi, tf, filtro, pesos){
   const idx = p => Math.floor((p - pmin) / w);
   const longs = new Float64Array(FAIXAS), shorts = new Float64Array(FAIXAS);
   const somaP = pesos.reduce((a, b) => a + b, 0);
-  const hist = [];
-  const cols = [];  // valor total por faixa em cada candle
+  const hist = [], cols = [];
   for (const k of kl) {
     for (let b = Math.max(idx(k.l), 0); b < FAIXAS; b++) longs[b] = 0;
     for (let b = 0; b <= Math.min(idx(k.h), FAIXAS - 1); b++) shorts[b] = 0;
@@ -241,16 +273,12 @@ function montarMapa(kl, oi, tf, filtro, pesos){
   let mx = 0;
   for (const c of cols) for (const v of c) if (v > mx) mx = v;
   mx = mx || 1;
-  // compacta em "faixas contínuas" (mesma intensidade ao longo do tempo) para desenhar rápido
   const runs = [];
   for (let b = 0; b < FAIXAS; b++) {
     let ini = -1, q0 = 0;
     for (let t = 0; t <= cols.length; t++) {
       const q = t < cols.length ? Math.round(Math.sqrt(cols[t][b] / mx) * NIVEIS) : 0;
-      if (q !== q0) {
-        if (q0 > 0) runs.push([b, ini, t - 1, q0]);
-        ini = t; q0 = q;
-      }
+      if (q !== q0) { if (q0 > 0) runs.push([b, ini, t - 1, q0]); ini = t; q0 = q; }
     }
   }
   const ultimo = kl[kl.length - 1].c;
@@ -259,8 +287,27 @@ function montarMapa(kl, oi, tf, filtro, pesos){
   const top = arr => [...arr].map((v, b) => [v, b]).filter(x => x[0] > 0).sort((a, b) => b[0] - a[0]).slice(0, 5)
     .map(([v, b]) => ({preco: centro(b), dist: (centro(b) / ultimo - 1) * 100, forca: v / mxAtual * 100, valor: v}));
   const perto = (arr, p) => { let s = 0; for (let b = 0; b < FAIXAS; b++) if (Math.abs(centro(b) / ultimo - 1) * 100 <= p) s += arr[b]; return s; };
-  return {pmin, w, cols, runs, ultimo, barrasOI: hist.length,
-          shorts: top(shorts), longs: top(longs), s5: perto(shorts, 5), l5: perto(longs, 5)};
+  return {pmin, w, cols, runs, ultimo, barrasOI: hist.length, shorts: top(shorts), longs: top(longs), s5: perto(shorts, 5), l5: perto(longs, 5)};
+}
+
+// ---------- indicadores de volume ----------
+function calcIndicadores(v, oiPorT){
+  const vol = [], delta = [], cvd = [], vwap = [], oi = [];
+  let acum = 0, dia = -1, pv = 0, vv = 0;
+  for (const k of v) {
+    const d = 2 * k.b - k.q;                      // compras agressivas − vendas agressivas
+    acum += d;
+    const diaK = Math.floor(k.time / 86400);       // VWAP reinicia a cada dia (UTC)
+    if (diaK !== dia) { dia = diaK; pv = 0; vv = 0; }
+    pv += (k.high + k.low + k.close) / 3 * k.q; vv += k.q;
+    vol.push({time: k.time, value: k.q, color: k.close >= k.open ? "rgba(8,153,129,0.45)" : "rgba(242,54,69,0.45)"});
+    delta.push({time: k.time, value: d, color: d >= 0 ? "rgba(8,153,129,0.8)" : "rgba(242,54,69,0.8)"});
+    cvd.push({time: k.time, value: acum});
+    if (vv > 0) vwap.push({time: k.time, value: pv / vv});
+    const o = oiPorT.get(k.time);
+    if (o != null) oi.push({time: k.time, value: o});
+  }
+  return {vol, delta, cvd, vwap, oi};
 }
 
 // ---------- cores do mapa ----------
@@ -277,13 +324,13 @@ const PALETA = (() => {
   return out;
 })();
 
-// ---------- gráfico ----------
-const graf = $("graf"), canvas = $("heat"), ctx = canvas.getContext("2d");
-let chart, serie, mapa = null, velas = [], assinatura = "";
+// ---------- gráficos ----------
+const principal = $("principal"), canvas = $("heat"), ctx = canvas.getContext("2d");
+let LWC, chart, serie, sVol, sVwap, mapa = null, velas = [], ind = null, oiPorT = new Map(), assinatura = "";
+const paineis = {};   // id -> {div, chart, serie, rot}
 
-function criarGrafico(){
-  const LWC = window.LightweightCharts;
-  chart = LWC.createChart($("chart"), {
+function opcoesBase(){
+  return {
     autoSize: true,
     layout: {background: {type: "solid", color: "transparent"}, textColor: "#d1d4dc", fontSize: 12,
              fontFamily: '-apple-system,BlinkMacSystemFont,"Trebuchet MS",Roboto,Ubuntu,sans-serif', attributionLogo: true},
@@ -291,79 +338,212 @@ function criarGrafico(){
     crosshair: {mode: LWC.CrosshairMode.Normal,
                 vertLine: {color: "#9598a1", width: 1, style: LWC.LineStyle.Dashed, labelBackgroundColor: "#2a2e39"},
                 horzLine: {color: "#9598a1", width: 1, style: LWC.LineStyle.Dashed, labelBackgroundColor: "#2a2e39"}},
-    rightPriceScale: {borderColor: "#2a2e39", scaleMargins: {top: 0.08, bottom: 0.08}},
+    rightPriceScale: {borderColor: "#2a2e39", minimumWidth: LARG_ESCALA},
     timeScale: {borderColor: "#2a2e39", timeVisible: true, secondsVisible: false, rightOffset: 12, barSpacing: 6},
-    localization: {locale: "pt-BR", priceFormatter: p => pr(p)}
-  });
-  serie = chart.addCandlestickSeries({upColor: "#089981", downColor: "#f23645", borderVisible: false,
-                                      wickUpColor: "#089981", wickDownColor: "#f23645"});
-  chart.subscribeCrosshairMove(atualizarLegenda);
+    localization: {locale: "pt-BR"}
+  };
+}
+
+function criarGrafico(){
+  LWC = window.LightweightCharts;
+  const op = opcoesBase();
+  op.rightPriceScale.scaleMargins = {top: 0.06, bottom: 0.08};
+  op.localization.priceFormatter = p => pr(p);
+  chart = LWC.createChart($("chart"), op);
+  serie = chart.addCandlestickSeries({upColor: "#089981", downColor: "#f23645", borderVisible: false, wickUpColor: "#089981", wickDownColor: "#f23645"});
+  sVol = chart.addHistogramSeries({priceScaleId: "vol", priceFormat: {type: "custom", formatter: usd}, lastValueVisible: false, priceLineVisible: false});
+  chart.priceScale("vol").applyOptions({scaleMargins: {top: 0.82, bottom: 0}, visible: false});
+  sVwap = chart.addLineSeries({color: "#2962ff", lineWidth: 2, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false});
+  chart.subscribeCrosshairMove(p => { atualizarLegenda(p); espelharCursor(chart, p); });
+  chart.timeScale().subscribeVisibleLogicalRangeChange(r => espelharFaixa(chart, r));
+  aplicarIndicadores();
   requestAnimationFrame(loopDesenho);
 }
 
-// redesenha o mapa só quando zoom, rolagem, escala ou tamanho mudam
+// painéis abaixo do gráfico (Delta, CVD, OI), sincronizados como na TradingView
+function criarPainel(id){
+  const div = el("div", {class: "painel"}), c = el("div", {class: "c"}), rot = el("div", {class: "rot"});
+  div.append(c, rot);
+  $("graf").append(div);
+  const op = opcoesBase();
+  op.rightPriceScale.scaleMargins = {top: 0.2, bottom: 0.08};
+  op.layout.attributionLogo = false;
+  const ch = LWC.createChart(c, op);
+  const fmt = {type: "custom", formatter: usd, minMove: 1};
+  const s = id === "delta"
+    ? ch.addHistogramSeries({priceFormat: fmt, priceLineVisible: false})
+    : ch.addLineSeries({color: id === "cvd" ? "#f7a600" : "#b388ff", lineWidth: 2, priceFormat: fmt, priceLineVisible: false, crosshairMarkerVisible: true});
+  if (id === "cvd") s.createPriceLine({price: 0, color: "#4a4f5c", lineWidth: 1, lineStyle: LWC.LineStyle.Dotted, axisLabelVisible: false});
+  ch.subscribeCrosshairMove(p => { atualizarLegenda(p); espelharCursor(ch, p); });
+  ch.timeScale().subscribeVisibleLogicalRangeChange(r => espelharFaixa(ch, r));
+  paineis[id] = {div, chart: ch, serie: s, rot};
+}
+function removerPainel(id){
+  const p = paineis[id]; if (!p) return;
+  p.chart.remove(); p.div.remove(); delete paineis[id];
+}
+
+let espelhando = false;
+function todos(){ return [chart, ...Object.values(paineis).map(p => p.chart)]; }
+function espelharFaixa(origem, r){
+  if (espelhando || !r) return;
+  espelhando = true;
+  for (const c of todos()) if (c !== origem) c.timeScale().setVisibleLogicalRange(r);
+  espelhando = false;
+}
+function espelharCursor(origem, p){
+  if (espelhando) return;
+  espelhando = true;
+  const t = p && p.time;
+  for (const [id, pn] of Object.entries(paineis)) {
+    if (pn.chart === origem) continue;
+    const pt = t != null && ind ? (ind[id] || []).find(x => x.time === t) : null;
+    if (pt) pn.chart.setCrosshairPosition(pt.value, t, pn.serie); else pn.chart.clearCrosshairPosition();
+  }
+  if (origem !== chart) {
+    const k = t != null ? velas.find(v => v.time === t) : null;
+    if (k) chart.setCrosshairPosition(k.close, t, serie); else chart.clearCrosshairPosition();
+  }
+  espelhando = false;
+}
+
+// mostra/oculta indicadores e monta os painéis na ordem
+function aplicarIndicadores(){
+  if (!chart) return;
+  sVol.applyOptions({visible: cfg.ind.vol});
+  sVwap.applyOptions({visible: cfg.ind.vwap});
+  for (const id of ["delta", "cvd", "oi"]) {
+    if (cfg.ind[id] && !paineis[id]) criarPainel(id);
+    if (!cfg.ind[id] && paineis[id]) removerPainel(id);
+  }
+  // só o painel mais baixo mostra o eixo de tempo
+  const ordem = ["delta", "cvd", "oi"].filter(id => paineis[id]);
+  ordem.forEach(id => $("graf").append(paineis[id].div));
+  chart.timeScale().applyOptions({visible: ordem.length === 0});
+  ordem.forEach((id, i) => paineis[id].chart.timeScale().applyOptions({visible: i === ordem.length - 1}));
+  preencherSeries();
+  const r = chart.timeScale().getVisibleLogicalRange();
+  if (r) espelharFaixa(chart, r);
+  assinatura = "";
+  atualizarLegenda();
+}
+function preencherSeries(){
+  if (!ind) return;
+  sVol.setData(ind.vol);
+  sVwap.setData(ind.vwap);
+  for (const [id, p] of Object.entries(paineis)) p.serie.setData(ind[id] || []);
+}
+
+// redesenha mapa e perfil de volume quando zoom, rolagem, escala ou tamanho mudam
 function loopDesenho(){
   if (chart && serie) {
     const ts = chart.timeScale();
-    const a = ts.logicalToCoordinate(0), b = ts.logicalToCoordinate(100);
-    const p1 = mapa ? serie.priceToCoordinate(mapa.pmin) : 0, p2 = mapa ? serie.priceToCoordinate(mapa.pmin + mapa.w * FAIXAS) : 0;
-    const sig = [a, b, p1, p2, graf.clientWidth, graf.clientHeight, cfg.heat, mapa ? mapa.runs.length : 0].join("|");
-    if (sig !== assinatura) { assinatura = sig; desenharMapa(); }
+    const sig = [ts.logicalToCoordinate(0), ts.logicalToCoordinate(100), serie.priceToCoordinate(velas.length ? velas[0].close : 1),
+      serie.priceToCoordinate(velas.length ? velas[0].close * 1.01 : 2), principal.clientWidth, principal.clientHeight,
+      cfg.heat, cfg.ind.vpvr, mapa ? mapa.runs.length : 0, velas.length ? velas[velas.length - 1].close : 0].join("|");
+    if (sig !== assinatura) { assinatura = sig; desenharCanvas(); }
   }
   requestAnimationFrame(loopDesenho);
 }
 
-function desenharMapa(){
+function desenharCanvas(){
   const dpr = window.devicePixelRatio || 1;
-  const W = chart.timeScale().width(), H = graf.clientHeight - chart.timeScale().height();
+  const ts = chart.timeScale();
+  const W = principal.clientWidth - chart.priceScale("right").width();
+  const H = principal.clientHeight - (ts.options().visible ? ts.height() : 0);
+  if (W <= 0 || H <= 0) return;
   if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
     canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
     canvas.style.width = W + "px"; canvas.style.height = H + "px";
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
-  if (!mapa || !cfg.heat || !velas.length) return;
-  const ts = chart.timeScale();
+  if (!velas.length) return;
   const x0 = ts.logicalToCoordinate(0), x1 = ts.logicalToCoordinate(1);
   if (x0 == null || x1 == null) return;
   const passo = x1 - x0, ult = velas.length - 1;
-  const yDe = p => serie.priceToCoordinate(p);
-  for (const [b, i0, i1, q] of mapa.runs) {
-    if (q < 4) continue;  // ignora níveis muito fracos (só ruído visual)
-    const yTop = yDe(mapa.pmin + (b + 1) * mapa.w), yBot = yDe(mapa.pmin + b * mapa.w);
-    if (yTop == null || yBot == null || yBot < 0 || yTop > H) continue;
-    const xa = x0 + (i0 - 0.5) * passo;
-    const xb = i1 >= ult ? W : x0 + (i1 + 0.5) * passo;  // níveis ainda ativos seguem até a borda direita
-    if (xb < 0 || xa > W) continue;
-    ctx.fillStyle = PALETA[q];
-    ctx.fillRect(xa, yTop, xb - xa, Math.max(1, yBot - yTop));
+
+  // 1) mapa de liquidações
+  if (mapa && cfg.heat) {
+    for (const [b, i0, i1, q] of mapa.runs) {
+      if (q < 4) continue;
+      const yTop = serie.priceToCoordinate(mapa.pmin + (b + 1) * mapa.w), yBot = serie.priceToCoordinate(mapa.pmin + b * mapa.w);
+      if (yTop == null || yBot == null || yBot < 0 || yTop > H) continue;
+      const xa = x0 + (i0 - 0.5) * passo, xb = i1 >= ult ? W : x0 + (i1 + 0.5) * passo;
+      if (xb < 0 || xa > W) continue;
+      ctx.fillStyle = PALETA[q];
+      ctx.fillRect(xa, yTop, xb - xa, Math.max(1, yBot - yTop));
+    }
+  }
+
+  // 2) perfil de volume da parte visível (VPVR)
+  if (cfg.ind.vpvr) {
+    const r = ts.getVisibleLogicalRange();
+    if (!r) return;
+    const ini = Math.max(0, Math.floor(r.from)), fim = Math.min(ult, Math.ceil(r.to));
+    const pTop = serie.coordinateToPrice(0), pBot = serie.coordinateToPrice(H);
+    if (pTop == null || pBot == null || fim < ini) return;
+    const N = 60, alto = Math.max(pTop, pBot), baixo = Math.min(pTop, pBot), passoP = (alto - baixo) / N;
+    const compra = new Float64Array(N), venda = new Float64Array(N);
+    for (let i = ini; i <= fim; i++) {
+      const k = velas[i];
+      const a = Math.max(0, Math.floor((k.low - baixo) / passoP)), z = Math.min(N - 1, Math.floor((k.high - baixo) / passoP));
+      if (z < a) continue;
+      const n = z - a + 1;
+      for (let b = a; b <= z; b++) { compra[b] += k.b / n; venda[b] += (k.q - k.b) / n; }
+    }
+    let mx = 0, poc = -1;
+    for (let b = 0; b < N; b++) { const t = compra[b] + venda[b]; if (t > mx) { mx = t; poc = b; } }
+    if (!mx) return;
+    const larg = W * 0.24;
+    for (let b = 0; b < N; b++) {
+      const t = compra[b] + venda[b]; if (!t) continue;
+      const y1 = serie.priceToCoordinate(baixo + (b + 1) * passoP), y0 = serie.priceToCoordinate(baixo + b * passoP);
+      const h = Math.max(1, Math.abs(y0 - y1) - 1), y = Math.min(y0, y1) + 0.5;
+      const wc = compra[b] / mx * larg, wv = venda[b] / mx * larg;
+      ctx.fillStyle = b === poc ? "rgba(41,98,255,0.75)" : "rgba(41,98,255,0.32)";
+      ctx.fillRect(W - wc - wv, y, wc, h);
+      ctx.fillStyle = b === poc ? "rgba(255,183,77,0.75)" : "rgba(255,183,77,0.30)";
+      ctx.fillRect(W - wv, y, wv, h);
+    }
+    const yPoc = serie.priceToCoordinate(baixo + (poc + 0.5) * passoP);
+    ctx.strokeStyle = "rgba(255,255,255,0.55)"; ctx.setLineDash([4, 3]); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, yPoc); ctx.lineTo(W, yPoc); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(255,255,255,0.7)"; ctx.font = "11px sans-serif";
+    ctx.fillText("POC " + pr(baixo + (poc + 0.5) * passoP), 8, yPoc - 4);
   }
 }
 
 function atualizarLegenda(param){
   const leg = $("legenda");
   if (!velas.length) { leg.replaceChildren(); return; }
-  let k = velas[velas.length - 1], i = velas.length - 1;
-  if (param && param.time != null) {
-    const j = velas.findIndex(v => v.time === param.time);
-    if (j >= 0) { k = velas[j]; i = j; }
-  }
-  const cls = k.close >= k.open ? "up" : "down";
-  const linha1 = el("div", {}, el("span", {class: "t"}, cfg.simbolo + " · " + cfg.tf + " · Binance Futures  "));
-  const linha2 = el("div", {},
-    el("span", {class: "v"}, "A "), el("b", {class: cls}, pr(k.open)), el("span", {class: "v"}, "  M "), el("b", {class: cls}, pr(k.high)),
-    el("span", {class: "v"}, "  m "), el("b", {class: cls}, pr(k.low)), el("span", {class: "v"}, "  F "), el("b", {class: cls}, pr(k.close)),
-    el("span", {class: cls}, "  " + pct((k.close / k.open - 1) * 100)));
-  leg.replaceChildren(linha1, linha2);
-  if (mapa && cfg.heat && param && param.point) {
+  let i = velas.length - 1;
+  if (param && param.time != null) { const j = velas.findIndex(v => v.time === param.time); if (j >= 0) i = j; }
+  const k = velas[i], cls = k.close >= k.open ? "up" : "down";
+  const linhas = [
+    el("div", {}, el("span", {class: "t"}, cfg.simbolo + " · " + cfg.tf + " · Binance Futures  ")),
+    el("div", {}, el("span", {class: "v"}, "A "), el("b", {class: cls}, pr(k.open)), el("span", {class: "v"}, "  M "), el("b", {class: cls}, pr(k.high)),
+      el("span", {class: "v"}, "  m "), el("b", {class: cls}, pr(k.low)), el("span", {class: "v"}, "  F "), el("b", {class: cls}, pr(k.close)),
+      el("span", {class: cls}, "  " + pct((k.close / k.open - 1) * 100)))
+  ];
+  const extra = [];
+  if (cfg.ind.vol) extra.push(el("span", {class: "v"}, "Vol "), el("b", {}, usd(k.q)), el("span", {class: "v"}, "  (compra " + Math.round(k.b / (k.q || 1) * 100) + "%)  "));
+  if (cfg.ind.vwap && ind && ind.vwap[i]) extra.push(el("span", {class: "v"}, "VWAP "), el("b", {style: "color:#2962ff"}, pr(ind.vwap[i].value)));
+  if (extra.length) linhas.push(el("div", {}, ...extra));
+  if (mapa && cfg.heat && param && param.point && param.seriesData && param.seriesData.has(serie)) {
     const preco = serie.coordinateToPrice(param.point.y);
     const col = mapa.cols[Math.min(i, mapa.cols.length - 1)];
     const b = Math.floor((preco - mapa.pmin) / mapa.w);
-    if (col && b >= 0 && b < FAIXAS) {
-      const v = col[b];
-      leg.append(el("div", {}, el("span", {class: "v"}, "Liquidação estimada em " + pr(preco) + ": "),
-        el("b", {class: preco >= k.close ? "s" : "l"}, v > 0 ? usd(v) : "—")));
-    }
+    if (col && b >= 0 && b < FAIXAS && col[b] > 0)
+      linhas.push(el("div", {}, el("span", {class: "v"}, "Liquidação estimada em " + pr(preco) + ": "), el("b", {class: preco >= k.close ? "s" : "l"}, usd(col[b]))));
+  }
+  leg.replaceChildren(...linhas);
+  // rótulos dos painéis
+  const nomes = {delta: "Delta de volume", cvd: "CVD", oi: "Open Interest"};
+  for (const [id, p] of Object.entries(paineis)) {
+    const pt = ind ? (ind[id] || []).find(x => x.time === k.time) : null;
+    const cor = id === "delta" ? (pt && pt.value >= 0 ? "up" : "down") : "";
+    p.rot.replaceChildren(el("span", {class: "v"}, nomes[id] + "  "), el("b", {class: cor}, pt ? usd(pt.value) : "—"));
   }
 }
 
@@ -373,8 +553,7 @@ function desenharLista(){
   const t = $("wl"); t.replaceChildren();
   for (const s of SIMBOLOS) {
     const d = tickers[s] || {};
-    const tr = el("tr", {class: s === cfg.simbolo ? "sel" : ""},
-      el("td", {}, el("b", {}, s)),
+    const tr = el("tr", {class: s === cfg.simbolo ? "sel" : ""}, el("td", {}, el("b", {}, s)),
       el("td", {class: "n"}, d.c != null ? pr(d.c) : "—"),
       el("td", {class: "n " + ((d.p || 0) >= 0 ? "up" : "down")}, d.p != null ? pct(d.p) : ""));
     tr.addEventListener("click", () => trocar({simbolo: s}));
@@ -386,9 +565,8 @@ function desenharZonas(){
   const res = $("res"); res.replaceChildren();
   const z = $("zonas"); z.replaceChildren();
   if (!mapa) return;
-  res.append(
-    el("div", {}, el("div", {class: "k"}, "Shorts até +5%"), el("div", {class: "val s"}, usd(mapa.s5))),
-    el("div", {}, el("div", {class: "k"}, "Longs até −5%"), el("div", {class: "val l"}, usd(mapa.l5))));
+  res.append(el("div", {}, el("div", {class: "k"}, "Shorts até +5%"), el("div", {class: "val s"}, usd(mapa.s5))),
+             el("div", {}, el("div", {class: "k"}, "Longs até −5%"), el("div", {class: "val l"}, usd(mapa.l5))));
   z.append(el("tr", {}, el("th", {}, "Preço"), el("th", {}, "Dist."), el("th", {}, "Valor est."), el("th", {}, "Força")));
   const bloco = (tit, cls, lista) => {
     z.append(el("tr", {class: "cab"}, el("td", {colspan: "4"}, tit)));
@@ -401,30 +579,29 @@ function desenharZonas(){
 }
 
 // ---------- preço ao vivo (WebSocket da Binance) ----------
-let ws = null, wsFechadoDePropósito = false;
+let ws = null, wsDeProposito = false;
 function conectarWS(){
   if (DEMO) return;
-  wsFechadoDePropósito = true;
-  if (ws) ws.close();
-  wsFechadoDePropósito = false;
+  wsDeProposito = true; if (ws) ws.close(); wsDeProposito = false;
   const streams = SIMBOLOS.map(s => s.toLowerCase() + "@miniTicker").concat(cfg.simbolo.toLowerCase() + "@kline_" + cfg.tf);
   ws = new WebSocket(WS + streams.join("/"));
   ws.onopen = () => $("ponto").classList.add("on");
-  ws.onclose = () => { $("ponto").classList.remove("on"); if (!wsFechadoDePropósito) setTimeout(conectarWS, 5000); };
+  ws.onclose = () => { $("ponto").classList.remove("on"); if (!wsDeProposito) setTimeout(conectarWS, 5000); };
   ws.onmessage = ev => {
-    const m = JSON.parse(ev.data), d = m.data;
+    const d = JSON.parse(ev.data).data;
     if (!d) return;
-    if (d.e === "24hrMiniTicker") {
-      tickers[d.s] = {c: +d.c, p: (+d.c / +d.o - 1) * 100};
-      desenharLista();
-    } else if (d.e === "kline" && d.s === cfg.simbolo && d.k.i === cfg.tf && velas.length) {
+    if (d.e === "24hrMiniTicker") { tickers[d.s] = {c: +d.c, p: (+d.c / +d.o - 1) * 100}; desenharLista(); }
+    else if (d.e === "kline" && d.s === cfg.simbolo && d.k.i === cfg.tf && velas.length) {
       const k = d.k, t = Math.floor(k.t / 1000);
-      const v = {time: t, open: +k.o, high: +k.h, low: +k.l, close: +k.c};
+      const v = {time: t, open: +k.o, high: +k.h, low: +k.l, close: +k.c, q: +k.q, b: +k.Q};
       const ult = velas[velas.length - 1];
-      if (t === ult.time) velas[velas.length - 1] = v;
-      else if (t > ult.time) velas.push(v);
-      else return;
+      if (t === ult.time) velas[velas.length - 1] = v; else if (t > ult.time) velas.push(v); else return;
       serie.update(v);
+      ind = calcIndicadores(velas, oiPorT);
+      const ultimo = arr => arr[arr.length - 1];
+      if (ind.vol.length) sVol.update(ultimo(ind.vol));
+      if (ind.vwap.length) sVwap.update(ultimo(ind.vwap));
+      for (const [id, p] of Object.entries(paineis)) { const a = ind[id]; if (a && a.length && a[a.length - 1].time === t) p.serie.update(ultimo(a)); }
       atualizarLegenda();
     }
   };
@@ -454,11 +631,16 @@ async function recalcular(manterZoom){
     }
     if (meu !== pedido) return;
     mapa = montarMapa(kl, oi, cfg.tf, cfg.filtro, cfg.pesos);
-    velas = kl.map(k => ({time: Math.floor(k.t / 1000), open: k.o, high: k.h, low: k.l, close: k.c}));
+    velas = kl.map(k => ({time: Math.floor(k.t / 1000), open: k.o, high: k.h, low: k.l, close: k.c, q: k.q, b: k.b}));
+    oiPorT = new Map();
+    for (const k of kl) { const o = oi.get(k.t + TF_MS[cfg.tf]); if (o != null) oiPorT.set(Math.floor(k.t / 1000), o); }
+    ind = calcIndicadores(velas, oiPorT);
     const faixa = manterZoom ? chart.timeScale().getVisibleLogicalRange() : null;
     serie.setData(velas);
-    if (faixa) chart.timeScale().setVisibleLogicalRange(faixa);
-    else chart.timeScale().setVisibleLogicalRange({from: velas.length - 180, to: velas.length + 12});
+    preencherSeries();
+    const alvo = faixa || {from: velas.length - 180, to: velas.length + 12};
+    chart.timeScale().setVisibleLogicalRange(alvo);
+    espelharFaixa(chart, alvo);
     assinatura = "";
     atualizarLegenda(); desenharZonas();
     $("status").textContent = (mapa.barrasOI ? "" : "Sem Open Interest para o período · ") + "Mapa de " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}) + (DEMO ? " · DADOS DE TESTE" : "");
@@ -487,21 +669,35 @@ function montarTfs(){
     box.append(b);
   }
 }
+function montarListaInd(){
+  const box = $("listaInd"); box.replaceChildren();
+  for (const i of INDICADORES) {
+    const cb = el("input", {type: "checkbox"}); cb.checked = cfg.ind[i.id];
+    cb.addEventListener("change", () => { cfg.ind[i.id] = cb.checked; salvarPrefs(); aplicarIndicadores(); });
+    box.append(el("label", {class: "ind"}, cb, el("span", {}, i.nome, el("small", {}, i.desc))));
+  }
+}
+function abrirPop(id, botao){
+  const outro = id === "pop" ? "popInd" : "pop";
+  $(outro).classList.remove("aberto");
+  const r = $(botao).getBoundingClientRect();
+  $(id).style.left = Math.max(8, Math.min(r.left, innerWidth - 300)) + "px";
+  $(id).classList.toggle("aberto");
+}
 $("bSimb").addEventListener("click", () => trocar({simbolo: SIMBOLOS[(SIMBOLOS.indexOf(cfg.simbolo) + 1) % SIMBOLOS.length]}));
 $("bHeat").addEventListener("click", () => { cfg.heat = !cfg.heat; salvarPrefs(); $("bHeat").setAttribute("aria-pressed", String(cfg.heat)); assinatura = ""; });
 $("bAtualizar").addEventListener("click", () => recalcular(true));
+$("bInd").addEventListener("click", e => { e.stopPropagation(); montarListaInd(); abrirPop("popInd", "bInd"); });
 const pesosBox = $("pesos");
 LEVS.forEach((L, i) => pesosBox.append(el("label", {}, L + "×", el("input", {type: "number", min: "0", step: "1", id: "w" + i}))));
-function abrirAjustes(){
+$("bAjustes").addEventListener("click", e => {
+  e.stopPropagation();
   $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto;
   cfg.pesos.forEach((v, i) => $("w" + i).value = v);
-  const r = $("bAjustes").getBoundingClientRect();
-  $("pop").style.left = Math.max(8, Math.min(r.left, innerWidth - 290)) + "px";
-  $("pop").classList.toggle("aberto");
-}
-$("bAjustes").addEventListener("click", e => { e.stopPropagation(); abrirAjustes(); });
-$("pop").addEventListener("click", e => e.stopPropagation());
-document.addEventListener("click", () => $("pop").classList.remove("aberto"));
+  abrirPop("pop", "bAjustes");
+});
+for (const id of ["pop", "popInd"]) $(id).addEventListener("click", e => e.stopPropagation());
+document.addEventListener("click", () => { $("pop").classList.remove("aberto"); $("popInd").classList.remove("aberto"); });
 $("aplicar").addEventListener("click", () => {
   $("pop").classList.remove("aberto");
   trocar({barras: +$("barras").value, filtro: Math.max(0, +$("filtro").value || 0), auto: +$("auto").value,
