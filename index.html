@@ -146,6 +146,7 @@ button,select,input{font:inherit;color:inherit}
   <h4>Ajustes do modelo</h4>
   <label>Candles <select id="barras"><option>300</option><option>500</option><option selected>1000</option><option>1500</option></select></label>
   <label>Filtro de ruído <input id="filtro" type="number" min="0" step="0.1" value="1.0"></label>
+  <label>Média do volume (candles) <input id="mediaVol" type="number" min="20" step="1" value="610"></label>
   <label>Recalcular mapa a cada <select id="auto"><option value="0">desligado</option><option value="5">5 min</option><option value="15" selected>15 min</option><option value="60">60 min</option></select></label>
   <label style="margin-top:10px">Pesos de alavancagem</label>
   <div class="pesos" id="pesos"></div>
@@ -171,13 +172,14 @@ const INDICADORES = [
   {id: "vpvr",  nome: "Perfil de volume (VPVR)", desc: "volume por faixa de preço + POC",   padrao: true},
   {id: "delta", nome: "Delta de volume",        desc: "compras − vendas agressivas",        padrao: false},
   {id: "cvd",   nome: "CVD",                    desc: "delta acumulado",                    padrao: true},
-  {id: "oi",    nome: "Open Interest",          desc: "contratos em aberto (USD)",          padrao: false}
+  {id: "oi",    nome: "Open Interest",          desc: "contratos em aberto (USD)",          padrao: false},
+  {id: "hv",    nome: "Velas por volume (heatmap)", desc: "pinta os candles pela força do volume", padrao: false}
 ];
 
 // ---------- preferências (só neste navegador) ----------
 function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap2") || "{}"); } catch(e){ return {}; } }
 function salvarPrefs(){ try { localStorage.setItem("liqmap2", JSON.stringify(cfg)); } catch(e){} }
-const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
+const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
 if (!SIMBOLOS.includes(cfg.simbolo)) cfg.simbolo = "BTCUSDT";
 if (!TFS.includes(cfg.tf)) cfg.tf = "15m";
 if (!Array.isArray(cfg.pesos) || cfg.pesos.length !== 6) cfg.pesos = PESOS_PADRAO.slice();
@@ -291,23 +293,46 @@ function montarMapa(kl, oi, tf, filtro, pesos){
 }
 
 // ---------- indicadores de volume ----------
+// níveis do volume: quantos desvios-padrão o volume está acima/abaixo da média
+const NIVEIS_VOL = [
+  {nome: "Extra alto", lim: 4,    cor: "#d50000"},
+  {nome: "Alto",       lim: 2.5,  cor: "#ff6d00"},
+  {nome: "Médio",      lim: 1,    cor: "#ffc400"},
+  {nome: "Normal",     lim: -0.5, cor: "#90a4ae"},
+  {nome: "Baixo",      lim: -Infinity, cor: "#d5dbe3"}
+];
+function nivelDoZ(z){ return NIVEIS_VOL.findIndex(n => z >= n.lim); }
+function calcZVolume(v, n){
+  const z = new Array(v.length).fill(0);
+  let soma = 0, soma2 = 0;
+  for (let i = 0; i < v.length; i++) {
+    const q = v[i].q; soma += q; soma2 += q * q;
+    if (i >= n) { const o = v[i - n].q; soma -= o; soma2 -= o * o; }
+    const m = Math.min(i + 1, n);
+    if (m < 20) { z[i] = 0; continue; }          // poucos candles: considera normal
+    const media = soma / m, dp = Math.sqrt(Math.max(0, soma2 / m - media * media));
+    z[i] = dp > 0 ? (q - media) / dp : 0;
+  }
+  return z;
+}
 function calcIndicadores(v, oiPorT){
   const vol = [], delta = [], cvd = [], vwap = [], oi = [];
+  const z = calcZVolume(v, cfg.mediaVol), nivel = z.map(nivelDoZ);
   let acum = 0, dia = -1, pv = 0, vv = 0;
-  for (const k of v) {
+  v.forEach((k, i) => {
     const d = 2 * k.b - k.q;                      // compras agressivas − vendas agressivas
     acum += d;
     const diaK = Math.floor(k.time / 86400);       // VWAP reinicia a cada dia (UTC)
     if (diaK !== dia) { dia = diaK; pv = 0; vv = 0; }
     pv += (k.high + k.low + k.close) / 3 * k.q; vv += k.q;
-    vol.push({time: k.time, value: k.q, color: k.close >= k.open ? "rgba(8,153,129,0.45)" : "rgba(242,54,69,0.45)"});
+    vol.push({time: k.time, value: k.q, color: cfg.ind.hv ? NIVEIS_VOL[nivel[i]].cor : k.close >= k.open ? "rgba(8,153,129,0.45)" : "rgba(242,54,69,0.45)"});
     delta.push({time: k.time, value: d, color: d >= 0 ? "rgba(8,153,129,0.8)" : "rgba(242,54,69,0.8)"});
     cvd.push({time: k.time, value: acum});
     if (vv > 0) vwap.push({time: k.time, value: pv / vv});
     const o = oiPorT.get(k.time);
     if (o != null) oi.push({time: k.time, value: o});
-  }
-  return {vol, delta, cvd, vwap, oi};
+  });
+  return {vol, delta, cvd, vwap, oi, z, nivel};
 }
 
 // ---------- cores do mapa ----------
@@ -407,10 +432,22 @@ function espelharCursor(origem, p){
   espelhando = false;
 }
 
+function vela(v, i){
+  const base = {time: v.time, open: v.open, high: v.high, low: v.low, close: v.close};
+  if (!cfg.ind.hv || !ind || ind.nivel[i] == null) return base;
+  const dir = v.close >= v.open ? "#089981" : "#f23645";
+  return Object.assign(base, {color: NIVEIS_VOL[ind.nivel[i]].cor, borderColor: dir, wickColor: dir});
+}
+function aplicarVelas(){
+  if (!serie || !velas.length) return;
+  serie.applyOptions({borderVisible: cfg.ind.hv});
+  serie.setData(velas.map(vela));
+}
 // mostra/oculta indicadores e monta os painéis na ordem
 function aplicarIndicadores(){
   if (!chart) return;
   sVol.applyOptions({visible: cfg.ind.vol});
+  if (velas.length) { ind = calcIndicadores(velas, oiPorT); aplicarVelas(); }
   sVwap.applyOptions({visible: cfg.ind.vwap});
   for (const id of ["delta", "cvd", "oi"]) {
     if (cfg.ind[id] && !paineis[id]) criarPainel(id);
@@ -527,7 +564,12 @@ function atualizarLegenda(param){
       el("span", {class: cls}, "  " + pct((k.close / k.open - 1) * 100)))
   ];
   const extra = [];
-  if (cfg.ind.vol) extra.push(el("span", {class: "v"}, "Vol "), el("b", {}, usd(k.q)), el("span", {class: "v"}, "  (compra " + Math.round(k.b / (k.q || 1) * 100) + "%)  "));
+  if (cfg.ind.vol || cfg.ind.hv) extra.push(el("span", {class: "v"}, "Vol "), el("b", {}, usd(k.q)), el("span", {class: "v"}, "  (compra " + Math.round(k.b / (k.q || 1) * 100) + "%)  "));
+  if (cfg.ind.hv && ind && ind.nivel[i] != null) {
+    const nv = NIVEIS_VOL[ind.nivel[i]];
+    extra.push(el("span", {style: "display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;background:" + nv.cor}),
+      el("b", {}, nv.nome), el("span", {class: "v"}, " (" + (ind.z[i] >= 0 ? "+" : "") + ind.z[i].toFixed(1).replace(".", ",") + " desvios)  "));
+  }
   if (cfg.ind.vwap && ind && ind.vwap[i]) extra.push(el("span", {class: "v"}, "VWAP "), el("b", {style: "color:#2962ff"}, pr(ind.vwap[i].value)));
   if (extra.length) linhas.push(el("div", {}, ...extra));
   if (mapa && cfg.heat && param && param.point && param.seriesData && param.seriesData.has(serie)) {
@@ -628,7 +670,6 @@ function agendarTick(comIndicadores){
   requestAnimationFrame(() => {
     tickPendente = false;
     const v = velas[velas.length - 1];
-    serie.update({time: v.time, open: v.open, high: v.high, low: v.low, close: v.close});
     if (recalcInd) {
       recalcInd = false;
       ind = calcIndicadores(velas, oiPorT);
@@ -637,6 +678,7 @@ function agendarTick(comIndicadores){
       if (ind.vwap.length) sVwap.update(ultimo(ind.vwap));
       for (const [id, p] of Object.entries(paineis)) { const a = ind[id]; if (a && a.length && a[a.length - 1].time === v.time) p.serie.update(ultimo(a)); }
     }
+    serie.update(vela(v, velas.length - 1));
     atualizarLegenda();
     desenharListaPreco();
   });
@@ -679,7 +721,7 @@ async function recalcular(manterZoom){
     for (const k of kl) { const o = oi.get(k.t + TF_MS[cfg.tf]); if (o != null) oiPorT.set(Math.floor(k.t / 1000), o); }
     ind = calcIndicadores(velas, oiPorT);
     const faixa = manterZoom ? chart.timeScale().getVisibleLogicalRange() : null;
-    serie.setData(velas);
+    aplicarVelas();
     preencherSeries();
     const alvo = faixa || {from: velas.length - 180, to: velas.length + 12};
     chart.timeScale().setVisibleLogicalRange(alvo);
@@ -735,7 +777,7 @@ const pesosBox = $("pesos");
 LEVS.forEach((L, i) => pesosBox.append(el("label", {}, L + "×", el("input", {type: "number", min: "0", step: "1", id: "w" + i}))));
 $("bAjustes").addEventListener("click", e => {
   e.stopPropagation();
-  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto;
+  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto; $("mediaVol").value = cfg.mediaVol;
   cfg.pesos.forEach((v, i) => $("w" + i).value = v);
   abrirPop("pop", "bAjustes");
 });
@@ -744,6 +786,7 @@ document.addEventListener("click", () => { $("pop").classList.remove("aberto"); 
 $("aplicar").addEventListener("click", () => {
   $("pop").classList.remove("aberto");
   trocar({barras: +$("barras").value, filtro: Math.max(0, +$("filtro").value || 0), auto: +$("auto").value,
+          mediaVol: Math.max(20, Math.round(+$("mediaVol").value || 610)),
           pesos: LEVS.map((_, i) => Math.max(0, +$("w" + i).value || 0))});
 });
 
