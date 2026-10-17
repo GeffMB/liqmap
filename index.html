@@ -232,6 +232,9 @@ const TF_MS = {"1m":6e4,"3m":18e4,"6h":216e5,"8h":288e5,"12h":432e5,"3d":2592e5,
 const ROTULO_TF = {"1m":"1m","3m":"3m","6h":"6h","8h":"8h","12h":"12h","3d":"3D","5m":"5m","15m":"15m","30m":"30m","1h":"1h","2h":"2h","4h":"4h","1d":"1D","1w":"1S","1M":"1M","3M":"3M","6M":"6M","12M":"12M"};
 const MESES_TF = {"1M": 1, "3M": 3, "6M": 6, "12M": 12};
 const OI_PERIODOS = ["5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"];   // a Binance só fornece Open Interest até 1 dia
+// tempo gráfico usado para calcular o mapa (onde a Binance tem Open Interest)
+const BASE_MAPA = {"1m": "5m", "3m": "5m", "8h": "4h", "3d": "1d", "1w": "1d", "1M": "1d", "3M": "1d", "6M": "1d", "12M": "1d"};
+const baseMapa = tf => BASE_MAPA[tf] || tf;
 const intervaloBinance = tf => MESES_TF[tf] ? "1M" : tf;              // 3M, 6M e 12M são montados a partir do mensal
 function proximoFechamento(abertura, tf = cfg.tf){                   // abertura em ms -> fechamento do candle em ms
   const m = MESES_TF[tf];
@@ -394,7 +397,7 @@ function montarMapa(kl, oi, tf, filtro, pesos){
   const top = arr => [...arr].map((v, b) => [v, b]).filter(x => x[0] > 0).sort((a, b) => b[0] - a[0]).slice(0, 5)
     .map(([v, b]) => ({preco: centro(b), dist: (centro(b) / ultimo - 1) * 100, forca: v / mxAtual * 100, valor: v}));
   const perto = (arr, p) => { let s = 0; for (let b = 0; b < FAIXAS; b++) if (Math.abs(centro(b) / ultimo - 1) * 100 <= p) s += arr[b]; return s; };
-  return {pmin, w, cols, runs, ultimo, barrasOI: hist.length, shorts: top(shorts), longs: top(longs), s5: perto(shorts, 5), l5: perto(longs, 5)};
+  return {pmin, w, cols, runs, tb: kl.map(k => k.t / 1000), tfBase: TF_MS[tf] / 1000, ultimo, barrasOI: hist.length, shorts: top(shorts), longs: top(longs), s5: perto(shorts, 5), l5: perto(longs, 5)};
 }
 
 // ---------- indicadores de volume ----------
@@ -612,7 +615,8 @@ function desenharCanvas(){
       if (q < 4) continue;
       const yTop = serie.priceToCoordinate(mapa.pmin + (b + 1) * mapa.w), yBot = serie.priceToCoordinate(mapa.pmin + b * mapa.w);
       if (yTop == null || yBot == null || yBot < 0 || yTop > H) continue;
-      const xa = x0 + (i0 - 0.5) * passo, xb = i1 >= ult ? W : x0 + (i1 + 0.5) * passo;
+      const xa = x0 + (idxDeT(mapa.tb[i0]) - 0.5) * passo;
+      const xb = i1 >= mapa.tb.length - 1 ? W : x0 + (idxDeT(mapa.tb[i1] + mapa.tfBase) - 0.5) * passo;
       if (xb < 0 || xa > W) continue;
       ctx.fillStyle = PALETA[q];
       ctx.fillRect(xa, yTop, xb - xa, Math.max(1, yBot - yTop));
@@ -657,6 +661,13 @@ function desenharCanvas(){
   }
 }
 
+function colunaMapa(t){   // candle da base do mapa que contém o horário t
+  const tb = mapa.tb; let a = 0, b = tb.length - 1;
+  if (t >= tb[b]) return b;
+  if (t <= tb[0]) return 0;
+  while (b - a > 1) { const m = (a + b) >> 1; if (tb[m] <= t) a = m; else b = m; }
+  return a;
+}
 function atualizarLegenda(param){
   const leg = $("legenda");
   if (!velas.length) { leg.replaceChildren(); return; }
@@ -680,7 +691,7 @@ function atualizarLegenda(param){
   if (extra.length) linhas.push(el("div", {}, ...extra));
   if (mapa && cfg.heat && param && param.point && param.seriesData && param.seriesData.has(serie)) {
     const preco = serie.coordinateToPrice(param.point.y);
-    const col = mapa.cols[Math.min(i, mapa.cols.length - 1)];
+    const col = mapa.cols[colunaMapa(k.time)];
     const b = Math.floor((preco - mapa.pmin) / mapa.w);
     if (col && b >= 0 && b < FAIXAS && col[b] > 0)
       linhas.push(el("div", {}, el("span", {class: "v"}, "Liquidação estimada em " + pr(preco) + ": "), el("b", {class: preco >= k.close ? "s" : "l"}, usd(col[b]))));
@@ -850,17 +861,25 @@ async function recalcular(manterZoom){
   $("status").textContent = "Calculando…"; $("status").className = "status"; $("status2").textContent = "Calculando…";
   if (!manterZoom) $("carregando").style.display = "flex";
   try {
-    let kl, oi;
-    if (DEMO) ({kl, oi} = dadosDemo(cfg.simbolo, cfg.tf, cfg.barras));
-    else {
+    let kl, oi, klBase;
+    const base = baseMapa(cfg.tf);
+    if (DEMO) {
+      ({kl, oi} = dadosDemo(cfg.simbolo, cfg.tf, cfg.barras));
+      if (base !== cfg.tf) ({kl: klBase, oi} = dadosDemo(cfg.simbolo, base, Math.round(OI_MAX_DIAS * 864e5 / TF_MS[base])));
+    } else {
       kl = await buscarCandles(cfg.simbolo, cfg.tf, cfg.barras);
-      oi = await buscarOI(cfg.simbolo, cfg.tf, kl[0].t, kl[kl.length - 1].t + TF_MS[cfg.tf]);
+      if (base !== cfg.tf) {   // os candles mais recentes da base (o Open Interest cobre até ~30 dias deles)
+        const d = await getJSON("/fapi/v1/klines", {symbol: cfg.simbolo, interval: base, limit: 1500});
+        klBase = d.map(k => ({t: +k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], q: +k[7], b: +k[10]}));
+      }
+      const ref = klBase || kl;
+      oi = await buscarOI(cfg.simbolo, base, ref[0].t, ref[ref.length - 1].t + TF_MS[base]);
     }
     if (meu !== pedido) return;
-    mapa = montarMapa(kl, oi, cfg.tf, cfg.filtro, cfg.pesos);
+    mapa = montarMapa(klBase && klBase.length ? klBase : kl, oi, base, cfg.filtro, cfg.pesos);
     velas = kl.map(k => ({time: Math.floor(k.t / 1000), open: k.o, high: k.h, low: k.l, close: k.c, q: k.q, b: k.b}));
     oiPorT = new Map();
-    for (const k of kl) { const o = oi.get(k.t + TF_MS[cfg.tf]); if (o != null) oiPorT.set(Math.floor(k.t / 1000), o); }
+    for (const k of kl) { const o = oi.get(proximoFechamento(k.t)); if (o != null) oiPorT.set(Math.floor(k.t / 1000), o); }
     ind = calcIndicadores(velas, oiPorT);
     const faixa = manterZoom ? chart.timeScale().getVisibleLogicalRange() : null;
     aplicarVelas();
@@ -870,7 +889,7 @@ async function recalcular(manterZoom){
     espelharFaixa(chart, alvo);
     assinatura = "";
     atualizarLegenda(); desenharZonas();
-    $("status").textContent = (mapa.barrasOI ? "" : OI_PERIODOS.includes(cfg.tf) ? "Sem Open Interest para o período · " : "Mapa de liquidações só até 1D · ") + "Mapa de " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}) + (DEMO ? " · DADOS DE TESTE" : "");
+    $("status").textContent = (mapa.barrasOI ? "" : "Sem Open Interest para o período · ") + (baseMapa(cfg.tf) === "1d" && cfg.tf !== "1d" ? "Mapa dos últimos 30 dias · " : "") + "Mapa de " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}) + (DEMO ? " · DADOS DE TESTE" : "");
     $("status2").textContent = (DEMO ? "Teste · " : "") + "Mapa " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"});
   } catch (e) {
     $("status").textContent = "Erro: " + (e.message || e); $("status").className = "status err"; $("status2").textContent = "Erro ao carregar";
@@ -908,7 +927,6 @@ function montarTfs(){
     });
     for (const [tf, nome] of itens) {
       const it = el("button", {class: "it", role: "menuitemradio", "aria-checked": String(tf === cfg.tf)}, nome);
-      if (!OI_PERIODOS.includes(tf)) it.append(el("small", {title: "Sem mapa de liquidações neste tempo gráfico"}, "sem mapa"));
       it.addEventListener("click", () => { $("popTf").classList.remove("aberto"); trocar({tf}); });
       lista.append(it);
     }
