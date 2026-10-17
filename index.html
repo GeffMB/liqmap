@@ -93,6 +93,12 @@ button,select,input{font:inherit;color:inherit}
 #des.borracha{cursor:not-allowed}
 .aviso{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:4;background:#131722;color:#fff;font-size:12px;padding:6px 10px;border-radius:6px;pointer-events:none;opacity:0;transition:opacity .2s;white-space:nowrap}
 .aviso.on{opacity:.92}
+.selbar{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:4;display:none;align-items:center;gap:6px;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 14px rgba(19,23,34,.15);padding:4px 6px 4px 10px;font-size:12px;white-space:nowrap}
+.selbar.on{display:flex}
+.selbar button{border:0;background:transparent;border-radius:6px;padding:6px 8px;cursor:pointer;font-size:12px}
+.selbar button:hover{background:var(--hover)}
+#selApagar{color:var(--down);font-weight:600}
+.sobreDes,.sobreDes *{cursor:move !important}
 #tfSel{display:none;background:transparent;border:0;font-weight:600;padding:6px 4px}
 .rodape{display:none}
 /* ---------- celular (estilo app da TradingView) ---------- */
@@ -115,6 +121,8 @@ button,select,input{font:inherit;color:inherit}
   .rodape button{border:0;background:transparent;font-weight:500;padding:8px 0;cursor:pointer}
   .rodape .rel{color:var(--txt);font-variant-numeric:tabular-nums}
   .pop{left:8px !important;right:8px;width:auto;max-height:70dvh;overflow-y:auto}
+  .selbar{top:auto;bottom:52px;font-size:13px}
+  .selbar button{padding:8px 10px;font-size:13px}
 }
 </style>
 </head>
@@ -147,6 +155,7 @@ button,select,input{font:inherit;color:inherit}
       <div id="chart"></div>
       <canvas id="des"></canvas>
       <div class="aviso" id="aviso"></div>
+      <div class="selbar" id="selbar"><span id="selNome"></span><button id="selApagar" title="Apagar desenho (Delete)">🗑 Apagar</button><button id="selFechar" title="Tirar seleção (Esc)">✕</button></div>
       <div class="legenda" id="legenda"></div>
       <div class="carregando" id="carregando">Carregando dados da Binance…</div>
     </div>
@@ -959,11 +968,11 @@ function acaoBarra(id){
     case "zoomMenos": if (ts) ts.applyOptions({barSpacing: Math.max(1, ts.options().barSpacing / 1.3)}); return;
     case "ajustar": if (ts && velas.length) { ts.applyOptions({barSpacing: 6}); ts.setVisibleLogicalRange({from: velas.length - 150, to: velas.length + 12}); } return;
     case "ima": ima = !ima; avisar(ima ? "Ímã ligado" : "Ímã desligado"); break;
-    case "travar": travado = !travado; if (travado && ferramenta === "borracha") ferramenta = "cursor"; avisar(travado ? "Desenhos travados" : "Desenhos destravados"); break;
+    case "travar": travado = !travado; if (travado) { selecionado = -1; mostrarSel(); } if (travado && ferramenta === "borracha") ferramenta = "cursor"; avisar(travado ? "Desenhos travados" : "Desenhos destravados"); break;
     case "ocultar": ocultos = !ocultos; desVersao++; break;
-    case "desfazer": if (!travado && desenhos.length) { desenhos.pop(); salvarDesenhos(); } break;
+    case "desfazer": if (!travado && desenhos.length) { desenhos.pop(); selecionado = -1; salvarDesenhos(); mostrarSel(); } break;
     case "lixo":
-      if (!travado && desenhos.length) { desenhos = []; salvarDesenhos(); avisar("Desenhos apagados"); }
+      if (!travado && desenhos.length) { desenhos = []; selecionado = -1; salvarDesenhos(); mostrarSel(); avisar("Desenhos apagados"); }
       break;
     default:
       ferramenta = ferramenta === id && id !== "cursor" ? "cursor" : id;
@@ -977,7 +986,8 @@ function acaoBarra(id){
 function carregarDesenhos(){
   try { desenhos = JSON.parse(localStorage.getItem("liqmap-des-" + cfg.simbolo) || "[]"); } catch(e) { desenhos = []; }
   if (!Array.isArray(desenhos)) desenhos = [];
-  rascunho = null; medida = null; desVersao++;
+  rascunho = null; medida = null; selecionado = -1; desVersao++;
+  if ($("selbar")) $("selbar").classList.remove("on");
   if ($("f_cursor")) atualizarBarra();
 }
 function salvarDesenhos(){
@@ -995,13 +1005,13 @@ function geo(){
 }
 const xDe = (g, t) => g.x0 + (t - g.t0) / g.tf * g.passo;
 const tDe = (g, x) => g.t0 + (x - g.x0) / g.passo * g.tf;
-function pontoDe(ev){
+function pontoDe(ev, semIma){
   const g = geo(); if (!g) return null;
   const r = desCanvas.getBoundingClientRect();
   let x = ev.clientX - r.left, y = ev.clientY - r.top;
   let t = tDe(g, x), p = serie.coordinateToPrice(y);
   if (p == null) return null;
-  if (ima) {   // prende na abertura/máxima/mínima/fechamento do candle mais próximo
+  if (ima && !semIma) {   // prende na abertura/máxima/mínima/fechamento do candle mais próximo
     const i = Math.max(0, Math.min(velas.length - 1, Math.round((x - g.x0) / g.passo)));
     const k = velas[i];
     let melhor = k.close, dist = Infinity;
@@ -1059,28 +1069,98 @@ function distSeg(px, py, ax, ay, bx, by){
   const u = l ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / l)) : 0;
   return Math.hypot(px - (ax + u * dx), py - (ay + u * dy));
 }
-function apagarPerto(ev){
-  if (travado) return;
-  const g = geo(); if (!g) return;
-  const r = desCanvas.getBoundingClientRect(), px = ev.clientX - r.left, py = ev.clientY - r.top;
-  let melhor = -1, menor = 14;
+// ---------- selecionar, mover e apagar desenhos ----------
+let selecionado = -1, arrasto = null, bloqueando = false;
+const toqueGrosso = () => matchMedia("(pointer: coarse)").matches;
+const RAIO = () => toqueGrosso() ? 18 : 9;
+function telaDe(ev){ const r = desCanvas.getBoundingClientRect(); return [ev.clientX - r.left, ev.clientY - r.top]; }
+function pontosTela(g, d){ return d.pts.map(q => [xDe(g, q.t), serie.priceToCoordinate(q.p)]); }
+// devolve {i, alca} do desenho mais próximo (alca = índice do ponto, ou -1 = corpo)
+function acharDesenho(px, py){
+  const g = geo(); if (!g || ocultos) return null;
+  const W = parseFloat(desCanvas.style.width) || 0;
+  let achado = null, menor = RAIO() + 1;
   desenhos.forEach((d, i) => {
-    const P = d.pts.map(q => [xDe(g, q.t), serie.priceToCoordinate(q.p)]);
+    const P = pontosTela(g, d);
+    if (P.some(q => q[1] == null)) return;
+    if (["linha", "retangulo", "fib"].includes(d.tipo)) P.forEach((q, k) => {
+      const dd = Math.hypot(px - q[0], py - q[1]) - 2;     // alças têm preferência
+      if (dd < menor) { menor = dd; achado = {i, alca: k}; }
+    });
     let dist = Infinity;
-    if (d.tipo === "horizontal") dist = Math.abs(py - P[0][1]);
-    else if (d.tipo === "texto") dist = Math.hypot(px - P[0][0] - 20, py - P[0][1]) - 20;
+    if (d.tipo === "horizontal") dist = px <= W ? Math.abs(py - P[0][1]) : Infinity;
+    else if (d.tipo === "texto") { const w = 9 * d.texto.length; dist = (px >= P[0][0] - 4 && px <= P[0][0] + w && py >= P[0][1] - 18 && py <= P[0][1] + 6) ? 0 : Infinity; }
     else if (d.tipo === "linha") dist = distSeg(px, py, ...P[0], ...P[1]);
     else if (d.tipo === "pincel") for (let k = 1; k < P.length; k++) dist = Math.min(dist, distSeg(px, py, ...P[k - 1], ...P[k]));
     else if (d.tipo === "retangulo" || d.tipo === "fib") {
-      const [a, b] = P, xs = [a[0], b[0]], cantos = [[a[0], a[1]], [b[0], a[1]], [b[0], b[1]], [a[0], b[1]]];
+      const [a, b] = P, xs = [a[0], b[0]], ys = [a[1], b[1]];
+      if (d.tipo === "retangulo" && px >= Math.min(...xs) && px <= Math.max(...xs) && py >= Math.min(...ys) && py <= Math.max(...ys)) dist = 0;
+      const cantos = [[a[0], a[1]], [b[0], a[1]], [b[0], b[1]], [a[0], b[1]]];
       for (let k = 0; k < 4; k++) dist = Math.min(dist, distSeg(px, py, ...cantos[k], ...cantos[(k + 1) % 4]));
       if (d.tipo === "fib") for (const n of FIB) { const y = serie.priceToCoordinate(d.pts[1].p + (d.pts[0].p - d.pts[1].p) * n); dist = Math.min(dist, distSeg(px, py, Math.min(...xs), y, Math.max(...xs), y)); }
     }
-    if (dist < menor) { menor = dist; melhor = i; }
+    if (dist < menor) { menor = dist; achado = {i, alca: -1}; }
   });
-  if (melhor >= 0) { desenhos.splice(melhor, 1); salvarDesenhos(); }
+  return achado;
+}
+function apagarPerto(ev){
+  if (travado) return;
+  const h = acharDesenho(...telaDe(ev));
+  if (h) { desenhos.splice(h.i, 1); selecionado = -1; salvarDesenhos(); mostrarSel(); }
   else avisar("Nenhum desenho aqui");
 }
+const NOMES_DES = {linha: "Linha de tendência", horizontal: "Linha horizontal", retangulo: "Retângulo", fib: "Fibonacci", pincel: "Pincel", texto: "Texto"};
+function mostrarSel(){
+  if (selecionado >= desenhos.length) selecionado = -1;
+  const bar = $("selbar");
+  bar.classList.toggle("on", selecionado >= 0);
+  if (selecionado >= 0) $("selNome").textContent = NOMES_DES[desenhos[selecionado].tipo] || "Desenho";
+  desVersao++;
+}
+function apagarSelecionado(){
+  if (selecionado < 0 || travado) return;
+  desenhos.splice(selecionado, 1); selecionado = -1; salvarDesenhos(); mostrarSel();
+}
+$("selApagar").addEventListener("click", apagarSelecionado);
+$("selFechar").addEventListener("click", () => { selecionado = -1; mostrarSel(); });
+document.addEventListener("keydown", ev => {
+  if (/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  if ((ev.key === "Delete" || ev.key === "Backspace") && selecionado >= 0) { ev.preventDefault(); apagarSelecionado(); }
+  if (ev.key === "Escape") { selecionado = -1; rascunho = null; ferramenta = "cursor"; atualizarBarra(); mostrarSel(); }
+});
+// com o cursor: tocar num desenho seleciona e arrastar move (o gráfico não se mexe nesse caso)
+principal.addEventListener("pointerdown", ev => {
+  if (ferramenta !== "cursor" || travado || !velas.length || ev.target.closest(".selbar")) return;
+  const h = acharDesenho(...telaDe(ev));
+  if (!h) { if (selecionado >= 0) { selecionado = -1; mostrarSel(); } return; }
+  ev.stopPropagation(); ev.preventDefault();
+  bloqueando = true;
+  selecionado = h.i; mostrarSel();
+  const d = desenhos[h.i];
+  arrasto = {d, alca: h.alca, inicio: pontoDe(ev, true), orig: d.pts.map(q => ({...q})), mexeu: false};
+}, true);
+for (const tipo of ["mousedown", "touchstart"]) principal.addEventListener(tipo, ev => {
+  if (bloqueando) { ev.stopPropagation(); if (tipo === "touchstart") ev.preventDefault(); }
+}, {capture: true, passive: false});
+window.addEventListener("pointermove", ev => {
+  if (!arrasto) {   // computador: muda o cursor ao passar sobre um desenho
+    if (ferramenta === "cursor" && !travado && ev.pointerType === "mouse" && velas.length) principal.classList.toggle("sobreDes", !!acharDesenho(...telaDe(ev)));
+    return;
+  }
+  const pt = pontoDe(ev, arrasto.alca < 0); if (!pt || !arrasto.inicio) return;
+  const {d, alca, orig, inicio} = arrasto;
+  if (alca >= 0) d.pts[alca] = pt;
+  else {
+    const dt = d.tipo === "horizontal" ? 0 : pt.t - inicio.t, dp = pt.p - inicio.p;
+    d.pts = orig.map(q => ({t: q.t + dt, p: q.p + dp}));
+  }
+  arrasto.mexeu = true; desVersao++;
+});
+window.addEventListener("pointerup", () => {
+  if (arrasto && arrasto.mexeu) salvarDesenhos();
+  arrasto = null; setTimeout(() => { bloqueando = false; }, 0);
+});
+window.addEventListener("pointercancel", () => { if (arrasto) { arrasto.d.pts = arrasto.orig; desVersao++; } arrasto = null; bloqueando = false; });
 
 // ---------- desenho na tela ----------
 function etiqueta(c, txt, x, y, fundo, cor){
@@ -1145,6 +1225,15 @@ function desenharDesenhos(){
   dctx.clearRect(0, 0, W, H);
   const g = geo(); if (!g) return;
   if (!ocultos) for (const d of desenhos) desenharUm(dctx, g, d, W);
+  if (selecionado >= 0 && selecionado < desenhos.length && !ocultos) {
+    const d = desenhos[selecionado], P = pontosTela(g, d);
+    const alcas = d.tipo === "horizontal" ? [[W / 2, P[0][1]]] : d.tipo === "pincel" ? [P[0], P[P.length - 1]] : P;
+    for (const q of alcas) {
+      if (q[1] == null) continue;
+      dctx.beginPath(); dctx.arc(q[0], q[1], toqueGrosso() ? 7 : 5, 0, 7);
+      dctx.fillStyle = "#ffffff"; dctx.fill(); dctx.lineWidth = 2; dctx.strokeStyle = COR_DES; dctx.stroke();
+    }
+  }
   if (rascunho) desenharUm(dctx, g, rascunho, W);
   if (medida) desenharUm(dctx, g, medida, W);
 }
