@@ -100,7 +100,17 @@ button,select,input{font:inherit;color:inherit}
 .selbar button:hover{background:var(--hover)}
 #selApagar{color:var(--down);font-weight:600}
 .sobreDes,.sobreDes *{cursor:move !important}
-#tfSel{display:none;background:transparent;border:0;font-weight:600;padding:6px 4px}
+.tfbtn{font-weight:600;min-width:52px;justify-content:center}
+.menuTf{width:196px;padding:4px 0;max-height:72vh;overflow-y:auto}
+.menuTf .gr{display:flex;justify-content:space-between;align-items:center;width:100%;border:0;background:transparent;cursor:pointer;
+  padding:7px 12px 5px;font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--sub);border-top:1px solid #f0f2f6}
+.menuTf .gr:first-child{border-top:0}
+.menuTf .gr svg{width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:1.4;transition:transform .15s}
+.menuTf .gr.fechado svg{transform:rotate(180deg)}
+.menuTf .it{display:block;width:100%;text-align:left;border:0;background:transparent;cursor:pointer;padding:5px 16px;font-size:13px;color:var(--txt)}
+.menuTf .it:hover{background:var(--hover)}
+.menuTf .it[aria-checked=true]{background:#eef3ff;color:var(--accent);font-weight:500}
+.menuTf .it small{color:var(--sub);font-size:11px;margin-left:6px}
 .rodape{display:flex;align-items:center;justify-content:flex-end;gap:12px;height:30px;flex:0 0 30px;border-top:1px solid var(--line);padding:0 14px;background:var(--bg);font-size:12px}
 .rodape .rel{color:var(--txt);font-variant-numeric:tabular-nums}
 #bLado,#status2{display:none}
@@ -109,8 +119,7 @@ button,select,input{font:inherit;color:inherit}
   body{height:100dvh}
   .top{height:46px;padding:0 4px}
   .marca,.txt,.top .status{display:none}
-  #tfs{display:none !important}
-  #tfSel{display:block}
+  .menuTf .it{padding:8px 18px;font-size:14px}
   .btn{padding:8px 7px;font-size:15px}
   .ferr{flex-basis:42px;width:42px}
   .ferr button{width:34px;height:34px;flex-basis:34px}
@@ -136,8 +145,7 @@ button,select,input{font:inherit;color:inherit}
   <div class="marca">Liq<span>Map</span></div>
   <button class="btn simbolo" id="bSimb" title="Trocar ativo">BTCUSDT ▾</button>
   <div class="sep"></div>
-  <div id="tfs" style="display:flex"></div>
-  <select id="tfSel" aria-label="Tempo gráfico"></select>
+  <button class="btn tfbtn" id="bTf" title="Tempo gráfico" aria-haspopup="true">15m ▾</button>
   <div class="sep"></div>
   <button class="btn" id="bInd" title="Indicadores">ƒx<span class="txt"> Indicadores</span></button>
   <button class="btn" id="bHeat" aria-pressed="true" title="Mostrar/ocultar mapa de liquidações">▦<span class="txt"> Mapa de liquidações</span></button>
@@ -189,6 +197,8 @@ button,select,input{font:inherit;color:inherit}
   <span class="rel" id="relogio"></span>
 </div>
 
+<div class="pop menuTf" id="popTf" role="menu" aria-label="Tempo gráfico"></div>
+
 <div class="pop" id="popInd">
   <h4>Indicadores</h4>
   <div id="listaInd"></div>
@@ -210,12 +220,18 @@ button,select,input{font:inherit;color:inherit}
 const BASE = "https://fapi.binance.com";
 const WS = "wss://fstream.binance.com/market/stream?streams=";
 const SIMBOLOS = ["BTCUSDT", "ETHUSDT"];
-const TFS = ["5m", "15m", "30m", "1h", "2h", "4h", "1d", "1w", "1M", "3M", "6M", "12M"];
+const TFS = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w", "1M", "3M", "6M", "12M"];
+const GRUPOS_TF = [
+  ["Minutos", [["1m", "1 minuto"], ["3m", "3 minutos"], ["5m", "5 minutos"], ["15m", "15 minutos"], ["30m", "30 minutos"]]],
+  ["Horas", [["1h", "1 hora"], ["2h", "2 horas"], ["4h", "4 horas"], ["6h", "6 horas"], ["8h", "8 horas"], ["12h", "12 horas"]]],
+  ["Dias", [["1d", "1 dia"], ["3d", "3 dias"]]],
+  ["Semanas e meses", [["1w", "1 semana"], ["1M", "1 mês"], ["3M", "3 meses"], ["6M", "6 meses"], ["12M", "12 meses"]]]
+];
 // duração aproximada (meses variam; o fechamento exato vem de proximoFechamento)
-const TF_MS = {"5m":3e5,"15m":9e5,"30m":18e5,"1h":36e5,"2h":72e5,"4h":144e5,"1d":864e5,"1w":6048e5,"1M":2592e6,"3M":7776e6,"6M":15552e6,"12M":31536e6};
-const ROTULO_TF = {"5m":"5m","15m":"15m","30m":"30m","1h":"1h","2h":"2h","4h":"4h","1d":"1D","1w":"1S","1M":"1M","3M":"3M","6M":"6M","12M":"12M"};
+const TF_MS = {"1m":6e4,"3m":18e4,"6h":216e5,"8h":288e5,"12h":432e5,"3d":2592e5,"5m":3e5,"15m":9e5,"30m":18e5,"1h":36e5,"2h":72e5,"4h":144e5,"1d":864e5,"1w":6048e5,"1M":2592e6,"3M":7776e6,"6M":15552e6,"12M":31536e6};
+const ROTULO_TF = {"1m":"1m","3m":"3m","6h":"6h","8h":"8h","12h":"12h","3d":"3D","5m":"5m","15m":"15m","30m":"30m","1h":"1h","2h":"2h","4h":"4h","1d":"1D","1w":"1S","1M":"1M","3M":"3M","6M":"6M","12M":"12M"};
 const MESES_TF = {"1M": 1, "3M": 3, "6M": 6, "12M": 12};
-const OI_PERIODOS = ["5m", "15m", "30m", "1h", "2h", "4h", "1d"];   // a Binance só fornece Open Interest até 1 dia
+const OI_PERIODOS = ["5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"];   // a Binance só fornece Open Interest até 1 dia
 const intervaloBinance = tf => MESES_TF[tf] ? "1M" : tf;              // 3M, 6M e 12M são montados a partir do mensal
 function proximoFechamento(abertura, tf = cfg.tf){                   // abertura em ms -> fechamento do candle em ms
   const m = MESES_TF[tf];
@@ -874,14 +890,32 @@ function trocar(mud){
 
 // ---------- controles ----------
 function montarTfs(){
-  const sel = $("tfSel"); sel.replaceChildren(...TFS.map(tf => el("option", {value: tf}, ROTULO_TF[tf]))); sel.value = cfg.tf;
-  const box = $("tfs"); box.replaceChildren();
-  for (const tf of TFS) {
-    const b = el("button", {class: "btn", "aria-pressed": String(tf === cfg.tf), title: {"1d":"1 dia","1w":"1 semana","1M":"1 mês","3M":"3 meses","6M":"6 meses","12M":"12 meses"}[tf] || tf}, ROTULO_TF[tf]);
-    b.addEventListener("click", () => trocar({tf}));
-    box.append(b);
+  $("bTf").textContent = ROTULO_TF[cfg.tf] + " ▾";
+  if (!Array.isArray(cfg.tfFechados)) cfg.tfFechados = [];
+  const menu = $("popTf"); menu.replaceChildren();
+  for (const [grupo, itens] of GRUPOS_TF) {
+    const fechado = cfg.tfFechados.includes(grupo) && !itens.some(([tf]) => tf === cfg.tf);
+    const cab = el("button", {class: "gr" + (fechado ? " fechado" : ""), "aria-expanded": String(!fechado)}, grupo);
+    cab.insertAdjacentHTML("beforeend", '<svg viewBox="0 0 12 12"><path d="M3 7.5L6 4.5l3 3"/></svg>');
+    const lista = el("div", {});
+    if (fechado) lista.style.display = "none";
+    cab.addEventListener("click", () => {
+      const ab = lista.style.display === "none";
+      lista.style.display = ab ? "" : "none";
+      cab.classList.toggle("fechado", !ab); cab.setAttribute("aria-expanded", String(ab));
+      cfg.tfFechados = ab ? cfg.tfFechados.filter(g => g !== grupo) : [...cfg.tfFechados, grupo];
+      salvarPrefs();
+    });
+    for (const [tf, nome] of itens) {
+      const it = el("button", {class: "it", role: "menuitemradio", "aria-checked": String(tf === cfg.tf)}, nome);
+      if (!OI_PERIODOS.includes(tf)) it.append(el("small", {title: "Sem mapa de liquidações neste tempo gráfico"}, "sem mapa"));
+      it.addEventListener("click", () => { $("popTf").classList.remove("aberto"); trocar({tf}); });
+      lista.append(it);
+    }
+    menu.append(cab, lista);
   }
 }
+$("bTf").addEventListener("click", e => { e.stopPropagation(); abrirPop("popTf", "bTf"); });
 function montarListaInd(){
   const box = $("listaInd"); box.replaceChildren();
   for (const i of INDICADORES) {
@@ -891,8 +925,7 @@ function montarListaInd(){
   }
 }
 function abrirPop(id, botao){
-  const outro = id === "pop" ? "popInd" : "pop";
-  $(outro).classList.remove("aberto");
+  document.querySelectorAll(".pop").forEach(p => { if (p.id !== id) p.classList.remove("aberto"); });
   const r = $(botao).getBoundingClientRect();
   $(id).style.left = Math.max(8, Math.min(r.left, innerWidth - 300)) + "px";
   $(id).classList.toggle("aberto");
@@ -909,8 +942,8 @@ $("bAjustes").addEventListener("click", e => {
   cfg.pesos.forEach((v, i) => $("w" + i).value = v);
   abrirPop("pop", "bAjustes");
 });
-for (const id of ["pop", "popInd"]) $(id).addEventListener("click", e => e.stopPropagation());
-document.addEventListener("click", () => { $("pop").classList.remove("aberto"); $("popInd").classList.remove("aberto"); });
+for (const id of ["pop", "popInd", "popTf"]) $(id).addEventListener("click", e => e.stopPropagation());
+document.addEventListener("click", () => document.querySelectorAll(".pop").forEach(p => p.classList.remove("aberto")));
 $("aplicar").addEventListener("click", () => {
   $("pop").classList.remove("aberto");
   trocar({barras: +$("barras").value, filtro: Math.max(0, +$("filtro").value || 0), auto: +$("auto").value,
@@ -1353,7 +1386,6 @@ $("bLado").addEventListener("click", () => {
   const aberta = $("lado").classList.toggle("aberta");
   $("bLado").textContent = aberta ? "Lista e zonas ▾" : "Lista e zonas ▴";
 });
-$("tfSel").addEventListener("change", e => trocar({tf: e.target.value}));
 const FUSO = (() => { const m = -new Date().getTimezoneOffset(), h = m / 60; return "UTC" + (h >= 0 ? "+" : "−") + Math.abs(h); })();
 setInterval(() => { $("relogio").textContent = new Date().toLocaleTimeString("pt-BR") + " " + FUSO; }, 1000);
 montarBarra();
