@@ -5,125 +5,170 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LiqMap — Mapa de Liquidações</title>
 <style>
-:root{--bg:#0b0e14;--panel:#121722;--line:#1e2430;--txt:#d6d9e0;--sub:#8a93a6;--short:#ffd600;--long:#00e5ff;--err:#ff7b72}
+:root{
+  --bg:#131722;--panel:#1e222d;--panel2:#171b26;--line:#2a2e39;--hover:#2a2e39;
+  --txt:#d1d4dc;--sub:#787b86;--up:#089981;--down:#f23645;--accent:#2962ff;
+  --short:#ffd600;--long:#00e5ff;
+}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--txt);font-family:system-ui,"Segoe UI",Arial,sans-serif}
-header{padding:12px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
-h1{font-size:18px;margin:0}
-.sub{color:var(--sub);font-size:13px}
-.ctrl{padding:10px 16px;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;gap:12px;align-items:end;font-size:13px}
-.ctrl label{display:flex;flex-direction:column;gap:4px;color:var(--sub)}
-select,input,button{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit}
-input[type=number]{width:70px}
-button{cursor:pointer}
-button:hover{border-color:#3a4458}
-details{padding:0 16px;font-size:13px;color:var(--sub)}
-details summary{cursor:pointer;padding:8px 0}
-.pesos{display:flex;flex-wrap:wrap;gap:10px;padding-bottom:10px}
-.pesos label{display:flex;flex-direction:column;gap:2px}
-section{padding:12px 16px;border-bottom:1px solid var(--line)}
-h2{font-size:16px;margin:0 0 6px}
-.resumo{font-size:14px;margin:0 0 10px}
-.zonas{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px}
-.tw{overflow-x:auto;max-width:100%}
-table{border-collapse:collapse;font-size:13px}
-td,th{padding:3px 10px;text-align:right;white-space:nowrap}
-th{color:var(--sub);font-weight:500}
-td:first-child,th:first-child{text-align:left}
-.s{color:var(--short)} .l{color:var(--long)} .e{color:var(--err)}
-.plot{width:100%;height:560px}
-.nota{color:var(--sub);font-size:12px;padding:10px 16px 24px;line-height:1.5}
-@media (max-width:600px){.plot{height:440px}}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.4 -apple-system,BlinkMacSystemFont,"Trebuchet MS",Roboto,Ubuntu,"Segoe UI",sans-serif;display:flex;flex-direction:column;overflow:hidden}
+button,select,input{font:inherit;color:inherit}
+/* ---------- barra superior ---------- */
+.top{display:flex;align-items:center;gap:2px;height:44px;padding:0 8px;border-bottom:1px solid var(--line);background:var(--bg);flex:0 0 auto;overflow-x:auto;scrollbar-width:none}
+.top::-webkit-scrollbar{display:none}
+.marca{font-weight:700;letter-spacing:.2px;padding:0 10px 0 4px;white-space:nowrap}
+.marca span{color:var(--accent)}
+.sep{width:1px;height:24px;background:var(--line);margin:0 6px;flex:0 0 auto}
+.btn{background:transparent;border:0;border-radius:4px;padding:6px 8px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.btn:hover{background:var(--hover)}
+.btn[aria-pressed=true]{color:var(--accent)}
+.simbolo{font-weight:600;font-size:14px}
+.direita{margin-left:auto;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.status{color:var(--sub);font-size:12px}
+.status.err{color:var(--down)}
+.ponto{width:8px;height:8px;border-radius:50%;background:var(--sub);display:inline-block}
+.ponto.on{background:var(--up)}
+/* ---------- área principal ---------- */
+.area{flex:1 1 auto;display:flex;min-height:0}
+.graf{position:relative;flex:1 1 auto;min-width:0;background:var(--bg)}
+#heat{position:absolute;left:0;top:0;z-index:0;pointer-events:none}
+#chart{position:absolute;inset:0;z-index:1}
+.legenda{position:absolute;left:12px;top:8px;z-index:2;pointer-events:none;font-size:13px;line-height:1.6;text-shadow:0 0 3px var(--bg)}
+.legenda .t{font-size:15px;font-weight:600}
+.legenda b{font-weight:500}
+.legenda .v{color:var(--sub)}
+.up{color:var(--up)} .down{color:var(--down)} .s{color:var(--short)} .l{color:var(--long)}
+.carregando{position:absolute;inset:0;z-index:3;display:flex;align-items:center;justify-content:center;color:var(--sub);background:rgba(19,23,34,.6)}
+/* ---------- painel lateral ---------- */
+.lado{width:300px;flex:0 0 300px;border-left:1px solid var(--line);background:var(--bg);display:flex;flex-direction:column;overflow-y:auto}
+.bloco{border-bottom:1px solid var(--line);padding:10px 12px}
+.bloco h3{margin:0 0 8px;font-size:13px;font-weight:600;display:flex;justify-content:space-between;align-items:center}
+.bloco h3 small{color:var(--sub);font-weight:400}
+.wl{width:100%;border-collapse:collapse}
+.wl td{padding:6px 4px;cursor:pointer}
+.wl tr:hover td{background:var(--hover)}
+.wl tr.sel td:first-child{box-shadow:inset 2px 0 0 var(--accent)}
+.wl td.n{text-align:right;font-variant-numeric:tabular-nums}
+.res{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px}
+.res div{background:var(--panel2);border-radius:4px;padding:6px 8px}
+.res .k{color:var(--sub);font-size:11px}
+.res .val{font-weight:600;font-size:14px}
+.zt{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+.zt th{color:var(--sub);font-weight:400;text-align:right;padding:3px 4px}
+.zt td{text-align:right;padding:3px 4px}
+.zt th:first-child,.zt td:first-child{text-align:left}
+.zt tr.cab td{color:var(--sub);padding-top:8px;text-align:left}
+.nota{color:var(--sub);font-size:11px;line-height:1.5}
+/* ---------- ajustes (popover) ---------- */
+.pop{position:fixed;top:48px;z-index:20;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px;width:280px;box-shadow:0 8px 24px rgba(0,0,0,.4);display:none}
+.pop.aberto{display:block}
+.pop h4{margin:0 0 8px;font-size:13px}
+.pop label{display:flex;justify-content:space-between;align-items:center;margin:6px 0;color:var(--sub)}
+.pop input,.pop select{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:4px 6px;width:90px;color:var(--txt)}
+.pesos{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:4px}
+.pesos label{flex-direction:column;align-items:stretch;margin:0;font-size:11px}
+.pesos input{width:100%}
+.pop .ok{margin-top:10px;width:100%;background:var(--accent);border:0;border-radius:4px;padding:7px;color:#fff;cursor:pointer}
+/* ---------- celular ---------- */
+@media (max-width:820px){
+  body{overflow:auto}
+  .area{flex-direction:column}
+  .graf{height:62vh;flex:0 0 auto}
+  .lado{width:auto;flex:0 0 auto;border-left:0;border-top:1px solid var(--line)}
+  .marca{display:none}
+}
 </style>
 </head>
 <body>
-<header>
-  <h1>LiqMap — mapa de liquidações estimado</h1>
-  <div class="sub" id="status">Carregando…</div>
-</header>
 
-<div class="ctrl">
-  <label>Tempo gráfico
-    <select id="tf">
-      <option value="5m">5m</option><option value="15m" selected>15m</option><option value="30m">30m</option>
-      <option value="1h">1h</option><option value="2h">2h</option><option value="4h">4h</option>
-    </select>
-  </label>
-  <label>Candles
-    <select id="barras"><option>300</option><option>500</option><option selected>1000</option><option>1500</option></select>
-  </label>
-  <label>Filtro de ruído
-    <input id="filtro" type="number" min="0" step="0.1" value="1.0">
-  </label>
-  <label>Atualizar a cada
-    <select id="auto"><option value="0">desligado</option><option value="5">5 min</option><option value="15" selected>15 min</option><option value="60">60 min</option></select>
-  </label>
-  <button id="atualizar">Atualizar agora</button>
+<div class="top">
+  <div class="marca">Liq<span>Map</span></div>
+  <button class="btn simbolo" id="bSimb" title="Trocar ativo">BTCUSDT ▾</button>
+  <div class="sep"></div>
+  <div id="tfs" style="display:flex"></div>
+  <div class="sep"></div>
+  <button class="btn" id="bHeat" aria-pressed="true" title="Mostrar/ocultar mapa de liquidações">▦ Mapa de liquidações</button>
+  <button class="btn" id="bAjustes" title="Ajustes do modelo">⚙ Ajustes</button>
+  <button class="btn" id="bAtualizar" title="Recalcular agora">⟳</button>
+  <div class="direita">
+    <span class="status" id="status">Carregando…</span>
+    <span class="ponto" id="ponto" title="Preço ao vivo"></span>
+    <a class="btn" href="opcoes.html" title="Mapa de opções B3" style="text-decoration:none;color:var(--txt)">Opções B3 ↗</a>
+  </div>
 </div>
 
-<details>
-  <summary>Distribuição de alavancagem (pesos)</summary>
+<div class="area">
+  <div class="graf" id="graf">
+    <canvas id="heat"></canvas>
+    <div id="chart"></div>
+    <div class="legenda" id="legenda"></div>
+    <div class="carregando" id="carregando">Carregando dados da Binance…</div>
+  </div>
+  <aside class="lado">
+    <div class="bloco">
+      <h3>Lista de observação <small>Binance Futures</small></h3>
+      <table class="wl" id="wl"></table>
+    </div>
+    <div class="bloco">
+      <h3>Zonas de liquidação <small id="zTf"></small></h3>
+      <div class="res" id="res"></div>
+      <table class="zt" id="zonas"></table>
+    </div>
+    <div class="bloco nota">
+      Estimativa própria a partir do Open Interest público da Binance Futures (até ~30 dias de histórico).
+      Mostra onde posições alavancadas <b>seriam</b> liquidadas — não são ordens reais, os valores são aproximados e o mapa não prevê direção.
+      Faixas claras = mais concentração. Passe o mouse no gráfico para ver o valor estimado em cada nível. Não é recomendação de investimento.
+    </div>
+  </aside>
+</div>
+
+<div class="pop" id="pop">
+  <h4>Ajustes do modelo</h4>
+  <label>Candles <select id="barras"><option>300</option><option>500</option><option selected>1000</option><option>1500</option></select></label>
+  <label>Filtro de ruído <input id="filtro" type="number" min="0" step="0.1" value="1.0"></label>
+  <label>Recalcular mapa a cada <select id="auto"><option value="0">desligado</option><option value="5">5 min</option><option value="15" selected>15 min</option><option value="60">60 min</option></select></label>
+  <label style="margin-top:10px">Pesos de alavancagem</label>
   <div class="pesos" id="pesos"></div>
-</details>
-
-<div id="moedas"></div>
-
-<div class="nota">
-  Estimativa própria a partir do Open Interest público da Binance Futures (histórico de até ~30 dias).
-  Mostra onde posições alavancadas <b>seriam</b> liquidadas — não são ordens reais, os valores são aproximados e o mapa não prevê direção.
-  Amarelo/claro = mais concentração. Passe o mouse no mapa para ver o valor estimado de cada nível. Não é recomendação de investimento.
+  <button class="ok" id="aplicar">Aplicar</button>
 </div>
 
 <script>
 "use strict";
 const BASE = "https://fapi.binance.com";
+const WS = "wss://fstream.binance.com/stream?streams=";
 const SIMBOLOS = ["BTCUSDT", "ETHUSDT"];
+const TFS = ["5m", "15m", "30m", "1h", "2h", "4h"];
 const TF_MS = {"5m":3e5,"15m":9e5,"30m":18e5,"1h":36e5,"2h":72e5,"4h":144e5};
 const LEVS = [3, 5, 10, 25, 50, 100];
 const PESOS_PADRAO = [5, 10, 25, 30, 20, 10];
-const MMR = 0.005;
-const OI_MAX_DIAS = 29;
-const FAIXAS = 250;
+const MMR = 0.005, OI_MAX_DIAS = 29, FAIXAS = 300, NIVEIS = 48;
 const DEMO = new URLSearchParams(location.search).has("demo");
-
-// ---------- preferências do visitante (só neste navegador) ----------
-function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap") || "{}"); } catch(e){ return {}; } }
-function salvarPrefs(p){ try { localStorage.setItem("liqmap", JSON.stringify(p)); } catch(e){} }
-
 const $ = id => document.getElementById(id);
-const pesosBox = $("pesos");
-LEVS.forEach((L, i) => {
-  const lb = document.createElement("label");
-  lb.textContent = L + "×";
-  const inp = document.createElement("input");
-  inp.type = "number"; inp.min = "0"; inp.step = "1"; inp.value = PESOS_PADRAO[i]; inp.id = "w" + i;
-  lb.appendChild(inp); pesosBox.appendChild(lb);
-});
-(function aplicarPrefs(){
-  const p = lerPrefs();
-  if (p.tf) $("tf").value = p.tf;
-  if (p.barras) $("barras").value = p.barras;
-  if (p.filtro != null) $("filtro").value = p.filtro;
-  if (p.auto != null) $("auto").value = p.auto;
-  if (Array.isArray(p.pesos) && p.pesos.length === 6) p.pesos.forEach((v, i) => $("w" + i).value = v);
-})();
 
-function config(){
-  const c = {
-    tf: $("tf").value,
-    barras: +$("barras").value,
-    filtro: Math.max(0, +$("filtro").value || 0),
-    auto: +$("auto").value,
-    pesos: LEVS.map((_, i) => Math.max(0, +$("w" + i).value || 0))
-  };
-  salvarPrefs(c);
-  return c;
+// ---------- preferências (só neste navegador) ----------
+function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap2") || "{}"); } catch(e){ return {}; } }
+function salvarPrefs(){ try { localStorage.setItem("liqmap2", JSON.stringify(cfg)); } catch(e){} }
+const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
+if (!SIMBOLOS.includes(cfg.simbolo)) cfg.simbolo = "BTCUSDT";
+if (!TFS.includes(cfg.tf)) cfg.tf = "15m";
+if (!Array.isArray(cfg.pesos) || cfg.pesos.length !== 6) cfg.pesos = PESOS_PADRAO.slice();
+
+// ---------- formatação ----------
+const usd = x => x >= 1e9 ? "$" + (x/1e9).toFixed(2) + "B" : x >= 1e6 ? "$" + (x/1e6).toFixed(1) + "M" : x >= 1e3 ? "$" + (x/1e3).toFixed(1) + "K" : "$" + x.toFixed(0);
+const casas = p => p >= 1000 ? 1 : p >= 10 ? 2 : 4;
+const pr = p => p == null ? "—" : p.toLocaleString("pt-BR", {minimumFractionDigits: casas(p), maximumFractionDigits: casas(p)});
+const pct = x => (x >= 0 ? "+" : "") + x.toFixed(2).replace(".", ",") + "%";
+function el(tag, attrs, ...filhos){
+  const e = document.createElement(tag);
+  for (const k in attrs || {}) e.setAttribute(k, attrs[k]);
+  for (const f of filhos) e.append(f instanceof Node ? f : document.createTextNode(String(f)));
+  return e;
 }
 
 // ---------- dados ----------
 async function getJSON(path, params){
-  const url = BASE + path + "?" + new URLSearchParams(params);
-  const r = await fetch(url);
+  const r = await fetch(BASE + path + "?" + new URLSearchParams(params));
   if (!r.ok) throw new Error("Binance respondeu " + r.status + (r.status === 451 || r.status === 403 ? " (acesso bloqueado nesta região)" : ""));
   return r.json();
 }
@@ -142,18 +187,18 @@ async function buscarOI(sym, tf, ini, fim){
   }
   return oi;
 }
-function dadosDemo(tf, n, semente){
-  let seed = semente;
+function dadosDemo(sym, tf, n){
+  let seed = sym === "BTCUSDT" ? 7 : 11;
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
-  const tfms = TF_MS[tf], t0 = (Math.floor(Date.now() / tfms) - n) * tfms;
-  let p = semente === 7 ? 65000 : 3200, o = 8e9;
+  const g = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+  const tfms = TF_MS[tf], t0 = (Math.floor(Date.now() / tfms) - n + 1) * tfms;
+  let p = sym === "BTCUSDT" ? 65000 : 3200, o = 8e9;
   const kl = [], oi = new Map();
   for (let i = 0; i < n; i++) {
     const t = t0 + i * tfms; oi.set(t, o);
-    const ab = p; p *= Math.exp(gauss() * 0.004);
-    kl.push({t, o: ab, h: Math.max(ab, p) * (1 + Math.abs(gauss()) * 0.0015), l: Math.min(ab, p) * (1 - Math.abs(gauss()) * 0.0015), c: p});
-    o *= Math.exp(0.0004 + gauss() * 0.004);
+    const ab = p; p *= Math.exp(g() * 0.004);
+    kl.push({t, o: ab, h: Math.max(ab, p) * (1 + Math.abs(g()) * 0.0015), l: Math.min(ab, p) * (1 - Math.abs(g()) * 0.0015), c: p});
+    o *= Math.exp(0.0004 + g() * 0.004);
   }
   oi.set(t0 + n * tfms, o);
   return {kl, oi};
@@ -164,20 +209,18 @@ function montarMapa(kl, oi, tf, filtro, pesos){
   const tfms = TF_MS[tf];
   let lo = Infinity, hi = -Infinity;
   for (const k of kl) { if (k.l < lo) lo = k.l; if (k.h > hi) hi = k.h; }
-  const pmin = lo * 0.92, pmax = hi * 1.08, w = (pmax - pmin) / FAIXAS;
+  const pmin = lo * 0.85, pmax = hi * 1.15, w = (pmax - pmin) / FAIXAS;
   const idx = p => Math.floor((p - pmin) / w);
   const longs = new Float64Array(FAIXAS), shorts = new Float64Array(FAIXAS);
-  const colunas = [], hist = [];
   const somaP = pesos.reduce((a, b) => a + b, 0);
-
+  const hist = [];
+  const cols = [];  // valor total por faixa em cada candle
   for (const k of kl) {
     for (let b = Math.max(idx(k.l), 0); b < FAIXAS; b++) longs[b] = 0;
     for (let b = 0; b <= Math.min(idx(k.h), FAIXAS - 1); b++) shorts[b] = 0;
-
     const o0 = oi.get(k.t), o1 = oi.get(k.t + tfms);
     if (o0 != null && o1 != null && somaP > 0) {
-      const d = o1 - o0;
-      const ult = hist.slice(-50);
+      const d = o1 - o0, ult = hist.slice(-50);
       const ref = ult.length ? ult.reduce((a, b) => a + b, 0) / ult.length : 0;
       hist.push(Math.max(d, 0));
       if (d > 0 && d >= ref * filtro) {
@@ -191,126 +234,295 @@ function montarMapa(kl, oi, tf, filtro, pesos){
         });
       }
     }
-    const col = new Float64Array(FAIXAS);
+    const col = new Float32Array(FAIXAS);
     for (let b = 0; b < FAIXAS; b++) col[b] = longs[b] + shorts[b];
-    colunas.push(col);
+    cols.push(col);
   }
-
-  const centros = Array.from({length: FAIXAS}, (_, b) => pmin + (b + 0.5) * w);
   let mx = 0;
-  for (const c of colunas) for (const v of c) if (v > mx) mx = v;
+  for (const c of cols) for (const v of c) if (v > mx) mx = v;
   mx = mx || 1;
-  const z = [], v = [];
+  // compacta em "faixas contínuas" (mesma intensidade ao longo do tempo) para desenhar rápido
+  const runs = [];
   for (let b = 0; b < FAIXAS; b++) {
-    const zr = new Array(colunas.length), vr = new Array(colunas.length);
-    for (let t = 0; t < colunas.length; t++) { zr[t] = Math.sqrt(colunas[t][b] / mx); vr[t] = colunas[t][b] / 1e6; }
-    z.push(zr); v.push(vr);
+    let ini = -1, q0 = 0;
+    for (let t = 0; t <= cols.length; t++) {
+      const q = t < cols.length ? Math.round(Math.sqrt(cols[t][b] / mx) * NIVEIS) : 0;
+      if (q !== q0) {
+        if (q0 > 0) runs.push([b, ini, t - 1, q0]);
+        ini = t; q0 = q;
+      }
+    }
   }
   const ultimo = kl[kl.length - 1].c;
   const mxAtual = Math.max(...longs, ...shorts) || 1;
-  const top = arr => [...arr].map((val, b) => [val, b]).filter(x => x[0] > 0).sort((a, b) => b[0] - a[0]).slice(0, 5)
-    .map(([val, b]) => ({preco: centros[b], dist: (centros[b] / ultimo - 1) * 100, forca: val / mxAtual * 100, valor: val}));
-  const perto = (arr, pct) => { let s = 0; for (let b = 0; b < FAIXAS; b++) if (Math.abs(centros[b] / ultimo - 1) * 100 <= pct) s += arr[b]; return s; };
-  const soma = arr => arr.reduce((a, b) => a + b, 0);
-  return {z, v, y: centros, ultimo, lo, hi, shorts: top(shorts), longs: top(longs), barrasOI: hist.length,
-          totS: soma(shorts), totL: soma(longs), s5: perto(shorts, 5), l5: perto(longs, 5)};
+  const centro = b => pmin + (b + 0.5) * w;
+  const top = arr => [...arr].map((v, b) => [v, b]).filter(x => x[0] > 0).sort((a, b) => b[0] - a[0]).slice(0, 5)
+    .map(([v, b]) => ({preco: centro(b), dist: (centro(b) / ultimo - 1) * 100, forca: v / mxAtual * 100, valor: v}));
+  const perto = (arr, p) => { let s = 0; for (let b = 0; b < FAIXAS; b++) if (Math.abs(centro(b) / ultimo - 1) * 100 <= p) s += arr[b]; return s; };
+  return {pmin, w, cols, runs, ultimo, barrasOI: hist.length,
+          shorts: top(shorts), longs: top(longs), s5: perto(shorts, 5), l5: perto(longs, 5)};
 }
 
-// ---------- exibição ----------
-const usd = x => x >= 1e9 ? "$" + (x / 1e9).toFixed(2) + "B" : x >= 1e6 ? "$" + (x / 1e6).toFixed(1) + "M" : x >= 1e3 ? "$" + (x / 1e3).toFixed(1) + "K" : "$" + x.toFixed(0);
-const num = (x, d = 2) => x.toLocaleString("pt-BR", {minimumFractionDigits: d, maximumFractionDigits: d});
-const pct = x => (x >= 0 ? "+" : "") + num(x) + "%";
-function el(tag, attrs, ...filhos){
-  const e = document.createElement(tag);
-  for (const k in attrs || {}) e.setAttribute(k, attrs[k]);
-  for (const f of filhos) e.append(f instanceof Node ? f : document.createTextNode(String(f)));
-  return e;
-}
-function tabela(zonas, cls, titulo){
-  const t = el("table", {}, el("tr", {}, el("th", {}, titulo), el("th", {}, "Distância"), el("th", {}, "Valor estimado"), el("th", {}, "Força")));
-  if (!zonas.length) t.append(el("tr", {}, el("td", {colspan: "4"}, "—")));
-  for (const z of zonas) t.append(el("tr", {}, el("td", {class: cls}, num(z.preco)), el("td", {}, pct(z.dist)), el("td", {}, el("b", {}, usd(z.valor))), el("td", {}, z.forca.toFixed(0) + "%")));
-  return el("div", {class: "tw"}, t);
-}
-function fmtHora(t){
-  const d = new Date(t), p = n => String(n).padStart(2, "0");
-  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
-}
-function desenhar(sym, cfg, kl, m){
-  const sec = el("section", {},
-    el("h2", {}, sym + " · " + cfg.tf + " · último " + num(m.ultimo)),
-    el("div", {class: "resumo"}, "Até 5% do preço: ", el("span", {class: "s"}, "shorts " + usd(m.s5)), " acima · ",
-       el("span", {class: "l"}, "longs " + usd(m.l5)), " abaixo  |  Total no mapa: ",
-       el("span", {class: "s"}, usd(m.totS)), " / ", el("span", {class: "l"}, usd(m.totL))),
-    el("div", {class: "zonas"}, tabela(m.shorts, "s", "Shorts acima ↑"), tabela(m.longs, "l", "Longs abaixo ↓")));
-  const div = el("div", {class: "plot"});
-  sec.append(div);
-  if (m.barrasOI === 0) sec.insertBefore(el("p", {class: "e"}, "Sem dados de Open Interest para este período — tente um tempo gráfico maior ou menos candles."), div);
-  $("moedas").append(sec);
-  if (!window.Plotly) { div.textContent = "Não foi possível carregar a biblioteca do gráfico (verifique a internet)."; return; }
-  const x = kl.map(k => fmtHora(k.t));
-  Plotly.newPlot(div, [
-    {type: "heatmap", x, y: m.y, z: m.z, customdata: m.v, showscale: false, zmin: 0, zmax: 1,
-     colorscale: [[0,"#0b0e14"],[0.08,"#1d1147"],[0.3,"#5c1a80"],[0.55,"#b8336a"],[0.8,"#f68f45"],[1,"#fcfdbf"]],
-     hovertemplate: "Preço %{y:,.2f}<br>Liquidação estimada: $%{customdata:,.2f}M<extra></extra>"},
-    {type: "candlestick", x, open: kl.map(k => k.o), high: kl.map(k => k.h), low: kl.map(k => k.l), close: kl.map(k => k.c),
-     increasing: {line: {color: "#26a69a"}}, decreasing: {line: {color: "#ef5350"}}, hoverinfo: "x+y"}
-  ], {
-    paper_bgcolor: "#0b0e14", plot_bgcolor: "#0b0e14", font: {color: "#c9ced8"}, margin: {l: 64, r: 12, t: 8, b: 40},
-    showlegend: false, dragmode: "zoom", xaxis: {rangeslider: {visible: false}, gridcolor: "#1a1f2b"},
-    yaxis: {range: [m.lo * 0.96, m.hi * 1.04], gridcolor: "#1a1f2b", tickformat: ",.0f"},
-    shapes: [{type: "line", xref: "paper", x0: 0, x1: 1, y0: m.ultimo, y1: m.ultimo, line: {color: "#ffffff", width: 1, dash: "dot"}}]
-  }, {responsive: true, displaylogo: false});
+// ---------- cores do mapa ----------
+const PALETA = (() => {
+  const st = [[0,[19,23,34,0]],[0.15,[40,30,120,0.18]],[0.35,[90,30,150,0.45]],[0.6,[190,55,125,0.75]],[0.82,[250,150,60,0.9]],[1,[252,253,191,0.98]]];
+  const out = [];
+  for (let q = 0; q <= NIVEIS; q++) {
+    const x = q / NIVEIS;
+    let i = 0; while (i < st.length - 2 && x > st[i + 1][0]) i++;
+    const [x0, c0] = st[i], [x1, c1] = st[i + 1], f = (x - x0) / (x1 - x0 || 1);
+    const c = c0.map((v, j) => v + (c1[j] - v) * f);
+    out.push(`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${c[3].toFixed(2)})`);
+  }
+  return out;
+})();
+
+// ---------- gráfico ----------
+const graf = $("graf"), canvas = $("heat"), ctx = canvas.getContext("2d");
+let chart, serie, mapa = null, velas = [], assinatura = "";
+
+function criarGrafico(){
+  const LWC = window.LightweightCharts;
+  chart = LWC.createChart($("chart"), {
+    autoSize: true,
+    layout: {background: {type: "solid", color: "transparent"}, textColor: "#d1d4dc", fontSize: 12,
+             fontFamily: '-apple-system,BlinkMacSystemFont,"Trebuchet MS",Roboto,Ubuntu,sans-serif', attributionLogo: true},
+    grid: {vertLines: {color: "rgba(42,46,57,0.5)"}, horzLines: {color: "rgba(42,46,57,0.5)"}},
+    crosshair: {mode: LWC.CrosshairMode.Normal,
+                vertLine: {color: "#9598a1", width: 1, style: LWC.LineStyle.Dashed, labelBackgroundColor: "#2a2e39"},
+                horzLine: {color: "#9598a1", width: 1, style: LWC.LineStyle.Dashed, labelBackgroundColor: "#2a2e39"}},
+    rightPriceScale: {borderColor: "#2a2e39", scaleMargins: {top: 0.08, bottom: 0.08}},
+    timeScale: {borderColor: "#2a2e39", timeVisible: true, secondsVisible: false, rightOffset: 12, barSpacing: 6},
+    localization: {locale: "pt-BR", priceFormatter: p => pr(p)}
+  });
+  serie = chart.addCandlestickSeries({upColor: "#089981", downColor: "#f23645", borderVisible: false,
+                                      wickUpColor: "#089981", wickDownColor: "#f23645"});
+  chart.subscribeCrosshairMove(atualizarLegenda);
+  requestAnimationFrame(loopDesenho);
 }
 
-// ---------- ciclo ----------
-let timer = null, ocupado = false;
-async function atualizar(){
+// redesenha o mapa só quando zoom, rolagem, escala ou tamanho mudam
+function loopDesenho(){
+  if (chart && serie) {
+    const ts = chart.timeScale();
+    const a = ts.logicalToCoordinate(0), b = ts.logicalToCoordinate(100);
+    const p1 = mapa ? serie.priceToCoordinate(mapa.pmin) : 0, p2 = mapa ? serie.priceToCoordinate(mapa.pmin + mapa.w * FAIXAS) : 0;
+    const sig = [a, b, p1, p2, graf.clientWidth, graf.clientHeight, cfg.heat, mapa ? mapa.runs.length : 0].join("|");
+    if (sig !== assinatura) { assinatura = sig; desenharMapa(); }
+  }
+  requestAnimationFrame(loopDesenho);
+}
+
+function desenharMapa(){
+  const dpr = window.devicePixelRatio || 1;
+  const W = chart.timeScale().width(), H = graf.clientHeight - chart.timeScale().height();
+  if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    canvas.style.width = W + "px"; canvas.style.height = H + "px";
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  if (!mapa || !cfg.heat || !velas.length) return;
+  const ts = chart.timeScale();
+  const x0 = ts.logicalToCoordinate(0), x1 = ts.logicalToCoordinate(1);
+  if (x0 == null || x1 == null) return;
+  const passo = x1 - x0, ult = velas.length - 1;
+  const yDe = p => serie.priceToCoordinate(p);
+  for (const [b, i0, i1, q] of mapa.runs) {
+    if (q < 4) continue;  // ignora níveis muito fracos (só ruído visual)
+    const yTop = yDe(mapa.pmin + (b + 1) * mapa.w), yBot = yDe(mapa.pmin + b * mapa.w);
+    if (yTop == null || yBot == null || yBot < 0 || yTop > H) continue;
+    const xa = x0 + (i0 - 0.5) * passo;
+    const xb = i1 >= ult ? W : x0 + (i1 + 0.5) * passo;  // níveis ainda ativos seguem até a borda direita
+    if (xb < 0 || xa > W) continue;
+    ctx.fillStyle = PALETA[q];
+    ctx.fillRect(xa, yTop, xb - xa, Math.max(1, yBot - yTop));
+  }
+}
+
+function atualizarLegenda(param){
+  const leg = $("legenda");
+  if (!velas.length) { leg.replaceChildren(); return; }
+  let k = velas[velas.length - 1], i = velas.length - 1;
+  if (param && param.time != null) {
+    const j = velas.findIndex(v => v.time === param.time);
+    if (j >= 0) { k = velas[j]; i = j; }
+  }
+  const cls = k.close >= k.open ? "up" : "down";
+  const linha1 = el("div", {}, el("span", {class: "t"}, cfg.simbolo + " · " + cfg.tf + " · Binance Futures  "));
+  const linha2 = el("div", {},
+    el("span", {class: "v"}, "A "), el("b", {class: cls}, pr(k.open)), el("span", {class: "v"}, "  M "), el("b", {class: cls}, pr(k.high)),
+    el("span", {class: "v"}, "  m "), el("b", {class: cls}, pr(k.low)), el("span", {class: "v"}, "  F "), el("b", {class: cls}, pr(k.close)),
+    el("span", {class: cls}, "  " + pct((k.close / k.open - 1) * 100)));
+  leg.replaceChildren(linha1, linha2);
+  if (mapa && cfg.heat && param && param.point) {
+    const preco = serie.coordinateToPrice(param.point.y);
+    const col = mapa.cols[Math.min(i, mapa.cols.length - 1)];
+    const b = Math.floor((preco - mapa.pmin) / mapa.w);
+    if (col && b >= 0 && b < FAIXAS) {
+      const v = col[b];
+      leg.append(el("div", {}, el("span", {class: "v"}, "Liquidação estimada em " + pr(preco) + ": "),
+        el("b", {class: preco >= k.close ? "s" : "l"}, v > 0 ? usd(v) : "—")));
+    }
+  }
+}
+
+// ---------- painel lateral ----------
+const tickers = {};
+function desenharLista(){
+  const t = $("wl"); t.replaceChildren();
+  for (const s of SIMBOLOS) {
+    const d = tickers[s] || {};
+    const tr = el("tr", {class: s === cfg.simbolo ? "sel" : ""},
+      el("td", {}, el("b", {}, s)),
+      el("td", {class: "n"}, d.c != null ? pr(d.c) : "—"),
+      el("td", {class: "n " + ((d.p || 0) >= 0 ? "up" : "down")}, d.p != null ? pct(d.p) : ""));
+    tr.addEventListener("click", () => trocar({simbolo: s}));
+    t.append(tr);
+  }
+}
+function desenharZonas(){
+  $("zTf").textContent = cfg.simbolo + " · " + cfg.tf;
+  const res = $("res"); res.replaceChildren();
+  const z = $("zonas"); z.replaceChildren();
+  if (!mapa) return;
+  res.append(
+    el("div", {}, el("div", {class: "k"}, "Shorts até +5%"), el("div", {class: "val s"}, usd(mapa.s5))),
+    el("div", {}, el("div", {class: "k"}, "Longs até −5%"), el("div", {class: "val l"}, usd(mapa.l5))));
+  z.append(el("tr", {}, el("th", {}, "Preço"), el("th", {}, "Dist."), el("th", {}, "Valor est."), el("th", {}, "Força")));
+  const bloco = (tit, cls, lista) => {
+    z.append(el("tr", {class: "cab"}, el("td", {colspan: "4"}, tit)));
+    if (!lista.length) z.append(el("tr", {}, el("td", {colspan: "4"}, "—")));
+    for (const r of lista) z.append(el("tr", {}, el("td", {class: cls}, pr(r.preco)), el("td", {}, pct(r.dist)),
+      el("td", {}, el("b", {}, usd(r.valor))), el("td", {}, r.forca.toFixed(0) + "%")));
+  };
+  bloco("Shorts acima ↑", "s", mapa.shorts);
+  bloco("Longs abaixo ↓", "l", mapa.longs);
+}
+
+// ---------- preço ao vivo (WebSocket da Binance) ----------
+let ws = null, wsFechadoDePropósito = false;
+function conectarWS(){
+  if (DEMO) return;
+  wsFechadoDePropósito = true;
+  if (ws) ws.close();
+  wsFechadoDePropósito = false;
+  const streams = SIMBOLOS.map(s => s.toLowerCase() + "@miniTicker").concat(cfg.simbolo.toLowerCase() + "@kline_" + cfg.tf);
+  ws = new WebSocket(WS + streams.join("/"));
+  ws.onopen = () => $("ponto").classList.add("on");
+  ws.onclose = () => { $("ponto").classList.remove("on"); if (!wsFechadoDePropósito) setTimeout(conectarWS, 5000); };
+  ws.onmessage = ev => {
+    const m = JSON.parse(ev.data), d = m.data;
+    if (!d) return;
+    if (d.e === "24hrMiniTicker") {
+      tickers[d.s] = {c: +d.c, p: (+d.c / +d.o - 1) * 100};
+      desenharLista();
+    } else if (d.e === "kline" && d.s === cfg.simbolo && d.k.i === cfg.tf && velas.length) {
+      const k = d.k, t = Math.floor(k.t / 1000);
+      const v = {time: t, open: +k.o, high: +k.h, low: +k.l, close: +k.c};
+      const ult = velas[velas.length - 1];
+      if (t === ult.time) velas[velas.length - 1] = v;
+      else if (t > ult.time) velas.push(v);
+      else return;
+      serie.update(v);
+      atualizarLegenda();
+    }
+  };
+}
+async function carregarTickers(){
+  if (DEMO) { tickers.BTCUSDT = {c: 65000, p: 1.2}; tickers.ETHUSDT = {c: 3200, p: -0.8}; desenharLista(); return; }
+  for (const s of SIMBOLOS) {
+    try { const d = await getJSON("/fapi/v1/ticker/24hr", {symbol: s}); tickers[s] = {c: +d.lastPrice, p: +d.priceChangePercent}; } catch(e) {}
+  }
+  desenharLista();
+}
+
+// ---------- ciclo principal ----------
+let timer = null, ocupado = false, pedido = 0;
+async function recalcular(manterZoom){
   if (ocupado) return;
   ocupado = true;
-  const cfg = config();
-  $("status").textContent = "Buscando dados…";
-  const novos = [], erros = [];
-  for (const [i, sym] of SIMBOLOS.entries()) {
-    try {
-      let kl, oi;
-      if (DEMO) ({kl, oi} = dadosDemo(cfg.tf, cfg.barras, i === 0 ? 7 : 11));
-      else {
-        kl = await buscarCandles(sym, cfg.tf, cfg.barras);
-        oi = await buscarOI(sym, cfg.tf, kl[0].t, kl[kl.length - 1].t + TF_MS[cfg.tf]);
-      }
-      novos.push([sym, kl, montarMapa(kl, oi, cfg.tf, cfg.filtro, cfg.pesos)]);
-    } catch (e) { erros.push(sym + ": " + (e.message || e)); }
+  const meu = ++pedido;
+  $("status").textContent = "Calculando…"; $("status").className = "status";
+  if (!manterZoom) $("carregando").style.display = "flex";
+  try {
+    let kl, oi;
+    if (DEMO) ({kl, oi} = dadosDemo(cfg.simbolo, cfg.tf, cfg.barras));
+    else {
+      kl = await buscarCandles(cfg.simbolo, cfg.tf, cfg.barras);
+      oi = await buscarOI(cfg.simbolo, cfg.tf, kl[0].t, kl[kl.length - 1].t + TF_MS[cfg.tf]);
+    }
+    if (meu !== pedido) return;
+    mapa = montarMapa(kl, oi, cfg.tf, cfg.filtro, cfg.pesos);
+    velas = kl.map(k => ({time: Math.floor(k.t / 1000), open: k.o, high: k.h, low: k.l, close: k.c}));
+    const faixa = manterZoom ? chart.timeScale().getVisibleLogicalRange() : null;
+    serie.setData(velas);
+    if (faixa) chart.timeScale().setVisibleLogicalRange(faixa);
+    else chart.timeScale().setVisibleLogicalRange({from: velas.length - 180, to: velas.length + 12});
+    assinatura = "";
+    atualizarLegenda(); desenharZonas();
+    $("status").textContent = (mapa.barrasOI ? "" : "Sem Open Interest para o período · ") + "Mapa de " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}) + (DEMO ? " · DADOS DE TESTE" : "");
+  } catch (e) {
+    $("status").textContent = "Erro: " + (e.message || e); $("status").className = "status err";
+  } finally {
+    ocupado = false;
+    $("carregando").style.display = "none";
+    clearInterval(timer);
+    if (cfg.auto > 0) timer = setInterval(() => recalcular(true), cfg.auto * 60000);
   }
-  if (novos.length) {
-    document.querySelectorAll("#moedas .plot").forEach(d => window.Plotly && Plotly.purge(d));
-    $("moedas").replaceChildren();
-    for (const [sym, kl, m] of novos) desenhar(sym, cfg, kl, m);
-  }
-  const agora = new Date().toLocaleString("pt-BR");
-  $("status").textContent = (erros.length ? "Erro — " + erros.join(" | ") + " · " : "") +
-    (novos.length ? "Atualizado " + agora : "Nenhum dado obtido") + " · Binance Futures" + (DEMO ? " · DADOS DE TESTE" : "");
-  $("status").className = "sub" + (erros.length ? " e" : "");
-  clearInterval(timer);
-  if (cfg.auto > 0) timer = setInterval(atualizar, cfg.auto * 60000);
-  ocupado = false;
 }
-// ---------- biblioteca do gráfico: tenta várias fontes, uma após a outra ----------
-const FONTES_PLOTLY = [
-  "https://cdn.plot.ly/plotly-2.35.2.min.js",
-  "https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js",
-  "https://unpkg.com/plotly.js-dist-min@2.35.2/plotly.min.js",
-  "https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js"
+function trocar(mud){
+  Object.assign(cfg, mud); salvarPrefs();
+  $("bSimb").textContent = cfg.simbolo + " ▾";
+  montarTfs(); desenharLista(); conectarWS();
+  ocupado = false; recalcular(false);
+}
+
+// ---------- controles ----------
+function montarTfs(){
+  const box = $("tfs"); box.replaceChildren();
+  for (const tf of TFS) {
+    const b = el("button", {class: "btn", "aria-pressed": String(tf === cfg.tf)}, tf);
+    b.addEventListener("click", () => trocar({tf}));
+    box.append(b);
+  }
+}
+$("bSimb").addEventListener("click", () => trocar({simbolo: SIMBOLOS[(SIMBOLOS.indexOf(cfg.simbolo) + 1) % SIMBOLOS.length]}));
+$("bHeat").addEventListener("click", () => { cfg.heat = !cfg.heat; salvarPrefs(); $("bHeat").setAttribute("aria-pressed", String(cfg.heat)); assinatura = ""; });
+$("bAtualizar").addEventListener("click", () => recalcular(true));
+const pesosBox = $("pesos");
+LEVS.forEach((L, i) => pesosBox.append(el("label", {}, L + "×", el("input", {type: "number", min: "0", step: "1", id: "w" + i}))));
+function abrirAjustes(){
+  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto;
+  cfg.pesos.forEach((v, i) => $("w" + i).value = v);
+  const r = $("bAjustes").getBoundingClientRect();
+  $("pop").style.left = Math.max(8, Math.min(r.left, innerWidth - 290)) + "px";
+  $("pop").classList.toggle("aberto");
+}
+$("bAjustes").addEventListener("click", e => { e.stopPropagation(); abrirAjustes(); });
+$("pop").addEventListener("click", e => e.stopPropagation());
+document.addEventListener("click", () => $("pop").classList.remove("aberto"));
+$("aplicar").addEventListener("click", () => {
+  $("pop").classList.remove("aberto");
+  trocar({barras: +$("barras").value, filtro: Math.max(0, +$("filtro").value || 0), auto: +$("auto").value,
+          pesos: LEVS.map((_, i) => Math.max(0, +$("w" + i).value || 0))});
+});
+
+// ---------- biblioteca de gráficos (código aberto da TradingView) ----------
+const FONTES = [
+  "https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js",
+  "https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/lightweight-charts/4.2.0/lightweight-charts.standalone.production.js"
 ];
-function carregarPlotly(){
-  return new Promise(resolve => {
+function carregarLib(){
+  return new Promise(res => {
     let i = 0;
     const tentar = () => {
-      if (window.Plotly) return resolve(true);
-      if (i >= FONTES_PLOTLY.length) return resolve(false);
+      if (window.LightweightCharts) return res(true);
+      if (i >= FONTES.length) return res(false);
       const s = document.createElement("script");
-      s.src = FONTES_PLOTLY[i++];
-      s.onload = () => window.Plotly ? resolve(true) : tentar();
+      s.src = FONTES[i++];
+      s.onload = () => window.LightweightCharts ? res(true) : tentar();
       s.onerror = () => { s.remove(); tentar(); };
       document.head.appendChild(s);
     };
@@ -318,9 +530,16 @@ function carregarPlotly(){
   });
 }
 
-$("atualizar").addEventListener("click", atualizar);
-["tf", "barras", "auto"].forEach(id => $(id).addEventListener("change", atualizar));
-carregarPlotly().then(atualizar);
+$("bHeat").setAttribute("aria-pressed", String(cfg.heat));
+$("bSimb").textContent = cfg.simbolo + " ▾";
+montarTfs(); desenharLista();
+carregarLib().then(ok => {
+  if (!ok) { $("carregando").textContent = "Não foi possível carregar a biblioteca do gráfico (verifique a internet)."; return; }
+  criarGrafico();
+  carregarTickers();
+  conectarWS();
+  recalcular(false);
+});
 </script>
 </body>
 </html>
