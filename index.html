@@ -155,7 +155,7 @@ button,select,input{font:inherit;color:inherit}
 <script>
 "use strict";
 const BASE = "https://fapi.binance.com";
-const WS = "wss://fstream.binance.com/stream?streams=";
+const WS = "wss://fstream.binance.com/market/stream?streams=";
 const SIMBOLOS = ["BTCUSDT", "ETHUSDT"];
 const TFS = ["5m", "15m", "30m", "1h", "2h", "4h"];
 const TF_MS = {"5m":3e5,"15m":9e5,"30m":18e5,"1h":36e5,"2h":72e5,"4h":144e5};
@@ -579,33 +579,76 @@ function desenharZonas(){
 }
 
 // ---------- preço ao vivo (WebSocket da Binance) ----------
-let ws = null, wsDeProposito = false;
+let ws = null, tickPendente = false, ultimoDado = 0;
+// Endereço novo da Binance para dados de mercado (os antigos /ws e /stream pararam em 23/04/2026)
 function conectarWS(){
   if (DEMO) return;
-  wsDeProposito = true; if (ws) ws.close(); wsDeProposito = false;
-  const streams = SIMBOLOS.map(s => s.toLowerCase() + "@miniTicker").concat(cfg.simbolo.toLowerCase() + "@kline_" + cfg.tf);
-  ws = new WebSocket(WS + streams.join("/"));
-  ws.onopen = () => $("ponto").classList.add("on");
-  ws.onclose = () => { $("ponto").classList.remove("on"); if (!wsDeProposito) setTimeout(conectarWS, 5000); };
-  ws.onmessage = ev => {
+  const antigo = ws; ws = null;
+  if (antigo) antigo.close();
+  const sym = cfg.simbolo.toLowerCase();
+  const streams = SIMBOLOS.map(s => s.toLowerCase() + "@miniTicker").concat(sym + "@kline_" + cfg.tf, sym + "@aggTrade");
+  const sock = new WebSocket(WS + streams.join("/"));
+  ws = sock;
+  sock.onclose = () => { if (ws === sock) { ws = null; $("ponto").classList.remove("on"); setTimeout(conectarWS, 5000); } };
+  sock.onmessage = ev => {
+    if (ws !== sock) return;
     const d = JSON.parse(ev.data).data;
     if (!d) return;
-    if (d.e === "24hrMiniTicker") { tickers[d.s] = {c: +d.c, p: (+d.c / +d.o - 1) * 100}; desenharLista(); }
+    ultimoDado = Date.now(); $("ponto").classList.add("on");
+    if (d.e === "aggTrade" && d.s === cfg.simbolo) aplicarPreco(+d.p, +d.T);
+    else if (d.e === "24hrMiniTicker") { tickers[d.s] = {c: +d.c, p: (+d.c / +d.o - 1) * 100}; desenharLista(); }
     else if (d.e === "kline" && d.s === cfg.simbolo && d.k.i === cfg.tf && velas.length) {
       const k = d.k, t = Math.floor(k.t / 1000);
-      const v = {time: t, open: +k.o, high: +k.h, low: +k.l, close: +k.c, q: +k.q, b: +k.Q};
       const ult = velas[velas.length - 1];
-      if (t === ult.time) velas[velas.length - 1] = v; else if (t > ult.time) velas.push(v); else return;
-      serie.update(v);
+      const v = {time: t, open: +k.o, high: +k.h, low: +k.l, close: +k.c, q: +k.q, b: +k.Q};
+      if (t === ult.time) { v.high = Math.max(v.high, ult.high); v.low = Math.min(v.low, ult.low); velas[velas.length - 1] = v; }
+      else if (t > ult.time) velas.push(v); else return;
+      agendarTick(true);
+    }
+  };
+}
+// cada negócio executado move o preço do candle atual (como na TradingView)
+function aplicarPreco(preco, T){
+  if (!velas.length) return;
+  const ult = velas[velas.length - 1];
+  if (T < ult.time * 1000) return;
+  if (T >= ult.time * 1000 + TF_MS[cfg.tf]) return;   // candle novo chega pelo stream de kline
+  ult.close = preco;
+  if (preco > ult.high) ult.high = preco;
+  if (preco < ult.low) ult.low = preco;
+  if (tickers[cfg.simbolo]) { tickers[cfg.simbolo].c = preco; }
+  agendarTick(false);
+}
+// junta várias atualizações num único redesenho por quadro de tela
+let recalcInd = false;
+function agendarTick(comIndicadores){
+  recalcInd = recalcInd || comIndicadores;
+  if (tickPendente) return;
+  tickPendente = true;
+  requestAnimationFrame(() => {
+    tickPendente = false;
+    const v = velas[velas.length - 1];
+    serie.update({time: v.time, open: v.open, high: v.high, low: v.low, close: v.close});
+    if (recalcInd) {
+      recalcInd = false;
       ind = calcIndicadores(velas, oiPorT);
       const ultimo = arr => arr[arr.length - 1];
       if (ind.vol.length) sVol.update(ultimo(ind.vol));
       if (ind.vwap.length) sVwap.update(ultimo(ind.vwap));
-      for (const [id, p] of Object.entries(paineis)) { const a = ind[id]; if (a && a.length && a[a.length - 1].time === t) p.serie.update(ultimo(a)); }
-      atualizarLegenda();
+      for (const [id, p] of Object.entries(paineis)) { const a = ind[id]; if (a && a.length && a[a.length - 1].time === v.time) p.serie.update(ultimo(a)); }
     }
-  };
+    atualizarLegenda();
+    desenharListaPreco();
+  });
 }
+function desenharListaPreco(){
+  const linhas = $("wl").rows;
+  SIMBOLOS.forEach((s, i) => { const d = tickers[s]; if (d && linhas[i]) linhas[i].cells[1].textContent = pr(d.c); });
+}
+// sem dados por 20 s: reconecta
+setInterval(() => { if (!DEMO && ws && ultimoDado && Date.now() - ultimoDado > 20000) { ultimoDado = 0; $("ponto").classList.remove("on"); conectarWS(); } }, 5000);
+// modo de teste: simula negócios para ver o preço oscilar
+if (DEMO) setInterval(() => { if (velas.length) { const u = velas[velas.length - 1]; aplicarPreco(u.close * (1 + (Math.random() - 0.5) * 0.0008), u.time * 1000 + 1); } }, 200);
 async function carregarTickers(){
   if (DEMO) { tickers.BTCUSDT = {c: 65000, p: 1.2}; tickers.ETHUSDT = {c: 3200, p: -0.8}; desenharLista(); return; }
   for (const s of SIMBOLOS) {
