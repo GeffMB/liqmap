@@ -487,7 +487,7 @@ function criarGrafico(){
   sVol = chart.addHistogramSeries({priceScaleId: "vol", priceFormat: {type: "custom", formatter: usd}, lastValueVisible: false, priceLineVisible: false});
   chart.priceScale("vol").applyOptions({scaleMargins: {top: 0.82, bottom: 0}, visible: false});
   sVwap = chart.addLineSeries({color: "#2962ff", lineWidth: 2, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false});
-  chart.subscribeCrosshairMove(p => { cursorY = p && p.point ? p.point.y : null; atualizarContagem(); atualizarLegenda(p); espelharCursor(chart, p); });
+  chart.subscribeCrosshairMove(p => { if (!p || !p.point || p.sourceEvent) cursorY = p && p.point ? p.point.y : null; atualizarContagem(); atualizarLegenda(p); espelharCursor(chart, p); });
   chart.timeScale().subscribeVisibleLogicalRangeChange(r => espelharFaixa(chart, r));
   aplicarIndicadores();
   requestAnimationFrame(loopDesenho);
@@ -526,6 +526,9 @@ function espelharFaixa(origem, r){
 }
 function espelharCursor(origem, p){
   if (espelhando) return;
+  // só repassa movimentos reais do mouse/dedo (ou a saída do cursor); ignora os eventos que o próprio
+  // gráfico emite ao redesenhar com dados ao vivo, que puxavam a linha para o fechamento do candle
+  if (p && p.point && !p.sourceEvent) return;
   espelhando = true;
   const t = p && p.time;
   for (const [id, pn] of Object.entries(paineis)) {
