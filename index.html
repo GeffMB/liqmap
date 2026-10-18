@@ -438,7 +438,11 @@ function montarMapa(kl, oi, tf, filtro, pesos){
     let ini = -1, q0 = 0;
     for (let t = 0; t <= cols.length; t++) {
       const q = t < cols.length && cols[t][b] > 0 ? Math.max(1, Math.ceil(intensidade(cols[t][b], mx) * DEGRAUS)) : 0;
-      if (q !== q0) { if (q0 > 0) runs.push([b, ini, t - 1, q0]); ini = t; q0 = q; }
+      // estabilidade: ignora oscilações pequenas de intensidade (menos de 2 degraus) para a faixa não "piscar"
+      if (q === q0 || (q0 > 0 && q > 0 && t < cols.length && Math.abs(q - q0) < 2)) continue;
+      // tracinhos com menos de 3 candles viram ruído; só ficam se ainda estiverem ativos agora
+      if (q0 > 0 && (t - ini >= 3 || t === cols.length)) runs.push([b, ini, t - 1, q0]);
+      ini = t; q0 = q;
     }
   }
   const ultimo = kl[kl.length - 1].c;
