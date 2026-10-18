@@ -45,17 +45,6 @@ button,select,input{font:inherit;color:inherit}
 .legenda .v{color:var(--sub)}
 .up{color:var(--up)} .down{color:var(--down)} .s{color:var(--short)} .l{color:var(--long)}
 .contagem{position:absolute;right:0;z-index:3;pointer-events:none;color:#fff;font:11px/16px -apple-system,BlinkMacSystemFont,"Trebuchet MS",Roboto,sans-serif;text-align:left;padding:0 6px;font-variant-numeric:tabular-nums;display:none}
-.dica{position:absolute;z-index:5;pointer-events:none;display:none;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:8px;
-  box-shadow:0 4px 14px rgba(19,23,34,.14);padding:7px 10px;font-size:12px;line-height:1.6;min-width:150px;font-variant-numeric:tabular-nums}
-.dica .d{font-weight:600;margin-bottom:2px}
-.dica .ln{display:flex;justify-content:space-between;gap:16px}
-.dica .ln span{color:var(--sub)}
-.dica .ln b{font-weight:600}
-.dica .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:0}
-.escala{position:absolute;left:8px;bottom:36px;z-index:2;pointer-events:none;display:none;align-items:center;gap:6px;font-size:11px;color:var(--sub);
-  background:rgba(255,255,255,.85);padding:3px 7px;border-radius:4px}
-.escala i{display:inline-block;width:16px;height:8px}
-.escala .bar{display:flex;border-radius:2px;overflow:hidden}
 .carregando{position:absolute;inset:0;z-index:3;display:flex;align-items:center;justify-content:center;color:var(--sub);background:rgba(255,255,255,.7)}
 /* ---------- painel lateral ---------- */
 .lado{width:300px;flex:0 0 300px;border-left:1px solid var(--line);background:var(--bg);display:flex;flex-direction:column;overflow-y:auto}
@@ -111,12 +100,6 @@ button,select,input{font:inherit;color:inherit}
 .selbar button:hover{background:var(--hover)}
 #selApagar{color:var(--down);font-weight:600}
 .sobreDes,.sobreDes *{cursor:move !important}
-.limite{display:flex;align-items:center;gap:6px;padding:0 8px;white-space:nowrap;font-size:12px;color:var(--sub)}
-.limite input{width:96px;accent-color:var(--accent)}
-.limite .auto{border:1px solid var(--line);background:transparent;border-radius:4px;padding:2px 6px;font-size:11px;cursor:pointer;color:var(--sub)}
-.limite .auto[aria-pressed=true]{background:#eef3ff;border-color:#c9d8ff;color:var(--accent);font-weight:600}
-.limite b{color:var(--txt);font-weight:600;min-width:28px;font-variant-numeric:tabular-nums}
-@media (max-width:820px){.limite input{width:70px}}
 .tfbtn{font-weight:600;min-width:52px;justify-content:center}
 .menuTf{width:196px;padding:4px 0;max-height:72vh;overflow-y:auto}
 .menuTf .gr{display:flex;justify-content:space-between;align-items:center;width:100%;border:0;background:transparent;cursor:pointer;
@@ -163,12 +146,9 @@ button,select,input{font:inherit;color:inherit}
   <button class="btn simbolo" id="bSimb" title="Trocar ativo">BTCUSDT ▾</button>
   <div class="sep"></div>
   <button class="btn tfbtn" id="bTf" title="Tempo gráfico" aria-haspopup="true">15m ▾</button>
-  <label class="limite" title="Limite de liquidez: esconde as faixas mais fracas do mapa"><span class="txt">Limite</span>
-    <input type="range" id="limite" min="0" max="0.95" step="0.01" value="0.25" aria-label="Limite de liquidez"><b id="limiteVal">0,25</b>
-    <button type="button" class="auto" id="bAuto" title="Limite automático: ajusta sozinho a cada tempo gráfico" aria-pressed="true">Auto</button></label>
-  <button class="btn" id="bPer" title="Período do mapa (janela de tempo, como no CoinAnk)" aria-haspopup="true">Período ▾</button>
   <div class="sep"></div>
   <button class="btn" id="bInd" title="Indicadores">ƒx<span class="txt"> Indicadores</span></button>
+  <button class="btn" id="bHeat" aria-pressed="true" title="Mostrar/ocultar mapa de liquidações">▦<span class="txt"> Mapa de liquidações</span></button>
   <button class="btn" id="bAjustes" title="Ajustes do modelo">⚙<span class="txt"> Ajustes</span></button>
   <button class="btn" id="bAtualizar" title="Recalcular agora">⟳</button>
   <button class="btn" id="bFoto" title="Salvar imagem do gráfico">📷</button>
@@ -190,8 +170,6 @@ button,select,input{font:inherit;color:inherit}
       <div class="selbar" id="selbar"><span id="selNome"></span><button id="selApagar" title="Apagar desenho (Delete)">🗑 Apagar</button><button id="selFechar" title="Tirar seleção (Esc)">✕</button></div>
       <div class="legenda" id="legenda"></div>
       <div class="contagem" id="contagem"></div>
-      <div class="dica" id="dica"></div>
-      <div class="escala" id="escala"></div>
       <div class="carregando" id="carregando">Carregando dados da Binance…</div>
     </div>
   </div>
@@ -206,7 +184,7 @@ button,select,input{font:inherit;color:inherit}
       <table class="zt" id="zonas"></table>
     </div>
     <div class="bloco nota">
-      Mapa de liquidações: estimativa própria a partir do Open Interest público somado de Binance, Bybit, OKX e Gate (as que responderem; até ~30 dias de histórico — a OKX guarda ~15).
+      Mapa de liquidações: estimativa própria a partir do Open Interest público da Binance Futures (até ~30 dias de histórico).
       Mostra onde posições alavancadas <b>seriam</b> liquidadas — não são ordens reais e o mapa não prevê direção.
       Volume, delta e CVD usam o volume de compradores agressivos (taker) informado pela Binance em cada candle. Não é recomendação de investimento.
     </div>
@@ -220,7 +198,6 @@ button,select,input{font:inherit;color:inherit}
 </div>
 
 <div class="pop menuTf" id="popTf" role="menu" aria-label="Tempo gráfico"></div>
-<div class="pop menuTf" id="popPer" role="menu" aria-label="Período"></div>
 
 <div class="pop" id="popInd">
   <h4>Indicadores</h4>
@@ -231,8 +208,6 @@ button,select,input{font:inherit;color:inherit}
   <h4>Ajustes do modelo</h4>
   <label>Candles <select id="barras"><option>300</option><option>500</option><option selected>1000</option><option>1500</option></select></label>
   <label>Filtro de ruído <input id="filtro" type="number" min="0" step="0.1" value="1.0"></label>
-  <label>Base do mapa <select id="baseMapa" style="width:150px"><option value="unica">15 min, 30 dias (igual em todos)</option><option value="tf">Do tempo gráfico</option></select></label>
-  <label>Open Interest <select id="fontesOI" style="width:150px"><option value="todas">Somar Binance + Bybit + OKX + Gate</option><option value="binance">Só Binance</option></select></label>
   <label>Média do volume (candles) <input id="mediaVol" type="number" min="20" step="1" value="610"></label>
   <label>Recalcular mapa a cada <select id="auto"><option value="0">desligado</option><option value="5">5 min</option><option value="15" selected>15 min</option><option value="60">60 min</option></select></label>
   <label style="margin-top:10px">Pesos de alavancagem</label>
@@ -254,23 +229,12 @@ const GRUPOS_TF = [
 ];
 // duração aproximada (meses variam; o fechamento exato vem de proximoFechamento)
 const TF_MS = {"1m":6e4,"3m":18e4,"6h":216e5,"8h":288e5,"12h":432e5,"3d":2592e5,"5m":3e5,"15m":9e5,"30m":18e5,"1h":36e5,"2h":72e5,"4h":144e5,"1d":864e5,"1w":6048e5,"1M":2592e6,"3M":7776e6,"6M":15552e6,"12M":31536e6};
-// período (janela de tempo) -> tempo gráfico usado e quantos candles cabem na janela
-const PERIODOS = [
-  ["12h", "12 horas", "1m", 720], ["1d", "1 dia", "3m", 480], ["3d", "3 dias", "5m", 864], ["1w", "1 semana", "15m", 672],
-  ["2w", "2 semanas", "30m", 672], ["1M", "1 mês", "1h", 720], ["3M", "3 meses", "4h", 540], ["6M", "6 meses", "6h", 720]
-];
-const ROTULO_PER = {"12h": "12h", "1d": "1D", "3d": "3D", "1w": "1S", "2w": "2S", "1M": "1M", "3M": "3M", "6M": "6M"};
-const periodoAtual = () => PERIODOS.find(p => p[0] === cfg.periodo && p[2] === cfg.tf);
 const ROTULO_TF = {"1m":"1m","3m":"3m","6h":"6h","8h":"8h","12h":"12h","3d":"3D","5m":"5m","15m":"15m","30m":"30m","1h":"1h","2h":"2h","4h":"4h","1d":"1D","1w":"1S","1M":"1M","3M":"3M","6M":"6M","12M":"12M"};
 const MESES_TF = {"1M": 1, "3M": 3, "6M": 6, "12M": 12};
 const OI_PERIODOS = ["5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"];   // a Binance só fornece Open Interest até 1 dia
 // tempo gráfico usado para calcular o mapa (onde a Binance tem Open Interest)
-// a partir de 6h o mapa usa o Open Interest de 1 hora: ~720 pontos em 30 dias em vez de ~30 pontos diários
-const BASE_MAPA = {"1m": "5m", "3m": "5m", "2h": "1h", "4h": "1h", "6h": "1h", "8h": "1h", "12h": "1h", "1d": "1h", "3d": "1h", "1w": "1h", "1M": "1h", "3M": "1h", "6M": "1h", "12M": "1h"};
-// padrão: mesma base de 15 minutos (30 dias) em todos os tempos gráficos -> zonas e valores iguais em qualquer
-// tempo gráfico, com detalhe suficiente para o curto prazo (posições abertas e fechadas na mesma hora aparecem)
-const BASE_UNICA = "15m";
-const baseMapa = tf => cfg.baseMapa === "tf" ? (BASE_MAPA[tf] || tf) : BASE_UNICA;
+const BASE_MAPA = {"1m": "5m", "3m": "5m", "8h": "4h", "3d": "1d", "1w": "1d", "1M": "1d", "3M": "1d", "6M": "1d", "12M": "1d"};
+const baseMapa = tf => BASE_MAPA[tf] || tf;
 const intervaloBinance = tf => MESES_TF[tf] ? "1M" : tf;              // 3M, 6M e 12M são montados a partir do mensal
 function proximoFechamento(abertura, tf = cfg.tf){                   // abertura em ms -> fechamento do candle em ms
   const m = MESES_TF[tf];
@@ -297,7 +261,6 @@ const DEMO = new URLSearchParams(location.search).has("demo");
 const $ = id => document.getElementById(id);
 
 const INDICADORES = [
-  {id: "mapa",  nome: "Mapa de liquidações",    desc: "zonas onde posições alavancadas seriam liquidadas", padrao: true},
   {id: "vol",   nome: "Volume",                 desc: "barras no rodapé do gráfico",        padrao: true},
   {id: "vwap",  nome: "VWAP diária",            desc: "preço médio ponderado pelo volume",  padrao: true},
   {id: "vpvr",  nome: "Perfil de volume (VPVR)", desc: "volume por faixa de preço + POC",   padrao: true},
@@ -310,9 +273,8 @@ const INDICADORES = [
 // ---------- preferências (só neste navegador) ----------
 function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap2") || "{}"); } catch(e){ return {}; } }
 function salvarPrefs(){ try { localStorage.setItem("liqmap2", JSON.stringify(cfg)); } catch(e){} }
-const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, limite: 0.25, limiteAuto: true, baseMapa: "unica", fontesOI: "todas", pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
+const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
 if (!SIMBOLOS.includes(cfg.simbolo)) cfg.simbolo = "BTCUSDT";
-if (cfg.baseMapa !== "tf") cfg.baseMapa = "unica";
 if (!TFS.includes(cfg.tf)) cfg.tf = "15m";
 if (!Array.isArray(cfg.pesos) || cfg.pesos.length !== 6) cfg.pesos = PESOS_PADRAO.slice();
 if (!cfg.ind || typeof cfg.ind !== "object") cfg.ind = {};
@@ -354,97 +316,6 @@ async function buscarOI(sym, tf, ini, fim){
     s = e + 1;
   }
   return oi;
-}
-// ---------- Open Interest de outras corretoras (somado ao da Binance) ----------
-// Cada fonte é opcional: se falhar (bloqueio, CORS, limite), o mapa segue com as demais.
-let fontesUsadas = [];
-async function jsonExterno(url, ms = 12000){
-  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), ms);
-  try { const r = await fetch(url, {signal: ctl.signal}); if (!r.ok) throw new Error(r.status); return await r.json(); }
-  finally { clearTimeout(to); }
-}
-const moedaDe = sym => sym.replace(/USDT$/, "");
-async function oiBybit(sym, tf, ini, fim, preco){
-  const iv = {"5m": "5min", "15m": "15min", "30m": "30min", "1h": "1h", "4h": "4h", "1d": "1d"}[tf];
-  if (!iv) return null;
-  const m = new Map(); let cursor = "";
-  for (let i = 0; i < 40; i++) {
-    const q = {category: "linear", symbol: sym, intervalTime: iv, startTime: ini, endTime: fim, limit: 200};
-    if (cursor) q.cursor = cursor;
-    const d = await jsonExterno("https://api.bybit.com/v5/market/open-interest?" + new URLSearchParams(q));
-    if (d.retCode !== 0) throw new Error(d.retMsg);
-    for (const x of d.result.list) {
-      const t = +x.timestamp, c = +(x.singleOpenInterest ?? x.openInterest), p = preco(t);
-      if (p && c) m.set(t, c * p);   // linear: OI em moeda → USD
-    }
-    cursor = d.result.nextPageCursor;
-    if (!cursor || !d.result.list.length) break;
-  }
-  return m;
-}
-async function oiOKX(sym, tf, ini, fim){
-  const iv = {"5m": "5m", "15m": "15m", "30m": "30m", "1h": "1H", "2h": "2H", "4h": "4H", "1d": "1Dutc"}[tf];
-  if (!iv) return null;
-  const m = new Map(); let fimPag = fim;
-  for (let i = 0; i < 15; i++) {   // até 1440 registros (100 por página, do mais novo ao mais antigo)
-    if (i) await new Promise(r => setTimeout(r, 450));   // respeita o limite de 5 pedidos / 2 s
-    let d;
-    try {
-      d = await jsonExterno("https://www.okx.com/api/v5/rubik/stat/contracts/open-interest-history?" +
-        new URLSearchParams({instId: moedaDe(sym) + "-USDT-SWAP", period: iv, end: fimPag, limit: 100}));
-      if (d.code !== "0") throw new Error(d.msg);
-    } catch (e) { if (m.size) break; throw e; }   // falhou no meio: fica com o que já veio
-    if (!d.data.length) break;
-    let menor = Infinity;
-    for (const x of d.data) { const t = +x[0]; if (t >= ini) m.set(t, +x[3]); menor = Math.min(menor, t); }
-    if (menor <= ini) break;
-    fimPag = menor;
-  }
-  return m;
-}
-async function oiGate(sym, tf, ini, fim){
-  const iv = {"5m": "5m", "15m": "15m", "30m": "30m", "1h": "1h", "4h": "4h", "1d": "1d"}[tf];
-  if (!iv) return null;
-  const m = new Map(), passo = TF_MS[tf] * 100;
-  for (let s = ini; s <= fim; s += passo) {
-    const d = await jsonExterno("https://api.gateio.ws/api/v4/futures/usdt/contract_stats?" +
-      new URLSearchParams({contract: moedaDe(sym) + "_USDT", interval: iv, from: Math.floor(s / 1000), limit: 100}));
-    if (!Array.isArray(d)) throw new Error("resposta inválida");
-    for (const x of d) { const t = x.time * 1000; if (t <= fim && +x.open_interest_usd) m.set(t, +x.open_interest_usd); }
-    if (d.length < 100) break;
-  }
-  return m;
-}
-// Soma as séries no relógio da Binance. Antes do início de uma fonte, repete o primeiro valor dela
-// (assim a entrada da fonte não vira um "salto" de OI que geraria posições falsas).
-function somarOI(base, outras){
-  const ts = [...base.keys()].sort((a, b) => a - b), soma = new Map();
-  const series = outras.map(m => { const t = [...m.keys()].sort((a, b) => a - b); return {t, v: t.map(x => m.get(x)), i: 0}; });
-  for (const t of ts) {
-    let v = base.get(t);
-    for (const s of series) {
-      while (s.i + 1 < s.t.length && s.t[s.i + 1] <= t) s.i++;
-      v += s.v[s.i];
-    }
-    soma.set(t, v);
-  }
-  return soma;
-}
-async function buscarOITodas(sym, tf, ini, fim, kl){
-  const bin = await buscarOI(sym, tf, ini, fim);
-  fontesUsadas = bin.size ? ["Binance"] : [];
-  if (cfg.fontesOI === "binance" || !bin.size) return bin;
-  ini = Math.max(ini, Date.now() - OI_MAX_DIAS * 864e5);
-  const fech = new Map(kl.map(k => [k.t + TF_MS[tf], k.c])), abre = new Map(kl.map(k => [k.t, k.o]));
-  const preco = t => fech.get(t) ?? abre.get(t);
-  const fontes = [["Bybit", () => oiBybit(sym, tf, ini, fim, preco)], ["OKX", () => oiOKX(sym, tf, ini, fim)], ["Gate", () => oiGate(sym, tf, ini, fim)]];
-  const res = await Promise.allSettled(fontes.map(f => f[1]()));
-  const ok = [];
-  res.forEach((r, i) => {
-    if (r.status === "fulfilled" && r.value && r.value.size >= 8) { ok.push(r.value); fontesUsadas.push(fontes[i][0]); }
-    else console.warn("OI " + fontes[i][0] + " indisponível:", r.reason || "sem dados");
-  });
-  return ok.length ? somarOI(bin, ok) : bin;
 }
 function dadosDemo(sym, tf, n){
   if (MESES_TF[tf]) {   // teste: candles mensais de calendário (e agrupados para 3M/6M/12M)
@@ -494,37 +365,19 @@ function montarMapa(kl, oi, tf, filtro, pesos){
       const d = o1 - o0, ult = hist.slice(-50);
       const ref = ult.length ? ult.reduce((a, b) => a + b, 0) / ult.length : 0;
       hist.push(Math.max(d, 0));
-      // 1) Open Interest caiu: posições foram fechadas -> as zonas existentes perdem força na mesma proporção
-      if (d < 0 && o0 > 0) {
-        const f = Math.max(0, 1 + d / o0);
-        for (let b = 0; b < FAIXAS; b++) { longs[b] *= f; shorts[b] *= f; }
-      }
       if (d > 0 && d >= ref * filtro) {
-        // 2) lado agressor: mais compra agressiva no candle -> mais peso nas liquidações de longs (e vice-versa)
-        const fracL = k.q > 0 && k.b != null ? Math.min(0.8, Math.max(0.2, k.b / k.q)) : 0.5;
-        // 3) entrada espalhada pelo candle (mínima, meio e máxima), deixando as faixas mais suaves
-        const entradas = [[k.l, 0.25], [(k.h + k.l + k.c) / 3, 0.5], [k.h, 0.25]];
+        const ent = (k.h + k.l + k.c) / 3;
         LEVS.forEach((L, i) => {
           if (pesos[i] <= 0) return;
           const s = d * pesos[i] / somaP;
-          for (const [ent, pe] of entradas) {
-            const bl = idx(ent * (1 - 1 / L + MMR)), bs = idx(ent * (1 + 1 / L - MMR));
-            if (bl >= 0 && bl < FAIXAS) longs[bl] += s * pe * 2 * fracL;
-            if (bs >= 0 && bs < FAIXAS) shorts[bs] += s * pe * 2 * (1 - fracL);
-          }
+          const bl = idx(ent * (1 - 1 / L + MMR)), bs = idx(ent * (1 + 1 / L - MMR));
+          if (bl >= 0 && bl < FAIXAS) longs[bl] += s;
+          if (bs >= 0 && bs < FAIXAS) shorts[bs] += s;
         });
       }
     }
-    // suavização vertical leve (1-2-1) para fechar as frestas entre faixas vizinhas
     const col = new Float32Array(FAIXAS);
-    for (let b = 0; b < FAIXAS; b++) {
-      let soma = 0, peso = 0;
-      for (let k2 = -1; k2 <= 1; k2++) {
-        const j = b + k2; if (j < 0 || j >= FAIXAS) continue;
-        const pw = 2 - Math.abs(k2); soma += (longs[j] + shorts[j]) * pw; peso += pw;
-      }
-      col[b] = soma / peso * 1.4;   // 1.4 ≈ mantém o valor do pico parecido com o de antes da suavização
-    }
+    for (let b = 0; b < FAIXAS; b++) col[b] = longs[b] + shorts[b];
     cols.push(col);
   }
   let mx = 0;
@@ -534,12 +387,8 @@ function montarMapa(kl, oi, tf, filtro, pesos){
   for (let b = 0; b < FAIXAS; b++) {
     let ini = -1, q0 = 0;
     for (let t = 0; t <= cols.length; t++) {
-      const q = t < cols.length && cols[t][b] > 0 ? Math.max(1, Math.ceil(intensidade(cols[t][b], mx) * DEGRAUS)) : 0;
-      // estabilidade: ignora oscilações pequenas de intensidade (menos de 2 degraus) para a faixa não "piscar"
-      if (q === q0 || (q0 > 0 && q > 0 && t < cols.length && Math.abs(q - q0) < 2)) continue;
-      // tracinhos com menos de 3 candles viram ruído; só ficam se ainda estiverem ativos agora
-      if (q0 > 0 && (t - ini >= 3 || t === cols.length)) runs.push([b, ini, t - 1, q0]);
-      ini = t; q0 = q;
+      const q = t < cols.length ? Math.round(Math.sqrt(cols[t][b] / mx) * NIVEIS) : 0;
+      if (q !== q0) { if (q0 > 0) runs.push([b, ini, t - 1, q0]); ini = t; q0 = q; }
     }
   }
   const ultimo = kl[kl.length - 1].c;
@@ -548,9 +397,7 @@ function montarMapa(kl, oi, tf, filtro, pesos){
   const top = arr => [...arr].map((v, b) => [v, b]).filter(x => x[0] > 0).sort((a, b) => b[0] - a[0]).slice(0, 5)
     .map(([v, b]) => ({preco: centro(b), dist: (centro(b) / ultimo - 1) * 100, forca: v / mxAtual * 100, valor: v}));
   const perto = (arr, p) => { let s = 0; for (let b = 0; b < FAIXAS; b++) if (Math.abs(centro(b) / ultimo - 1) * 100 <= p) s += arr[b]; return s; };
-  const runsPorFaixa = Array.from({length: FAIXAS}, () => []);
-  for (const rr of runs) runsPorFaixa[rr[0]].push(rr);
-  return {pmin, w, cols, runs, runsPorFaixa, mx, tb: kl.map(k => k.t / 1000), tfBase: TF_MS[tf] / 1000, ultimo, barrasOI: hist.length, shorts: top(shorts), longs: top(longs), s5: perto(shorts, 5), l5: perto(longs, 5)};
+  return {pmin, w, cols, runs, tb: kl.map(k => k.t / 1000), tfBase: TF_MS[tf] / 1000, ultimo, barrasOI: hist.length, shorts: top(shorts), longs: top(longs), s5: perto(shorts, 5), l5: perto(longs, 5)};
 }
 
 // ---------- indicadores de volume ----------
@@ -597,53 +444,24 @@ function calcIndicadores(v, oiPorT){
 }
 
 // ---------- cores do mapa ----------
-// poucos níveis de calor, da mesma família de cores: roxo -> azul -> verde-água -> verde -> amarelo
-const PALETA = ["rgba(0,0,0,0)", "rgba(88,60,150,0.06)", "rgba(59,82,160,0.26)", "rgba(33,145,140,0.50)", "rgba(80,190,90,0.70)", "rgba(240,196,0,0.92)"];
-const CORES_ESCALA = ["#f1eef7", "#a9b3d6", "#62b8b2", "#7ccc81", "#f0c400"];
-const DEGRAUS = 20;   // intensidade guardada em 20 degraus; o limite de liquidez decide o que aparece e a cor
-const intensidade = (v, mx) => v > 0 ? Math.pow(v / mx, 0.6) : 0;
-// nível de cor (1 a 5) para uma intensidade t, ou 0 se estiver abaixo do limite de liquidez
-function nivelPorT(t){
-  const L = Math.min(0.95, Math.max(0, +cfg.limite || 0));
-  if (t <= 0 || t < L) return 0;
-  return Math.min(5, Math.floor((t - L) / (1 - L) * 5) + 1);
-}
-const nivelCalor = (v, mx) => nivelPorT(intensidade(v, mx));
-const FRACAO_AUTO = 0.33;
-function limiteAutomatico(m){
-  const area = new Float64Array(DEGRAUS + 1);
-  for (const [, i0, i1, q] of m.runs) area[q] += i1 - i0 + 1;
-  let total = 0; for (let q = 1; q <= DEGRAUS; q++) total += area[q];
-  if (!total) return 0.25;
-  let acum = 0;
-  for (let q = DEGRAUS; q >= 1; q--) { acum += area[q]; if (acum >= total * FRACAO_AUTO) return Math.min(0.9, Math.max(0.05, (q - 1) / DEGRAUS)); }
-  return 0.05;
-}
-function mostrarLimite(){
-  $("limite").value = cfg.limite;
-  $("limiteVal").textContent = (+cfg.limite).toFixed(2).replace(".", ",");
-  $("bAuto").setAttribute("aria-pressed", String(!!cfg.limiteAuto));
-}
+const PALETA = (() => {
+  const st = [[0,[255,255,255,0]],[0.15,[120,140,255,0.16]],[0.35,[124,92,230,0.34]],[0.6,[214,64,140,0.55]],[0.82,[245,140,30,0.75]],[1,[220,38,38,0.92]]];
+  const out = [];
+  for (let q = 0; q <= NIVEIS; q++) {
+    const x = q / NIVEIS;
+    let i = 0; while (i < st.length - 2 && x > st[i + 1][0]) i++;
+    const [x0, c0] = st[i], [x1, c1] = st[i + 1], f = (x - x0) / (x1 - x0 || 1);
+    const c = c0.map((v, j) => v + (c1[j] - v) * f);
+    out.push(`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${c[3].toFixed(2)})`);
+  }
+  return out;
+})();
 
 // ---------- gráficos ----------
 const principal = $("principal"), canvas = $("heat"), ctx = canvas.getContext("2d");
 let LWC, chart, serie, sVol, sVwap, mapa = null, velas = [], ind = null, oiPorT = new Map(), assinatura = "";
 const paineis = {};   // id -> {div, chart, serie, rot}
 
-// horários do gráfico no fuso de quem está vendo (como na TradingView), não em UTC
-const MESES_ABREV = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
-function horaLocal(t, completo){
-  const d = new Date(t * 1000), z = n => String(n).padStart(2, "0");
-  const data = z(d.getDate()) + " " + MESES_ABREV[d.getMonth()] + " '" + String(d.getFullYear()).slice(2);
-  return TF_MS[cfg.tf] >= 864e5 ? data : data + "  " + z(d.getHours()) + ":" + z(d.getMinutes());
-}
-function marcaTempo(t, tipo){
-  const d = new Date(t * 1000), z = n => String(n).padStart(2, "0");
-  if (tipo === 0) return String(d.getFullYear());
-  if (tipo === 1) return MESES_ABREV[d.getMonth()] + ".";
-  if (tipo === 2) return String(d.getDate());
-  return z(d.getHours()) + ":" + z(d.getMinutes());
-}
 function opcoesBase(){
   return {
     autoSize: true,
@@ -654,8 +472,8 @@ function opcoesBase(){
                 vertLine: {color: "#9598a1", width: 1, style: LWC.LineStyle.Dashed, labelBackgroundColor: "#131722"},
                 horzLine: {color: "#9598a1", width: 1, style: LWC.LineStyle.Dashed, labelBackgroundColor: "#131722"}},
     rightPriceScale: {borderColor: "#e0e3eb", minimumWidth: LARG_ESCALA},
-    timeScale: {borderColor: "#e0e3eb", timeVisible: true, secondsVisible: false, rightOffset: 12, barSpacing: 6, minBarSpacing: 0.1, tickMarkFormatter: marcaTempo},
-    localization: {locale: "pt-BR", timeFormatter: t => horaLocal(t, true)}
+    timeScale: {borderColor: "#e0e3eb", timeVisible: true, secondsVisible: false, rightOffset: 12, barSpacing: 6},
+    localization: {locale: "pt-BR"}
   };
 }
 
@@ -669,12 +487,7 @@ function criarGrafico(){
   sVol = chart.addHistogramSeries({priceScaleId: "vol", priceFormat: {type: "custom", formatter: usd}, lastValueVisible: false, priceLineVisible: false});
   chart.priceScale("vol").applyOptions({scaleMargins: {top: 0.82, bottom: 0}, visible: false});
   sVwap = chart.addLineSeries({color: "#2962ff", lineWidth: 2, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false});
-  rastrearPonteiro(principal);
-  chart.subscribeCrosshairMove(p => {
-    const real = !p || !p.point || sobre === principal;
-    if (real) { cursorY = p && p.point ? p.point.y : null; atualizarDica(p); }
-    atualizarContagem(); atualizarLegenda(p); espelharCursor(chart, p);
-  });
+  chart.subscribeCrosshairMove(p => { if (!p || !p.point || p.sourceEvent) cursorY = p && p.point ? p.point.y : null; atualizarContagem(); atualizarLegenda(p); espelharCursor(chart, p); });
   chart.timeScale().subscribeVisibleLogicalRangeChange(r => espelharFaixa(chart, r));
   aplicarIndicadores();
   requestAnimationFrame(loopDesenho);
@@ -685,7 +498,6 @@ function criarPainel(id){
   const div = el("div", {class: "painel"}), c = el("div", {class: "c"}), rot = el("div", {class: "rot"});
   div.append(c, rot);
   $("graf").append(div);
-  rastrearPonteiro(div);
   const op = opcoesBase();
   op.rightPriceScale.scaleMargins = {top: 0.2, bottom: 0.08};
   op.layout.attributionLogo = false;
@@ -712,24 +524,11 @@ function espelharFaixa(origem, r){
   for (const c of todos()) if (c !== origem) c.timeScale().setVisibleLogicalRange(r);
   espelhando = false;
 }
-// em qual gráfico o mouse/dedo está de verdade (o principal ou um dos painéis)
-let sobre = null;
-function rastrearPonteiro(elem){
-  elem.addEventListener("pointerenter", () => { sobre = elem; });
-  elem.addEventListener("pointermove", () => { sobre = elem; });
-  elem.addEventListener("pointerleave", () => { if (sobre === elem) sobre = null; });
-}
-function elemDe(c){
-  if (c === chart) return principal;
-  for (const pn of Object.values(paineis)) if (pn.chart === c) return pn.div;
-  return null;
-}
 function espelharCursor(origem, p){
   if (espelhando) return;
-  // só repassa o cursor do gráfico onde o mouse/dedo está; ignora os eventos que os gráficos emitem
-  // sozinhos ao redesenhar com dados ao vivo (eles puxavam a linha para o fechamento do candle)
-  if (p && p.point && sobre !== elemDe(origem)) return;
-  if (!(p && p.point) && sobre && sobre !== elemDe(origem)) return;
+  // só repassa movimentos reais do mouse/dedo (ou a saída do cursor); ignora os eventos que o próprio
+  // gráfico emite ao redesenhar com dados ao vivo, que puxavam a linha para o fechamento do candle
+  if (p && p.point && !p.sourceEvent) return;
   espelhando = true;
   const t = p && p.time;
   for (const [id, pn] of Object.entries(paineis)) {
@@ -816,14 +615,13 @@ function desenharCanvas(){
   // 1) mapa de liquidações
   if (mapa && cfg.heat) {
     for (const [b, i0, i1, q] of mapa.runs) {
-      const nv = nivelPorT(q / DEGRAUS);
-      if (!nv) continue;
+      if (q < 4) continue;
       const yTop = serie.priceToCoordinate(mapa.pmin + (b + 1) * mapa.w), yBot = serie.priceToCoordinate(mapa.pmin + b * mapa.w);
       if (yTop == null || yBot == null || yBot < 0 || yTop > H) continue;
       const xa = x0 + (idxDeT(mapa.tb[i0]) - 0.5) * passo;
       const xb = i1 >= mapa.tb.length - 1 ? W : x0 + (idxDeT(mapa.tb[i1] + mapa.tfBase) - 0.5) * passo;
       if (xb < 0 || xa > W) continue;
-      ctx.fillStyle = PALETA[nv];
+      ctx.fillStyle = PALETA[q];
       ctx.fillRect(xa, yTop, xb - xa, Math.max(1, yBot - yTop));
     }
   }
@@ -873,48 +671,6 @@ function colunaMapa(t){   // candle da base do mapa que contém o horário t
   while (b - a > 1) { const m = (a + b) >> 1; if (tb[m] <= t) a = m; else b = m; }
   return a;
 }
-// escala de cores do mapa (canto inferior esquerdo)
-function desenharEscala(){
-  const e = $("escala");
-  if (!mapa || !cfg.heat || !mapa.barrasOI) { e.style.display = "none"; return; }
-  const bar = el("span", {class: "bar"}, ...CORES_ESCALA.map(c => { const i = el("i"); i.style.background = c; return i; }));
-  const minimo = mapa.mx * Math.pow(Math.max(cfg.limite, 0.001), 1 / 0.6);
-  e.replaceChildren(el("span", {}, "Liq. estimada"), el("span", {}, usd(minimo)), bar, el("span", {}, usd(mapa.mx)));
-  e.style.display = "flex";
-}
-// caixinha junto ao cursor: data, preço e liquidação estimada naquele nível
-function fmtData(t){
-  const d = new Date(t * 1000), z = n => String(n).padStart(2, "0");
-  const dia = z(d.getDate()) + "/" + z(d.getMonth() + 1) + "/" + d.getFullYear();
-  return TF_MS[cfg.tf] >= 864e5 ? dia : dia + " " + z(d.getHours()) + ":" + z(d.getMinutes());
-}
-function atualizarDica(p){
-  const dica = $("dica");
-  if (!p || !p.point || !mapa || !cfg.heat || !velas.length || ferramenta !== "cursor" || arrasto) { dica.style.display = "none"; return; }
-  const preco = serie.coordinateToPrice(p.point.y);
-  if (preco == null) { dica.style.display = "none"; return; }
-  const futuro = p.time == null && p.logical != null && p.logical > velas.length - 1;
-  const t = p.time != null ? p.time : velas[velas.length - 1].time;
-  const ic = colunaMapa(t), col = mapa.cols[ic], b = Math.floor((preco - mapa.pmin) / mapa.w);
-  const v = col && b >= 0 && b < FAIXAS ? col[b] : 0;
-  // mesma cor que está desenhada no mapa naquele ponto (não recalcula pelo valor exato)
-  const run = b >= 0 && b < FAIXAS ? mapa.runsPorFaixa[b].find(rr => rr[1] <= ic && ic <= rr[2]) : null;
-  const q = run ? nivelPorT(run[3] / DEGRAUS) : 0;
-  const sw = el("span", {class: "sw"}); sw.style.background = q ? CORES_ESCALA[q - 1] : "transparent";
-  const ult = velas[velas.length - 1].close;
-  dica.replaceChildren(
-    el("div", {class: "d"}, futuro ? "Níveis ativos agora" : fmtData(t)),
-    el("div", {class: "ln"}, el("span", {}, "Preço"), el("b", {}, pr(preco))),
-    el("div", {class: "ln"}, el("span", {}, "Liq. estimada"), el("b", {}, sw, v > 0 ? usd(v) : "—")),
-    el("div", {class: "ln"}, el("span", {}, "Lado"), el("b", {class: preco >= ult ? "s" : "l"}, preco >= ult ? "shorts ↑" : "longs ↓")));
-  dica.style.display = "block";
-  const W = principal.clientWidth - chart.priceScale("right").width(), H = principal.clientHeight;
-  const dw = dica.offsetWidth, dh = dica.offsetHeight;
-  let x = p.point.x + 16, y = p.point.y + 16;
-  if (x + dw > W - 4) x = p.point.x - dw - 16;
-  if (y + dh > H - 30) y = p.point.y - dh - 16;
-  dica.style.left = Math.max(4, x) + "px"; dica.style.top = Math.max(4, y) + "px";
-}
 function atualizarLegenda(param){
   const leg = $("legenda");
   if (!velas.length) { leg.replaceChildren(); return; }
@@ -936,6 +692,13 @@ function atualizarLegenda(param){
   }
   if (cfg.ind.vwap && ind && ind.vwap[i]) extra.push(el("span", {class: "v"}, "VWAP "), el("b", {style: "color:#2962ff"}, pr(ind.vwap[i].value)));
   if (extra.length) linhas.push(el("div", {}, ...extra));
+  if (mapa && cfg.heat && param && param.point && param.seriesData && param.seriesData.has(serie)) {
+    const preco = serie.coordinateToPrice(param.point.y);
+    const col = mapa.cols[colunaMapa(k.time)];
+    const b = Math.floor((preco - mapa.pmin) / mapa.w);
+    if (col && b >= 0 && b < FAIXAS && col[b] > 0)
+      linhas.push(el("div", {}, el("span", {class: "v"}, "Liquidação estimada em " + pr(preco) + ": "), el("b", {class: preco >= k.close ? "s" : "l"}, usd(col[b]))));
+  }
   leg.replaceChildren(...linhas);
   // rótulos dos painéis
   const nomes = {delta: "Delta de volume", cvd: "CVD", oi: "Open Interest"};
@@ -1106,28 +869,20 @@ async function recalcular(manterZoom){
   try {
     let kl, oi, klBase;
     const base = baseMapa(cfg.tf);
-    const nBase = Math.min(3000, Math.ceil(OI_MAX_DIAS * 864e5 / TF_MS[base]));   // candles da base para ~30 dias
     if (DEMO) {
-      ({kl, oi} = dadosDemo(cfg.simbolo, cfg.tf, Math.max(cfg.barras, (periodoAtual() || [0, 0, 0, 0])[3] + 50)));
-      if (base !== cfg.tf || kl.length < nBase) ({kl: klBase, oi} = dadosDemo(cfg.simbolo, base, nBase));
-      if (base === cfg.tf && klBase) kl = klBase.slice(-kl.length);   // teste: gráfico e base usam a mesma série
+      ({kl, oi} = dadosDemo(cfg.simbolo, cfg.tf, cfg.barras));
+      if (base !== cfg.tf) ({kl: klBase, oi} = dadosDemo(cfg.simbolo, base, Math.round(OI_MAX_DIAS * 864e5 / TF_MS[base])));
     } else {
-      kl = await buscarCandles(cfg.simbolo, cfg.tf, Math.max(cfg.barras, (periodoAtual() || [0, 0, 0, 0])[3] + 50));
-      if (base !== cfg.tf || kl.length < nBase) {   // candles da base cobrindo ~30 dias (o período do Open Interest)
-        const conv = k => ({t: +k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], q: +k[7], b: +k[10]});
-        let pag = (await getJSON("/fapi/v1/klines", {symbol: cfg.simbolo, interval: base, limit: 1500})).map(conv);
-        klBase = pag;
-        if (nBase > 1500 && pag.length) {
-          const ant = (await getJSON("/fapi/v1/klines", {symbol: cfg.simbolo, interval: base, endTime: pag[0].t - 1, limit: Math.min(1500, nBase - 1500)})).map(conv);
-          klBase = ant.concat(pag);
-        }
+      kl = await buscarCandles(cfg.simbolo, cfg.tf, cfg.barras);
+      if (base !== cfg.tf) {   // os candles mais recentes da base (o Open Interest cobre até ~30 dias deles)
+        const d = await getJSON("/fapi/v1/klines", {symbol: cfg.simbolo, interval: base, limit: 1500});
+        klBase = d.map(k => ({t: +k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], q: +k[7], b: +k[10]}));
       }
       const ref = klBase || kl;
-      oi = await buscarOITodas(cfg.simbolo, base, ref[0].t, ref[ref.length - 1].t + TF_MS[base], ref);
+      oi = await buscarOI(cfg.simbolo, base, ref[0].t, ref[ref.length - 1].t + TF_MS[base]);
     }
     if (meu !== pedido) return;
     mapa = montarMapa(klBase && klBase.length ? klBase : kl, oi, base, cfg.filtro, cfg.pesos);
-    if (cfg.limiteAuto) { cfg.limite = limiteAutomatico(mapa); mostrarLimite(); }
     velas = kl.map(k => ({time: Math.floor(k.t / 1000), open: k.o, high: k.h, low: k.l, close: k.c, q: k.q, b: k.b}));
     oiPorT = new Map();
     for (const k of kl) { const o = oi.get(proximoFechamento(k.t)); if (o != null) oiPorT.set(Math.floor(k.t / 1000), o); }
@@ -1135,13 +890,12 @@ async function recalcular(manterZoom){
     const faixa = manterZoom ? chart.timeScale().getVisibleLogicalRange() : null;
     aplicarVelas();
     preencherSeries();
-    const per = periodoAtual();
-    const alvo = faixa || (per ? {from: velas.length - per[3], to: velas.length + Math.round(per[3] * 0.06)} : {from: velas.length - 180, to: velas.length + 12});
+    const alvo = faixa || {from: velas.length - 180, to: velas.length + 12};
     chart.timeScale().setVisibleLogicalRange(alvo);
     espelharFaixa(chart, alvo);
     assinatura = "";
-    atualizarLegenda(); desenharZonas(); desenharEscala();
-    $("status").textContent = (mapa.barrasOI ? "" : "Sem Open Interest para o período · ") + (TF_MS[cfg.tf] >= 864e5 ? "Mapa dos últimos 30 dias · " : "") + (!DEMO && fontesUsadas.length ? "OI: " + fontesUsadas.join(" + ") + " · " : "") + "Mapa de " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}) + (DEMO ? " · DADOS DE TESTE" : "");
+    atualizarLegenda(); desenharZonas();
+    $("status").textContent = (mapa.barrasOI ? "" : "Sem Open Interest para o período · ") + (baseMapa(cfg.tf) === "1d" && cfg.tf !== "1d" ? "Mapa dos últimos 30 dias · " : "") + "Mapa de " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}) + (DEMO ? " · DADOS DE TESTE" : "");
     $("status2").textContent = (DEMO ? "Teste · " : "") + "Mapa " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"});
   } catch (e) {
     $("status").textContent = "Erro: " + (e.message || e); $("status").className = "status err"; $("status2").textContent = "Erro ao carregar";
@@ -1162,20 +916,6 @@ function trocar(mud){
 // ---------- controles ----------
 function montarTfs(){
   $("bTf").textContent = ROTULO_TF[cfg.tf] + " ▾";
-  const per = periodoAtual();
-  $("bPer").textContent = per ? "Período " + ROTULO_PER[per[0]] + " ▾" : "Período ▾";
-  $("bPer").setAttribute("aria-pressed", String(!!per));
-  const mp = $("popPer"); mp.replaceChildren(el("div", {class: "gr", style: "cursor:default"}, "Janela do mapa"));
-  for (const [id, nome, tf, n] of PERIODOS) {
-    const it = el("button", {class: "it", role: "menuitemradio", "aria-checked": String(!!per && per[0] === id)}, nome, el("small", {}, "candles de " + ROTULO_TF[tf]));
-    it.addEventListener("click", () => { mp.classList.remove("aberto"); trocar({tf, periodo: id}); });
-    mp.append(it);
-  }
-  if (per) {
-    const livre = el("button", {class: "it"}, "Livre", el("small", {}, "sem janela fixa"));
-    livre.addEventListener("click", () => { mp.classList.remove("aberto"); cfg.periodo = null; salvarPrefs(); montarTfs(); });
-    mp.append(livre);
-  }
   if (!Array.isArray(cfg.tfFechados)) cfg.tfFechados = [];
   const menu = $("popTf"); menu.replaceChildren();
   for (const [grupo, itens] of GRUPOS_TF) {
@@ -1193,37 +933,18 @@ function montarTfs(){
     });
     for (const [tf, nome] of itens) {
       const it = el("button", {class: "it", role: "menuitemradio", "aria-checked": String(tf === cfg.tf)}, nome);
-      it.addEventListener("click", () => { $("popTf").classList.remove("aberto"); trocar({tf, periodo: null}); });
+      it.addEventListener("click", () => { $("popTf").classList.remove("aberto"); trocar({tf}); });
       lista.append(it);
     }
     menu.append(cab, lista);
   }
 }
 $("bTf").addEventListener("click", e => { e.stopPropagation(); abrirPop("popTf", "bTf"); });
-mostrarLimite();
-$("bAuto").addEventListener("click", e => {
-  e.preventDefault();
-  cfg.limiteAuto = !cfg.limiteAuto;
-  if (cfg.limiteAuto && mapa) cfg.limite = limiteAutomatico(mapa);
-  mostrarLimite(); salvarPrefs(); assinatura = ""; desenharEscala();
-});
-$("limite").addEventListener("input", e => {
-  cfg.limite = +e.target.value; cfg.limiteAuto = false; $("bAuto").setAttribute("aria-pressed", "false");
-  $("limiteVal").textContent = cfg.limite.toFixed(2).replace(".", ",");
-  assinatura = ""; desenharEscala();
-});
-$("limite").addEventListener("change", salvarPrefs);
-$("bPer").addEventListener("click", e => { e.stopPropagation(); abrirPop("popPer", "bPer"); });
 function montarListaInd(){
   const box = $("listaInd"); box.replaceChildren();
   for (const i of INDICADORES) {
-    const cb = el("input", {type: "checkbox"}); cb.checked = i.id === "mapa" ? cfg.heat : cfg.ind[i.id];
-    cb.addEventListener("change", () => {
-      if (i.id === "mapa") {   // o mapa usa cfg.heat (mantém a escolha de quem já usava o botão antigo)
-        cfg.heat = cb.checked; salvarPrefs(); assinatura = ""; desenharEscala(); $("dica").style.display = "none"; return;
-      }
-      cfg.ind[i.id] = cb.checked; salvarPrefs(); aplicarIndicadores();
-    });
+    const cb = el("input", {type: "checkbox"}); cb.checked = cfg.ind[i.id];
+    cb.addEventListener("change", () => { cfg.ind[i.id] = cb.checked; salvarPrefs(); aplicarIndicadores(); });
     box.append(el("label", {class: "ind"}, cb, el("span", {}, i.nome, el("small", {}, i.desc))));
   }
 }
@@ -1234,22 +955,23 @@ function abrirPop(id, botao){
   $(id).classList.toggle("aberto");
 }
 $("bSimb").addEventListener("click", () => trocar({simbolo: SIMBOLOS[(SIMBOLOS.indexOf(cfg.simbolo) + 1) % SIMBOLOS.length]}));
+$("bHeat").addEventListener("click", () => { cfg.heat = !cfg.heat; salvarPrefs(); $("bHeat").setAttribute("aria-pressed", String(cfg.heat)); assinatura = ""; });
 $("bAtualizar").addEventListener("click", () => recalcular(true));
 $("bInd").addEventListener("click", e => { e.stopPropagation(); montarListaInd(); abrirPop("popInd", "bInd"); });
 const pesosBox = $("pesos");
 LEVS.forEach((L, i) => pesosBox.append(el("label", {}, L + "×", el("input", {type: "number", min: "0", step: "1", id: "w" + i}))));
 $("bAjustes").addEventListener("click", e => {
   e.stopPropagation();
-  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto; $("mediaVol").value = cfg.mediaVol; $("baseMapa").value = cfg.baseMapa; $("fontesOI").value = cfg.fontesOI;
+  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto; $("mediaVol").value = cfg.mediaVol;
   cfg.pesos.forEach((v, i) => $("w" + i).value = v);
   abrirPop("pop", "bAjustes");
 });
-for (const id of ["pop", "popInd", "popTf", "popPer"]) $(id).addEventListener("click", e => e.stopPropagation());
+for (const id of ["pop", "popInd", "popTf"]) $(id).addEventListener("click", e => e.stopPropagation());
 document.addEventListener("click", () => document.querySelectorAll(".pop").forEach(p => p.classList.remove("aberto")));
 $("aplicar").addEventListener("click", () => {
   $("pop").classList.remove("aberto");
   trocar({barras: +$("barras").value, filtro: Math.max(0, +$("filtro").value || 0), auto: +$("auto").value,
-          mediaVol: Math.max(20, Math.round(+$("mediaVol").value || 610)), baseMapa: $("baseMapa").value, fontesOI: $("fontesOI").value,
+          mediaVol: Math.max(20, Math.round(+$("mediaVol").value || 610)),
           pesos: LEVS.map((_, i) => Math.max(0, +$("w" + i).value || 0))});
 });
 
@@ -1275,6 +997,7 @@ function carregarLib(){
   });
 }
 
+$("bHeat").setAttribute("aria-pressed", String(cfg.heat));
 $("bSimb").textContent = cfg.simbolo + " ▾";
 montarTfs(); desenharLista();
 // ================= ferramentas de desenho (barra da esquerda) =================
