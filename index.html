@@ -34,6 +34,9 @@ button,select,input{font:inherit;color:inherit}
 .graf{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;background:var(--bg)}
 .principal{position:relative;flex:1 1 auto;min-height:200px}
 #heat{position:absolute;left:0;top:0;z-index:0;pointer-events:none}
+#dicaLiq{position:absolute;display:none;z-index:6;pointer-events:none;background:rgba(255,255,255,.96);border:1px solid #d1d4dc;border-radius:6px;padding:5px 8px;font-size:12px;line-height:1.5;box-shadow:0 2px 8px rgba(0,0,0,.12);white-space:nowrap}
+#dicaLiq .dl-p{color:#787b86;font-size:11px}
+#dicaLiq .s{color:#e65100}#dicaLiq .l{color:#1565c0}
 #chart{position:absolute;inset:0;z-index:1}
 .painel{position:relative;flex:0 0 120px;border-top:1px solid var(--line)}
 .painel .c{position:absolute;inset:0}
@@ -164,6 +167,7 @@ button,select,input{font:inherit;color:inherit}
   <div class="graf" id="graf">
     <div class="principal" id="principal">
       <canvas id="heat"></canvas>
+      <div id="dicaLiq"></div>
       <div id="chart"></div>
       <canvas id="des"></canvas>
       <div class="aviso" id="aviso"></div>
@@ -692,13 +696,27 @@ function atualizarLegenda(param){
   }
   if (cfg.ind.vwap && ind && ind.vwap[i]) extra.push(el("span", {class: "v"}, "VWAP "), el("b", {style: "color:#2962ff"}, pr(ind.vwap[i].value)));
   if (extra.length) linhas.push(el("div", {}, ...extra));
+  // valor de liquidação só aparece numa caixinha junto ao cursor, quando ele está sobre uma faixa do mapa
+  const dica = $("dicaLiq");
+  let mostrou = false;
   if (mapa && cfg.heat && param && param.point && param.seriesData && param.seriesData.has(serie)) {
     const preco = serie.coordinateToPrice(param.point.y);
     const col = mapa.cols[colunaMapa(k.time)];
     const b = Math.floor((preco - mapa.pmin) / mapa.w);
-    if (col && b >= 0 && b < FAIXAS && col[b] > 0)
-      linhas.push(el("div", {}, el("span", {class: "v"}, "Liquidação estimada em " + pr(preco) + ": "), el("b", {class: preco >= k.close ? "s" : "l"}, usd(col[b]))));
+    if (col && b >= 0 && b < FAIXAS && col[b] > 0) {
+      const short = preco >= k.close;
+      dica.replaceChildren(
+        el("div", {class: "dl-p"}, pr(mapa.pmin + b * mapa.w) + " – " + pr(mapa.pmin + (b + 1) * mapa.w)),
+        el("div", {}, el("span", {class: "v"}, short ? "Liquidação de shorts " : "Liquidação de longs "), el("b", {class: short ? "s" : "l"}, usd(col[b]))));
+      const W = principal.clientWidth, x = param.point.x, y = param.point.y;
+      dica.style.display = "block";
+      const lw = dica.offsetWidth, lh = dica.offsetHeight;
+      dica.style.left = (x + 14 + lw > W - 70 ? x - 14 - lw : x + 14) + "px";
+      dica.style.top = Math.max(4, y - lh - 10) + "px";
+      mostrou = true;
+    }
   }
+  if (!mostrou) dica.style.display = "none";
   leg.replaceChildren(...linhas);
   // rótulos dos painéis
   const nomes = {delta: "Delta de volume", cvd: "CVD", oi: "Open Interest"};
