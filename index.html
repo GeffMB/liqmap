@@ -45,6 +45,17 @@ button,select,input{font:inherit;color:inherit}
 .legenda .v{color:var(--sub)}
 .up{color:var(--up)} .down{color:var(--down)} .s{color:var(--short)} .l{color:var(--long)}
 .contagem{position:absolute;right:0;z-index:3;pointer-events:none;color:#fff;font:11px/16px -apple-system,BlinkMacSystemFont,"Trebuchet MS",Roboto,sans-serif;text-align:left;padding:0 6px;font-variant-numeric:tabular-nums;display:none}
+.dica{position:absolute;z-index:5;pointer-events:none;display:none;background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:8px;
+  box-shadow:0 4px 14px rgba(19,23,34,.14);padding:7px 10px;font-size:12px;line-height:1.6;min-width:150px;font-variant-numeric:tabular-nums}
+.dica .d{font-weight:600;margin-bottom:2px}
+.dica .ln{display:flex;justify-content:space-between;gap:16px}
+.dica .ln span{color:var(--sub)}
+.dica .ln b{font-weight:600}
+.dica .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:0}
+.escala{position:absolute;left:8px;bottom:36px;z-index:2;pointer-events:none;display:none;align-items:center;gap:6px;font-size:11px;color:var(--sub);
+  background:rgba(255,255,255,.85);padding:3px 7px;border-radius:4px}
+.escala i{display:inline-block;width:16px;height:8px}
+.escala .bar{display:flex;border-radius:2px;overflow:hidden}
 .carregando{position:absolute;inset:0;z-index:3;display:flex;align-items:center;justify-content:center;color:var(--sub);background:rgba(255,255,255,.7)}
 /* ---------- painel lateral ---------- */
 .lado{width:300px;flex:0 0 300px;border-left:1px solid var(--line);background:var(--bg);display:flex;flex-direction:column;overflow-y:auto}
@@ -170,6 +181,8 @@ button,select,input{font:inherit;color:inherit}
       <div class="selbar" id="selbar"><span id="selNome"></span><button id="selApagar" title="Apagar desenho (Delete)">🗑 Apagar</button><button id="selFechar" title="Tirar seleção (Esc)">✕</button></div>
       <div class="legenda" id="legenda"></div>
       <div class="contagem" id="contagem"></div>
+      <div class="dica" id="dica"></div>
+      <div class="escala" id="escala"></div>
       <div class="carregando" id="carregando">Carregando dados da Binance…</div>
     </div>
   </div>
@@ -387,7 +400,7 @@ function montarMapa(kl, oi, tf, filtro, pesos){
   for (let b = 0; b < FAIXAS; b++) {
     let ini = -1, q0 = 0;
     for (let t = 0; t <= cols.length; t++) {
-      const q = t < cols.length ? Math.round(Math.sqrt(cols[t][b] / mx) * NIVEIS) : 0;
+      const q = t < cols.length ? nivelCalor(cols[t][b], mx) : 0;
       if (q !== q0) { if (q0 > 0) runs.push([b, ini, t - 1, q0]); ini = t; q0 = q; }
     }
   }
@@ -397,7 +410,7 @@ function montarMapa(kl, oi, tf, filtro, pesos){
   const top = arr => [...arr].map((v, b) => [v, b]).filter(x => x[0] > 0).sort((a, b) => b[0] - a[0]).slice(0, 5)
     .map(([v, b]) => ({preco: centro(b), dist: (centro(b) / ultimo - 1) * 100, forca: v / mxAtual * 100, valor: v}));
   const perto = (arr, p) => { let s = 0; for (let b = 0; b < FAIXAS; b++) if (Math.abs(centro(b) / ultimo - 1) * 100 <= p) s += arr[b]; return s; };
-  return {pmin, w, cols, runs, tb: kl.map(k => k.t / 1000), tfBase: TF_MS[tf] / 1000, ultimo, barrasOI: hist.length, shorts: top(shorts), longs: top(longs), s5: perto(shorts, 5), l5: perto(longs, 5)};
+  return {pmin, w, cols, runs, mx, tb: kl.map(k => k.t / 1000), tfBase: TF_MS[tf] / 1000, ultimo, barrasOI: hist.length, shorts: top(shorts), longs: top(longs), s5: perto(shorts, 5), l5: perto(longs, 5)};
 }
 
 // ---------- indicadores de volume ----------
@@ -444,24 +457,35 @@ function calcIndicadores(v, oiPorT){
 }
 
 // ---------- cores do mapa ----------
-const PALETA = (() => {
-  const st = [[0,[255,255,255,0]],[0.15,[120,140,255,0.16]],[0.35,[124,92,230,0.34]],[0.6,[214,64,140,0.55]],[0.82,[245,140,30,0.75]],[1,[220,38,38,0.92]]];
-  const out = [];
-  for (let q = 0; q <= NIVEIS; q++) {
-    const x = q / NIVEIS;
-    let i = 0; while (i < st.length - 2 && x > st[i + 1][0]) i++;
-    const [x0, c0] = st[i], [x1, c1] = st[i + 1], f = (x - x0) / (x1 - x0 || 1);
-    const c = c0.map((v, j) => v + (c1[j] - v) * f);
-    out.push(`rgba(${c[0]|0},${c[1]|0},${c[2]|0},${c[3].toFixed(2)})`);
-  }
-  return out;
-})();
+// poucos níveis de calor, da mesma família de cores: roxo -> azul -> verde-água -> verde -> amarelo
+const PALETA = ["rgba(0,0,0,0)", "rgba(88,60,150,0.16)", "rgba(59,82,160,0.32)", "rgba(33,145,140,0.50)", "rgba(80,190,90,0.70)", "rgba(240,196,0,0.92)"];
+const CORES_ESCALA = ["#ddd6ee", "#a9b3d6", "#62b8b2", "#7ccc81", "#f0c400"];
+const LIMITES_CALOR = [0.15, 0.30, 0.48, 0.68, 0.86];   // fração do máximo (após curva) para cada nível
+function nivelCalor(v, mx){
+  const t = Math.pow(v / mx, 0.6);
+  let q = 0; for (let i = 0; i < LIMITES_CALOR.length; i++) if (t >= LIMITES_CALOR[i]) q = i + 1;
+  return q;
+}
 
 // ---------- gráficos ----------
 const principal = $("principal"), canvas = $("heat"), ctx = canvas.getContext("2d");
 let LWC, chart, serie, sVol, sVwap, mapa = null, velas = [], ind = null, oiPorT = new Map(), assinatura = "";
 const paineis = {};   // id -> {div, chart, serie, rot}
 
+// horários do gráfico no fuso de quem está vendo (como na TradingView), não em UTC
+const MESES_ABREV = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+function horaLocal(t, completo){
+  const d = new Date(t * 1000), z = n => String(n).padStart(2, "0");
+  const data = z(d.getDate()) + " " + MESES_ABREV[d.getMonth()] + " '" + String(d.getFullYear()).slice(2);
+  return TF_MS[cfg.tf] >= 864e5 ? data : data + "  " + z(d.getHours()) + ":" + z(d.getMinutes());
+}
+function marcaTempo(t, tipo){
+  const d = new Date(t * 1000), z = n => String(n).padStart(2, "0");
+  if (tipo === 0) return String(d.getFullYear());
+  if (tipo === 1) return MESES_ABREV[d.getMonth()] + ".";
+  if (tipo === 2) return String(d.getDate());
+  return z(d.getHours()) + ":" + z(d.getMinutes());
+}
 function opcoesBase(){
   return {
     autoSize: true,
@@ -472,8 +496,8 @@ function opcoesBase(){
                 vertLine: {color: "#9598a1", width: 1, style: LWC.LineStyle.Dashed, labelBackgroundColor: "#131722"},
                 horzLine: {color: "#9598a1", width: 1, style: LWC.LineStyle.Dashed, labelBackgroundColor: "#131722"}},
     rightPriceScale: {borderColor: "#e0e3eb", minimumWidth: LARG_ESCALA},
-    timeScale: {borderColor: "#e0e3eb", timeVisible: true, secondsVisible: false, rightOffset: 12, barSpacing: 6},
-    localization: {locale: "pt-BR"}
+    timeScale: {borderColor: "#e0e3eb", timeVisible: true, secondsVisible: false, rightOffset: 12, barSpacing: 6, tickMarkFormatter: marcaTempo},
+    localization: {locale: "pt-BR", timeFormatter: t => horaLocal(t, true)}
   };
 }
 
@@ -487,7 +511,12 @@ function criarGrafico(){
   sVol = chart.addHistogramSeries({priceScaleId: "vol", priceFormat: {type: "custom", formatter: usd}, lastValueVisible: false, priceLineVisible: false});
   chart.priceScale("vol").applyOptions({scaleMargins: {top: 0.82, bottom: 0}, visible: false});
   sVwap = chart.addLineSeries({color: "#2962ff", lineWidth: 2, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false});
-  chart.subscribeCrosshairMove(p => { if (!p || !p.point || p.sourceEvent) cursorY = p && p.point ? p.point.y : null; atualizarContagem(); atualizarLegenda(p); espelharCursor(chart, p); });
+  rastrearPonteiro(principal);
+  chart.subscribeCrosshairMove(p => {
+    const real = !p || !p.point || sobre === principal;
+    if (real) { cursorY = p && p.point ? p.point.y : null; atualizarDica(p); }
+    atualizarContagem(); atualizarLegenda(p); espelharCursor(chart, p);
+  });
   chart.timeScale().subscribeVisibleLogicalRangeChange(r => espelharFaixa(chart, r));
   aplicarIndicadores();
   requestAnimationFrame(loopDesenho);
@@ -498,6 +527,7 @@ function criarPainel(id){
   const div = el("div", {class: "painel"}), c = el("div", {class: "c"}), rot = el("div", {class: "rot"});
   div.append(c, rot);
   $("graf").append(div);
+  rastrearPonteiro(div);
   const op = opcoesBase();
   op.rightPriceScale.scaleMargins = {top: 0.2, bottom: 0.08};
   op.layout.attributionLogo = false;
@@ -524,11 +554,24 @@ function espelharFaixa(origem, r){
   for (const c of todos()) if (c !== origem) c.timeScale().setVisibleLogicalRange(r);
   espelhando = false;
 }
+// em qual gráfico o mouse/dedo está de verdade (o principal ou um dos painéis)
+let sobre = null;
+function rastrearPonteiro(elem){
+  elem.addEventListener("pointerenter", () => { sobre = elem; });
+  elem.addEventListener("pointermove", () => { sobre = elem; });
+  elem.addEventListener("pointerleave", () => { if (sobre === elem) sobre = null; });
+}
+function elemDe(c){
+  if (c === chart) return principal;
+  for (const pn of Object.values(paineis)) if (pn.chart === c) return pn.div;
+  return null;
+}
 function espelharCursor(origem, p){
   if (espelhando) return;
-  // só repassa movimentos reais do mouse/dedo (ou a saída do cursor); ignora os eventos que o próprio
-  // gráfico emite ao redesenhar com dados ao vivo, que puxavam a linha para o fechamento do candle
-  if (p && p.point && !p.sourceEvent) return;
+  // só repassa o cursor do gráfico onde o mouse/dedo está; ignora os eventos que os gráficos emitem
+  // sozinhos ao redesenhar com dados ao vivo (eles puxavam a linha para o fechamento do candle)
+  if (p && p.point && sobre !== elemDe(origem)) return;
+  if (!(p && p.point) && sobre && sobre !== elemDe(origem)) return;
   espelhando = true;
   const t = p && p.time;
   for (const [id, pn] of Object.entries(paineis)) {
@@ -615,7 +658,7 @@ function desenharCanvas(){
   // 1) mapa de liquidações
   if (mapa && cfg.heat) {
     for (const [b, i0, i1, q] of mapa.runs) {
-      if (q < 4) continue;
+      if (!q) continue;
       const yTop = serie.priceToCoordinate(mapa.pmin + (b + 1) * mapa.w), yBot = serie.priceToCoordinate(mapa.pmin + b * mapa.w);
       if (yTop == null || yBot == null || yBot < 0 || yTop > H) continue;
       const xa = x0 + (idxDeT(mapa.tb[i0]) - 0.5) * passo;
@@ -671,6 +714,45 @@ function colunaMapa(t){   // candle da base do mapa que contém o horário t
   while (b - a > 1) { const m = (a + b) >> 1; if (tb[m] <= t) a = m; else b = m; }
   return a;
 }
+// escala de cores do mapa (canto inferior esquerdo)
+function desenharEscala(){
+  const e = $("escala");
+  if (!mapa || !cfg.heat || !mapa.barrasOI) { e.style.display = "none"; return; }
+  const bar = el("span", {class: "bar"}, ...CORES_ESCALA.map(c => { const i = el("i"); i.style.background = c; return i; }));
+  e.replaceChildren(el("span", {}, "Liq. estimada"), bar, el("span", {}, "até " + usd(mapa.mx)));
+  e.style.display = "flex";
+}
+// caixinha junto ao cursor: data, preço e liquidação estimada naquele nível
+function fmtData(t){
+  const d = new Date(t * 1000), z = n => String(n).padStart(2, "0");
+  const dia = z(d.getDate()) + "/" + z(d.getMonth() + 1) + "/" + d.getFullYear();
+  return TF_MS[cfg.tf] >= 864e5 ? dia : dia + " " + z(d.getHours()) + ":" + z(d.getMinutes());
+}
+function atualizarDica(p){
+  const dica = $("dica");
+  if (!p || !p.point || !mapa || !cfg.heat || !velas.length || ferramenta !== "cursor" || arrasto) { dica.style.display = "none"; return; }
+  const preco = serie.coordinateToPrice(p.point.y);
+  if (preco == null) { dica.style.display = "none"; return; }
+  const futuro = p.time == null && p.logical != null && p.logical > velas.length - 1;
+  const t = p.time != null ? p.time : velas[velas.length - 1].time;
+  const col = mapa.cols[colunaMapa(t)], b = Math.floor((preco - mapa.pmin) / mapa.w);
+  const v = col && b >= 0 && b < FAIXAS ? col[b] : 0;
+  const q = v > 0 ? nivelCalor(v, mapa.mx) : 0;
+  const sw = el("span", {class: "sw"}); sw.style.background = q ? CORES_ESCALA[q - 1] : "transparent";
+  const ult = velas[velas.length - 1].close;
+  dica.replaceChildren(
+    el("div", {class: "d"}, futuro ? "Níveis ativos agora" : fmtData(t)),
+    el("div", {class: "ln"}, el("span", {}, "Preço"), el("b", {}, pr(preco))),
+    el("div", {class: "ln"}, el("span", {}, "Liq. estimada"), el("b", {}, sw, v > 0 ? usd(v) : "—")),
+    el("div", {class: "ln"}, el("span", {}, "Lado"), el("b", {class: preco >= ult ? "s" : "l"}, preco >= ult ? "shorts ↑" : "longs ↓")));
+  dica.style.display = "block";
+  const W = principal.clientWidth - chart.priceScale("right").width(), H = principal.clientHeight;
+  const dw = dica.offsetWidth, dh = dica.offsetHeight;
+  let x = p.point.x + 16, y = p.point.y + 16;
+  if (x + dw > W - 4) x = p.point.x - dw - 16;
+  if (y + dh > H - 30) y = p.point.y - dh - 16;
+  dica.style.left = Math.max(4, x) + "px"; dica.style.top = Math.max(4, y) + "px";
+}
 function atualizarLegenda(param){
   const leg = $("legenda");
   if (!velas.length) { leg.replaceChildren(); return; }
@@ -692,13 +774,6 @@ function atualizarLegenda(param){
   }
   if (cfg.ind.vwap && ind && ind.vwap[i]) extra.push(el("span", {class: "v"}, "VWAP "), el("b", {style: "color:#2962ff"}, pr(ind.vwap[i].value)));
   if (extra.length) linhas.push(el("div", {}, ...extra));
-  if (mapa && cfg.heat && param && param.point && param.seriesData && param.seriesData.has(serie)) {
-    const preco = serie.coordinateToPrice(param.point.y);
-    const col = mapa.cols[colunaMapa(k.time)];
-    const b = Math.floor((preco - mapa.pmin) / mapa.w);
-    if (col && b >= 0 && b < FAIXAS && col[b] > 0)
-      linhas.push(el("div", {}, el("span", {class: "v"}, "Liquidação estimada em " + pr(preco) + ": "), el("b", {class: preco >= k.close ? "s" : "l"}, usd(col[b]))));
-  }
   leg.replaceChildren(...linhas);
   // rótulos dos painéis
   const nomes = {delta: "Delta de volume", cvd: "CVD", oi: "Open Interest"};
@@ -894,7 +969,7 @@ async function recalcular(manterZoom){
     chart.timeScale().setVisibleLogicalRange(alvo);
     espelharFaixa(chart, alvo);
     assinatura = "";
-    atualizarLegenda(); desenharZonas();
+    atualizarLegenda(); desenharZonas(); desenharEscala();
     $("status").textContent = (mapa.barrasOI ? "" : "Sem Open Interest para o período · ") + (baseMapa(cfg.tf) === "1d" && cfg.tf !== "1d" ? "Mapa dos últimos 30 dias · " : "") + "Mapa de " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}) + (DEMO ? " · DADOS DE TESTE" : "");
     $("status2").textContent = (DEMO ? "Teste · " : "") + "Mapa " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"});
   } catch (e) {
@@ -955,7 +1030,7 @@ function abrirPop(id, botao){
   $(id).classList.toggle("aberto");
 }
 $("bSimb").addEventListener("click", () => trocar({simbolo: SIMBOLOS[(SIMBOLOS.indexOf(cfg.simbolo) + 1) % SIMBOLOS.length]}));
-$("bHeat").addEventListener("click", () => { cfg.heat = !cfg.heat; salvarPrefs(); $("bHeat").setAttribute("aria-pressed", String(cfg.heat)); assinatura = ""; });
+$("bHeat").addEventListener("click", () => { cfg.heat = !cfg.heat; salvarPrefs(); $("bHeat").setAttribute("aria-pressed", String(cfg.heat)); assinatura = ""; desenharEscala(); $("dica").style.display = "none"; });
 $("bAtualizar").addEventListener("click", () => recalcular(true));
 $("bInd").addEventListener("click", e => { e.stopPropagation(); montarListaInd(); abrirPop("popInd", "bInd"); });
 const pesosBox = $("pesos");
