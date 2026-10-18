@@ -206,7 +206,7 @@ button,select,input{font:inherit;color:inherit}
       <table class="zt" id="zonas"></table>
     </div>
     <div class="bloco nota">
-      Mapa de liquidações: estimativa própria a partir do Open Interest público da Binance Futures (até ~30 dias de histórico).
+      Mapa de liquidações: estimativa própria a partir do Open Interest público somado de Binance, Bybit, OKX e Gate (as que responderem; até ~30 dias de histórico — a OKX guarda ~15).
       Mostra onde posições alavancadas <b>seriam</b> liquidadas — não são ordens reais e o mapa não prevê direção.
       Volume, delta e CVD usam o volume de compradores agressivos (taker) informado pela Binance em cada candle. Não é recomendação de investimento.
     </div>
@@ -232,6 +232,7 @@ button,select,input{font:inherit;color:inherit}
   <label>Candles <select id="barras"><option>300</option><option>500</option><option selected>1000</option><option>1500</option></select></label>
   <label>Filtro de ruído <input id="filtro" type="number" min="0" step="0.1" value="1.0"></label>
   <label>Base do mapa <select id="baseMapa" style="width:150px"><option value="unica">15 min, 30 dias (igual em todos)</option><option value="tf">Do tempo gráfico</option></select></label>
+  <label>Open Interest <select id="fontesOI" style="width:150px"><option value="todas">Somar Binance + Bybit + OKX + Gate</option><option value="binance">Só Binance</option></select></label>
   <label>Média do volume (candles) <input id="mediaVol" type="number" min="20" step="1" value="610"></label>
   <label>Recalcular mapa a cada <select id="auto"><option value="0">desligado</option><option value="5">5 min</option><option value="15" selected>15 min</option><option value="60">60 min</option></select></label>
   <label style="margin-top:10px">Pesos de alavancagem</label>
@@ -309,7 +310,7 @@ const INDICADORES = [
 // ---------- preferências (só neste navegador) ----------
 function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap2") || "{}"); } catch(e){ return {}; } }
 function salvarPrefs(){ try { localStorage.setItem("liqmap2", JSON.stringify(cfg)); } catch(e){} }
-const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, limite: 0.25, limiteAuto: true, baseMapa: "unica", pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
+const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, limite: 0.25, limiteAuto: true, baseMapa: "unica", fontesOI: "todas", pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
 if (!SIMBOLOS.includes(cfg.simbolo)) cfg.simbolo = "BTCUSDT";
 if (cfg.baseMapa !== "tf") cfg.baseMapa = "unica";
 if (!TFS.includes(cfg.tf)) cfg.tf = "15m";
@@ -353,6 +354,97 @@ async function buscarOI(sym, tf, ini, fim){
     s = e + 1;
   }
   return oi;
+}
+// ---------- Open Interest de outras corretoras (somado ao da Binance) ----------
+// Cada fonte é opcional: se falhar (bloqueio, CORS, limite), o mapa segue com as demais.
+let fontesUsadas = [];
+async function jsonExterno(url, ms = 12000){
+  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), ms);
+  try { const r = await fetch(url, {signal: ctl.signal}); if (!r.ok) throw new Error(r.status); return await r.json(); }
+  finally { clearTimeout(to); }
+}
+const moedaDe = sym => sym.replace(/USDT$/, "");
+async function oiBybit(sym, tf, ini, fim, preco){
+  const iv = {"5m": "5min", "15m": "15min", "30m": "30min", "1h": "1h", "4h": "4h", "1d": "1d"}[tf];
+  if (!iv) return null;
+  const m = new Map(); let cursor = "";
+  for (let i = 0; i < 40; i++) {
+    const q = {category: "linear", symbol: sym, intervalTime: iv, startTime: ini, endTime: fim, limit: 200};
+    if (cursor) q.cursor = cursor;
+    const d = await jsonExterno("https://api.bybit.com/v5/market/open-interest?" + new URLSearchParams(q));
+    if (d.retCode !== 0) throw new Error(d.retMsg);
+    for (const x of d.result.list) {
+      const t = +x.timestamp, c = +(x.singleOpenInterest ?? x.openInterest), p = preco(t);
+      if (p && c) m.set(t, c * p);   // linear: OI em moeda → USD
+    }
+    cursor = d.result.nextPageCursor;
+    if (!cursor || !d.result.list.length) break;
+  }
+  return m;
+}
+async function oiOKX(sym, tf, ini, fim){
+  const iv = {"5m": "5m", "15m": "15m", "30m": "30m", "1h": "1H", "2h": "2H", "4h": "4H", "1d": "1Dutc"}[tf];
+  if (!iv) return null;
+  const m = new Map(); let fimPag = fim;
+  for (let i = 0; i < 15; i++) {   // até 1440 registros (100 por página, do mais novo ao mais antigo)
+    if (i) await new Promise(r => setTimeout(r, 450));   // respeita o limite de 5 pedidos / 2 s
+    let d;
+    try {
+      d = await jsonExterno("https://www.okx.com/api/v5/rubik/stat/contracts/open-interest-history?" +
+        new URLSearchParams({instId: moedaDe(sym) + "-USDT-SWAP", period: iv, end: fimPag, limit: 100}));
+      if (d.code !== "0") throw new Error(d.msg);
+    } catch (e) { if (m.size) break; throw e; }   // falhou no meio: fica com o que já veio
+    if (!d.data.length) break;
+    let menor = Infinity;
+    for (const x of d.data) { const t = +x[0]; if (t >= ini) m.set(t, +x[3]); menor = Math.min(menor, t); }
+    if (menor <= ini) break;
+    fimPag = menor;
+  }
+  return m;
+}
+async function oiGate(sym, tf, ini, fim){
+  const iv = {"5m": "5m", "15m": "15m", "30m": "30m", "1h": "1h", "4h": "4h", "1d": "1d"}[tf];
+  if (!iv) return null;
+  const m = new Map(), passo = TF_MS[tf] * 100;
+  for (let s = ini; s <= fim; s += passo) {
+    const d = await jsonExterno("https://api.gateio.ws/api/v4/futures/usdt/contract_stats?" +
+      new URLSearchParams({contract: moedaDe(sym) + "_USDT", interval: iv, from: Math.floor(s / 1000), limit: 100}));
+    if (!Array.isArray(d)) throw new Error("resposta inválida");
+    for (const x of d) { const t = x.time * 1000; if (t <= fim && +x.open_interest_usd) m.set(t, +x.open_interest_usd); }
+    if (d.length < 100) break;
+  }
+  return m;
+}
+// Soma as séries no relógio da Binance. Antes do início de uma fonte, repete o primeiro valor dela
+// (assim a entrada da fonte não vira um "salto" de OI que geraria posições falsas).
+function somarOI(base, outras){
+  const ts = [...base.keys()].sort((a, b) => a - b), soma = new Map();
+  const series = outras.map(m => { const t = [...m.keys()].sort((a, b) => a - b); return {t, v: t.map(x => m.get(x)), i: 0}; });
+  for (const t of ts) {
+    let v = base.get(t);
+    for (const s of series) {
+      while (s.i + 1 < s.t.length && s.t[s.i + 1] <= t) s.i++;
+      v += s.v[s.i];
+    }
+    soma.set(t, v);
+  }
+  return soma;
+}
+async function buscarOITodas(sym, tf, ini, fim, kl){
+  const bin = await buscarOI(sym, tf, ini, fim);
+  fontesUsadas = bin.size ? ["Binance"] : [];
+  if (cfg.fontesOI === "binance" || !bin.size) return bin;
+  ini = Math.max(ini, Date.now() - OI_MAX_DIAS * 864e5);
+  const fech = new Map(kl.map(k => [k.t + TF_MS[tf], k.c])), abre = new Map(kl.map(k => [k.t, k.o]));
+  const preco = t => fech.get(t) ?? abre.get(t);
+  const fontes = [["Bybit", () => oiBybit(sym, tf, ini, fim, preco)], ["OKX", () => oiOKX(sym, tf, ini, fim)], ["Gate", () => oiGate(sym, tf, ini, fim)]];
+  const res = await Promise.allSettled(fontes.map(f => f[1]()));
+  const ok = [];
+  res.forEach((r, i) => {
+    if (r.status === "fulfilled" && r.value && r.value.size >= 8) { ok.push(r.value); fontesUsadas.push(fontes[i][0]); }
+    else console.warn("OI " + fontes[i][0] + " indisponível:", r.reason || "sem dados");
+  });
+  return ok.length ? somarOI(bin, ok) : bin;
 }
 function dadosDemo(sym, tf, n){
   if (MESES_TF[tf]) {   // teste: candles mensais de calendário (e agrupados para 3M/6M/12M)
@@ -1031,7 +1123,7 @@ async function recalcular(manterZoom){
         }
       }
       const ref = klBase || kl;
-      oi = await buscarOI(cfg.simbolo, base, ref[0].t, ref[ref.length - 1].t + TF_MS[base]);
+      oi = await buscarOITodas(cfg.simbolo, base, ref[0].t, ref[ref.length - 1].t + TF_MS[base], ref);
     }
     if (meu !== pedido) return;
     mapa = montarMapa(klBase && klBase.length ? klBase : kl, oi, base, cfg.filtro, cfg.pesos);
@@ -1049,7 +1141,7 @@ async function recalcular(manterZoom){
     espelharFaixa(chart, alvo);
     assinatura = "";
     atualizarLegenda(); desenharZonas(); desenharEscala();
-    $("status").textContent = (mapa.barrasOI ? "" : "Sem Open Interest para o período · ") + (TF_MS[cfg.tf] >= 864e5 ? "Mapa dos últimos 30 dias · " : "") + "Mapa de " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}) + (DEMO ? " · DADOS DE TESTE" : "");
+    $("status").textContent = (mapa.barrasOI ? "" : "Sem Open Interest para o período · ") + (TF_MS[cfg.tf] >= 864e5 ? "Mapa dos últimos 30 dias · " : "") + (!DEMO && fontesUsadas.length ? "OI: " + fontesUsadas.join(" + ") + " · " : "") + "Mapa de " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}) + (DEMO ? " · DADOS DE TESTE" : "");
     $("status2").textContent = (DEMO ? "Teste · " : "") + "Mapa " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"});
   } catch (e) {
     $("status").textContent = "Erro: " + (e.message || e); $("status").className = "status err"; $("status2").textContent = "Erro ao carregar";
@@ -1148,7 +1240,7 @@ const pesosBox = $("pesos");
 LEVS.forEach((L, i) => pesosBox.append(el("label", {}, L + "×", el("input", {type: "number", min: "0", step: "1", id: "w" + i}))));
 $("bAjustes").addEventListener("click", e => {
   e.stopPropagation();
-  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto; $("mediaVol").value = cfg.mediaVol; $("baseMapa").value = cfg.baseMapa;
+  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto; $("mediaVol").value = cfg.mediaVol; $("baseMapa").value = cfg.baseMapa; $("fontesOI").value = cfg.fontesOI;
   cfg.pesos.forEach((v, i) => $("w" + i).value = v);
   abrirPop("pop", "bAjustes");
 });
@@ -1157,7 +1249,7 @@ document.addEventListener("click", () => document.querySelectorAll(".pop").forEa
 $("aplicar").addEventListener("click", () => {
   $("pop").classList.remove("aberto");
   trocar({barras: +$("barras").value, filtro: Math.max(0, +$("filtro").value || 0), auto: +$("auto").value,
-          mediaVol: Math.max(20, Math.round(+$("mediaVol").value || 610)), baseMapa: $("baseMapa").value,
+          mediaVol: Math.max(20, Math.round(+$("mediaVol").value || 610)), baseMapa: $("baseMapa").value, fontesOI: $("fontesOI").value,
           pesos: LEVS.map((_, i) => Math.max(0, +$("w" + i).value || 0))});
 });
 
