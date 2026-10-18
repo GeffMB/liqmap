@@ -162,7 +162,7 @@ button,select,input{font:inherit;color:inherit}
   <div class="sep"></div>
   <button class="btn tfbtn" id="bTf" title="Tempo gráfico" aria-haspopup="true">15m ▾</button>
   <label class="limite" title="Limite de liquidez: esconde as faixas mais fracas do mapa"><span class="txt">Limite</span>
-    <input type="range" id="limite" min="0" max="0.95" step="0.01" value="0.15" aria-label="Limite de liquidez"><b id="limiteVal">0,15</b></label>
+    <input type="range" id="limite" min="0" max="0.95" step="0.01" value="0.25" aria-label="Limite de liquidez"><b id="limiteVal">0,15</b></label>
   <button class="btn" id="bPer" title="Período do mapa (janela de tempo, como no CoinAnk)" aria-haspopup="true">Período ▾</button>
   <div class="sep"></div>
   <button class="btn" id="bInd" title="Indicadores">ƒx<span class="txt"> Indicadores</span></button>
@@ -302,7 +302,7 @@ const INDICADORES = [
 // ---------- preferências (só neste navegador) ----------
 function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap2") || "{}"); } catch(e){ return {}; } }
 function salvarPrefs(){ try { localStorage.setItem("liqmap2", JSON.stringify(cfg)); } catch(e){} }
-const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, limite: 0.15, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
+const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, limite: 0.25, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
 if (!SIMBOLOS.includes(cfg.simbolo)) cfg.simbolo = "BTCUSDT";
 if (!TFS.includes(cfg.tf)) cfg.tf = "15m";
 if (!Array.isArray(cfg.pesos) || cfg.pesos.length !== 6) cfg.pesos = PESOS_PADRAO.slice();
@@ -394,19 +394,37 @@ function montarMapa(kl, oi, tf, filtro, pesos){
       const d = o1 - o0, ult = hist.slice(-50);
       const ref = ult.length ? ult.reduce((a, b) => a + b, 0) / ult.length : 0;
       hist.push(Math.max(d, 0));
+      // 1) Open Interest caiu: posições foram fechadas -> as zonas existentes perdem força na mesma proporção
+      if (d < 0 && o0 > 0) {
+        const f = Math.max(0, 1 + d / o0);
+        for (let b = 0; b < FAIXAS; b++) { longs[b] *= f; shorts[b] *= f; }
+      }
       if (d > 0 && d >= ref * filtro) {
-        const ent = (k.h + k.l + k.c) / 3;
+        // 2) lado agressor: mais compra agressiva no candle -> mais peso nas liquidações de longs (e vice-versa)
+        const fracL = k.q > 0 && k.b != null ? Math.min(0.8, Math.max(0.2, k.b / k.q)) : 0.5;
+        // 3) entrada espalhada pelo candle (mínima, meio e máxima), deixando as faixas mais suaves
+        const entradas = [[k.l, 0.25], [(k.h + k.l + k.c) / 3, 0.5], [k.h, 0.25]];
         LEVS.forEach((L, i) => {
           if (pesos[i] <= 0) return;
           const s = d * pesos[i] / somaP;
-          const bl = idx(ent * (1 - 1 / L + MMR)), bs = idx(ent * (1 + 1 / L - MMR));
-          if (bl >= 0 && bl < FAIXAS) longs[bl] += s;
-          if (bs >= 0 && bs < FAIXAS) shorts[bs] += s;
+          for (const [ent, pe] of entradas) {
+            const bl = idx(ent * (1 - 1 / L + MMR)), bs = idx(ent * (1 + 1 / L - MMR));
+            if (bl >= 0 && bl < FAIXAS) longs[bl] += s * pe * 2 * fracL;
+            if (bs >= 0 && bs < FAIXAS) shorts[bs] += s * pe * 2 * (1 - fracL);
+          }
         });
       }
     }
+    // suavização vertical leve (1-2-1) para fechar as frestas entre faixas vizinhas
     const col = new Float32Array(FAIXAS);
-    for (let b = 0; b < FAIXAS; b++) col[b] = longs[b] + shorts[b];
+    for (let b = 0; b < FAIXAS; b++) {
+      let soma = 0, peso = 0;
+      for (let k2 = -1; k2 <= 1; k2++) {
+        const j = b + k2; if (j < 0 || j >= FAIXAS) continue;
+        const pw = 2 - Math.abs(k2); soma += (longs[j] + shorts[j]) * pw; peso += pw;
+      }
+      col[b] = soma / peso * 1.4;   // 1.4 ≈ mantém o valor do pico parecido com o de antes da suavização
+    }
     cols.push(col);
   }
   let mx = 0;
