@@ -649,10 +649,19 @@ function aplicarVelas(){
   serie.setData(velas.map(vela));
 }
 // mostra/oculta indicadores e monta os painéis na ordem
+// painéis dividem no máximo ~45% da altura, para o gráfico principal (e o mapa) não ficar espremido
+function ajustarPaineis(){
+  const lista = Object.values(paineis); if (!lista.length) return;
+  const H = $("graf").clientHeight, max = matchMedia("(max-width: 760px)").matches ? 84 : 120;
+  const h = Math.round(Math.max(56, Math.min(max, H * 0.45 / lista.length)));
+  for (const p of lista) p.div.style.flexBasis = h + "px";
+}
+window.addEventListener("resize", ajustarPaineis);
 let spotLigado = null;
 function aplicarIndicadores(){
   if (!chart) return;
   if (spotLigado !== cfg.ind.spot) { spotLigado = cfg.ind.spot; conectarSpot(); }
+  const faixaAntes = chart.timeScale().getVisibleLogicalRange();   // painel novo nasce com outra janela; mantém a atual
   carregarMVRV();
   sVol.applyOptions({visible: cfg.ind.vol});
   if (velas.length) { ind = calcIndicadores(velas, oiPorT); aplicarVelas(); }
@@ -666,9 +675,10 @@ function aplicarIndicadores(){
   ordem.forEach(id => $("graf").append(paineis[id].div));
   chart.timeScale().applyOptions({visible: ordem.length === 0});
   ordem.forEach((id, i) => paineis[id].chart.timeScale().applyOptions({visible: i === ordem.length - 1}));
+  ajustarPaineis();
   preencherSeries();
-  const r = chart.timeScale().getVisibleLogicalRange();
-  if (r) espelharFaixa(chart, r);
+  const r = faixaAntes || chart.timeScale().getVisibleLogicalRange();
+  if (r) { espelhando = true; for (const c of todos()) c.timeScale().setVisibleLogicalRange(r); espelhando = false; }
   assinatura = "";
   atualizarLegenda();
 }
@@ -679,12 +689,18 @@ function preencherMM(){
   while (sMM.length < mms.length) sMM.push(chart.addLineSeries({lineWidth: 1.5, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false}));
   mms.forEach((m, i) => { sMM[i].applyOptions({color: CORES_MM[i]}); sMM[i].setData(m.dados); });
 }
+function completar(arr){
+  const m = new Map((arr || []).map(x => [x.time, x]));
+  return velas.map(v => m.get(v.time) || {time: v.time});
+}
 function preencherSeries(){
   if (!ind) return;
   sVol.setData(ind.vol);
   sVwap.setData(ind.vwap);
   preencherMM();
-  for (const [id, p] of Object.entries(paineis)) { p.serie.setData(ind[id] || []); if (p.serie2) p.serie2.setData(ind[id + "V"] || []); }
+  // todos os painéis recebem um ponto por candle (vazio onde não há dado), senão a sincronia por índice
+  // desalinha os gráficos — ex.: Open Interest só tem ~30 dias e puxava o gráfico para candles antigos
+  for (const [id, p] of Object.entries(paineis)) { p.serie.setData(completar(ind[id])); if (p.serie2) p.serie2.setData(completar(ind[id + "V"])); }
 }
 
 // redesenha mapa e perfil de volume quando zoom, rolagem, escala ou tamanho mudam
