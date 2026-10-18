@@ -113,6 +113,8 @@ button,select,input{font:inherit;color:inherit}
 .sobreDes,.sobreDes *{cursor:move !important}
 .limite{display:flex;align-items:center;gap:6px;padding:0 8px;white-space:nowrap;font-size:12px;color:var(--sub)}
 .limite input{width:96px;accent-color:var(--accent)}
+.limite .auto{border:1px solid var(--line);background:transparent;border-radius:4px;padding:2px 6px;font-size:11px;cursor:pointer;color:var(--sub)}
+.limite .auto[aria-pressed=true]{background:#eef3ff;border-color:#c9d8ff;color:var(--accent);font-weight:600}
 .limite b{color:var(--txt);font-weight:600;min-width:28px;font-variant-numeric:tabular-nums}
 @media (max-width:820px){.limite input{width:70px}}
 .tfbtn{font-weight:600;min-width:52px;justify-content:center}
@@ -162,7 +164,8 @@ button,select,input{font:inherit;color:inherit}
   <div class="sep"></div>
   <button class="btn tfbtn" id="bTf" title="Tempo gráfico" aria-haspopup="true">15m ▾</button>
   <label class="limite" title="Limite de liquidez: esconde as faixas mais fracas do mapa"><span class="txt">Limite</span>
-    <input type="range" id="limite" min="0" max="0.95" step="0.01" value="0.25" aria-label="Limite de liquidez"><b id="limiteVal">0,15</b></label>
+    <input type="range" id="limite" min="0" max="0.95" step="0.01" value="0.25" aria-label="Limite de liquidez"><b id="limiteVal">0,25</b>
+    <button type="button" class="auto" id="bAuto" title="Limite automático: ajusta sozinho a cada tempo gráfico" aria-pressed="true">Auto</button></label>
   <button class="btn" id="bPer" title="Período do mapa (janela de tempo, como no CoinAnk)" aria-haspopup="true">Período ▾</button>
   <div class="sep"></div>
   <button class="btn" id="bInd" title="Indicadores">ƒx<span class="txt"> Indicadores</span></button>
@@ -261,7 +264,7 @@ const MESES_TF = {"1M": 1, "3M": 3, "6M": 6, "12M": 12};
 const OI_PERIODOS = ["5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"];   // a Binance só fornece Open Interest até 1 dia
 // tempo gráfico usado para calcular o mapa (onde a Binance tem Open Interest)
 // a partir de 6h o mapa usa o Open Interest de 1 hora: ~720 pontos em 30 dias em vez de ~30 pontos diários
-const BASE_MAPA = {"1m": "5m", "3m": "5m", "6h": "1h", "8h": "1h", "12h": "1h", "1d": "1h", "3d": "1h", "1w": "1h", "1M": "1h", "3M": "1h", "6M": "1h", "12M": "1h"};
+const BASE_MAPA = {"1m": "5m", "3m": "5m", "2h": "1h", "4h": "1h", "6h": "1h", "8h": "1h", "12h": "1h", "1d": "1h", "3d": "1h", "1w": "1h", "1M": "1h", "3M": "1h", "6M": "1h", "12M": "1h"};
 const baseMapa = tf => BASE_MAPA[tf] || tf;
 const intervaloBinance = tf => MESES_TF[tf] ? "1M" : tf;              // 3M, 6M e 12M são montados a partir do mensal
 function proximoFechamento(abertura, tf = cfg.tf){                   // abertura em ms -> fechamento do candle em ms
@@ -302,7 +305,7 @@ const INDICADORES = [
 // ---------- preferências (só neste navegador) ----------
 function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap2") || "{}"); } catch(e){ return {}; } }
 function salvarPrefs(){ try { localStorage.setItem("liqmap2", JSON.stringify(cfg)); } catch(e){} }
-const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, limite: 0.25, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
+const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, limite: 0.25, limiteAuto: true, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
 if (!SIMBOLOS.includes(cfg.simbolo)) cfg.simbolo = "BTCUSDT";
 if (!TFS.includes(cfg.tf)) cfg.tf = "15m";
 if (!Array.isArray(cfg.pesos) || cfg.pesos.length !== 6) cfg.pesos = PESOS_PADRAO.slice();
@@ -503,6 +506,21 @@ function nivelPorT(t){
   return Math.min(5, Math.floor((t - L) / (1 - L) * 5) + 1);
 }
 const nivelCalor = (v, mx) => nivelPorT(intensidade(v, mx));
+const FRACAO_AUTO = 0.33;
+function limiteAutomatico(m){
+  const area = new Float64Array(DEGRAUS + 1);
+  for (const [, i0, i1, q] of m.runs) area[q] += i1 - i0 + 1;
+  let total = 0; for (let q = 1; q <= DEGRAUS; q++) total += area[q];
+  if (!total) return 0.25;
+  let acum = 0;
+  for (let q = DEGRAUS; q >= 1; q--) { acum += area[q]; if (acum >= total * FRACAO_AUTO) return Math.min(0.9, Math.max(0.05, (q - 1) / DEGRAUS)); }
+  return 0.05;
+}
+function mostrarLimite(){
+  $("limite").value = cfg.limite;
+  $("limiteVal").textContent = (+cfg.limite).toFixed(2).replace(".", ",");
+  $("bAuto").setAttribute("aria-pressed", String(!!cfg.limiteAuto));
+}
 
 // ---------- gráficos ----------
 const principal = $("principal"), canvas = $("heat"), ctx = canvas.getContext("2d");
@@ -997,6 +1015,7 @@ async function recalcular(manterZoom){
     }
     if (meu !== pedido) return;
     mapa = montarMapa(klBase && klBase.length ? klBase : kl, oi, base, cfg.filtro, cfg.pesos);
+    if (cfg.limiteAuto) { cfg.limite = limiteAutomatico(mapa); mostrarLimite(); }
     velas = kl.map(k => ({time: Math.floor(k.t / 1000), open: k.o, high: k.h, low: k.l, close: k.c, q: k.q, b: k.b}));
     oiPorT = new Map();
     for (const k of kl) { const o = oi.get(proximoFechamento(k.t)); if (o != null) oiPorT.set(Math.floor(k.t / 1000), o); }
@@ -1069,10 +1088,15 @@ function montarTfs(){
   }
 }
 $("bTf").addEventListener("click", e => { e.stopPropagation(); abrirPop("popTf", "bTf"); });
-$("limite").value = cfg.limite;
-$("limiteVal").textContent = (+cfg.limite).toFixed(2).replace(".", ",");
+mostrarLimite();
+$("bAuto").addEventListener("click", e => {
+  e.preventDefault();
+  cfg.limiteAuto = !cfg.limiteAuto;
+  if (cfg.limiteAuto && mapa) cfg.limite = limiteAutomatico(mapa);
+  mostrarLimite(); salvarPrefs(); assinatura = ""; desenharEscala();
+});
 $("limite").addEventListener("input", e => {
-  cfg.limite = +e.target.value;
+  cfg.limite = +e.target.value; cfg.limiteAuto = false; $("bAuto").setAttribute("aria-pressed", "false");
   $("limiteVal").textContent = cfg.limite.toFixed(2).replace(".", ",");
   assinatura = ""; desenharEscala();
 });
