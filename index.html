@@ -151,7 +151,6 @@ button,select,input{font:inherit;color:inherit}
   <button class="btn tfbtn" id="bTf" title="Tempo gráfico" aria-haspopup="true">15m ▾</button>
   <div class="sep"></div>
   <button class="btn" id="bInd" title="Indicadores">ƒx<span class="txt"> Indicadores</span></button>
-  <button class="btn" id="bHeat" aria-pressed="true" title="Mostrar/ocultar mapa de liquidações">▦<span class="txt"> Mapa de liquidações</span></button>
   <button class="btn" id="bAjustes" title="Ajustes do modelo">⚙<span class="txt"> Ajustes</span></button>
   <button class="btn" id="bAtualizar" title="Recalcular agora">⟳</button>
   <button class="btn" id="bFoto" title="Salvar imagem do gráfico">📷</button>
@@ -1082,6 +1081,9 @@ function montarTfs(){
 $("bTf").addEventListener("click", e => { e.stopPropagation(); abrirPop("popTf", "bTf"); });
 function montarListaInd(){
   const box = $("listaInd"); box.replaceChildren();
+  const cbMapa = el("input", {type: "checkbox"}); cbMapa.checked = cfg.heat;
+  cbMapa.addEventListener("change", () => { cfg.heat = cbMapa.checked; salvarPrefs(); assinatura = ""; desVersao++; atualizarDicaLiq(); });
+  box.append(el("label", {class: "ind"}, cbMapa, el("span", {}, "Mapa de liquidações", el("small", {}, "onde posições alavancadas seriam liquidadas"))));
   for (const i of INDICADORES) {
     const cb = el("input", {type: "checkbox"}); cb.checked = cfg.ind[i.id];
     cb.addEventListener("change", () => { cfg.ind[i.id] = cb.checked; salvarPrefs(); aplicarIndicadores(); });
@@ -1095,7 +1097,6 @@ function abrirPop(id, botao){
   $(id).classList.toggle("aberto");
 }
 $("bSimb").addEventListener("click", () => trocar({simbolo: SIMBOLOS[(SIMBOLOS.indexOf(cfg.simbolo) + 1) % SIMBOLOS.length]}));
-$("bHeat").addEventListener("click", () => { cfg.heat = !cfg.heat; salvarPrefs(); $("bHeat").setAttribute("aria-pressed", String(cfg.heat)); assinatura = ""; });
 $("bAtualizar").addEventListener("click", () => recalcular(true));
 $("bInd").addEventListener("click", e => { e.stopPropagation(); montarListaInd(); abrirPop("popInd", "bInd"); });
 const pesosBox = $("pesos");
@@ -1139,7 +1140,6 @@ function carregarLib(){
   });
 }
 
-$("bHeat").setAttribute("aria-pressed", String(cfg.heat));
 $("bSimb").textContent = cfg.simbolo + " ▾";
 montarTfs(); desenharLista();
 // ================= ferramentas de desenho (barra da esquerda) =================
