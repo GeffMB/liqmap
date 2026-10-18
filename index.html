@@ -268,6 +268,7 @@ const $ = id => document.getElementById(id);
 
 const INDICADORES = [
   {id: "vol",   nome: "Volume",                 desc: "barras no rodapé do gráfico",        padrao: true},
+  {id: "spot",  nome: "Preço spot (referência)", desc: "linha do ETH/BTC à vista e a diferença (basis) para o futuro", padrao: true},
   {id: "vwap",  nome: "VWAP diária",            desc: "preço médio ponderado pelo volume",  padrao: true},
   {id: "vpvr",  nome: "Perfil de volume (VPVR)", desc: "volume por faixa de preço + POC",   padrao: true},
   {id: "delta", nome: "Delta de volume",        desc: "compras − vendas agressivas",        padrao: false},
@@ -648,8 +649,10 @@ function aplicarVelas(){
   serie.setData(velas.map(vela));
 }
 // mostra/oculta indicadores e monta os painéis na ordem
+let spotLigado = null;
 function aplicarIndicadores(){
   if (!chart) return;
+  if (spotLigado !== cfg.ind.spot) { spotLigado = cfg.ind.spot; conectarSpot(); }
   carregarMVRV();
   sVol.applyOptions({visible: cfg.ind.vol});
   if (velas.length) { ind = calcIndicadores(velas, oiPorT); aplicarVelas(); }
@@ -815,6 +818,10 @@ function atualizarLegenda(param){
     extra.push(el("span", {style: "display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;background:" + nv.cor}),
       el("b", {}, nv.nome), el("span", {class: "v"}, " (" + (ind.z[i] >= 0 ? "+" : "") + ind.z[i].toFixed(1).replace(".", ",") + " desvios)  "));
   }
+  if (cfg.ind.spot && spot != null && i === velas.length - 1) {
+    const b = (k.close / spot - 1) * 100;
+    extra.push(el("span", {class: "v"}, "Spot "), el("b", {}, pr(spot)), el("span", {class: "v"}, " (basis " + (b >= 0 ? "+" : "") + b.toFixed(2).replace(".", ",") + "%)  "));
+  }
   if (cfg.ind.vwap && ind && ind.vwap[i]) extra.push(el("span", {class: "v"}, "VWAP "), el("b", {style: "color:#2962ff"}, pr(ind.vwap[i].value)));
   if (cfg.ind.mm && ind && ind.mms.length) {
     const mm = [];
@@ -878,6 +885,31 @@ function desenharZonas(){
 // ---------- preço ao vivo (WebSocket da Binance) ----------
 let ws = null, tickPendente = false, ultimoDado = 0;
 // Endereço novo da Binance para dados de mercado (os antigos /ws e /stream pararam em 23/04/2026)
+// ---------- preço spot de referência (mercado à vista da Binance) ----------
+let wsSpot = null, spot = null, linhaSpot = null, spotPendente = false;
+function conectarSpot(){
+  const antigo = wsSpot; wsSpot = null; if (antigo) antigo.close();
+  spot = null; desenharSpot();
+  if (!cfg.ind.spot) return;
+  if (DEMO) { spot = velas.length ? velas[velas.length - 1].close * 1.0017 : null; desenharSpot(); return; }
+  const sym = cfg.simbolo.toLowerCase(), simb = cfg.simbolo;
+  fetch("https://api.binance.com/api/v3/ticker/price?symbol=" + simb).then(r => r.json()).then(d => { if (cfg.simbolo === simb && spot == null && d.price) { spot = +d.price; agendarSpot(); } }).catch(() => {});
+  const sock = new WebSocket("wss://data-stream.binance.vision/stream?streams=" + sym + "@aggTrade");
+  wsSpot = sock;
+  sock.onmessage = ev => { if (wsSpot !== sock) return; const d = JSON.parse(ev.data).data; if (d && d.s === simb) { spot = +d.p; agendarSpot(); } };
+  sock.onclose = () => { if (wsSpot === sock) { wsSpot = null; setTimeout(() => { if (!wsSpot && cfg.ind.spot) conectarSpot(); }, 5000); } };
+}
+function agendarSpot(){
+  if (spotPendente) return;
+  spotPendente = true;
+  setTimeout(() => { spotPendente = false; desenharSpot(); atualizarLegenda(); }, 250);   // até 4 atualizações por segundo
+}
+function desenharSpot(){
+  if (!serie) return;
+  if (!cfg.ind.spot || spot == null) { if (linhaSpot) { serie.removePriceLine(linhaSpot); linhaSpot = null; } return; }
+  const op = {price: spot, color: "#9598a1", lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: "Spot", axisLabelColor: "#9598a1", axisLabelTextColor: "#ffffff"};
+  if (linhaSpot) linhaSpot.applyOptions(op); else linhaSpot = serie.createPriceLine(op);
+}
 function conectarWS(){
   if (DEMO) return;
   const antigo = ws; ws = null;
@@ -1034,6 +1066,7 @@ async function recalcular(manterZoom){
     espelharFaixa(chart, alvo);
     assinatura = "";
     atualizarLegenda(); desenharZonas(); atualizarDicaLiq(); carregarMVRV();
+    if (DEMO && cfg.ind.spot && spot == null) conectarSpot();
     $("status").textContent = (mapa.barrasOI ? "" : "Sem Open Interest para o período · ") + (baseMapa(cfg.tf) === "1d" && cfg.tf !== "1d" ? "Mapa dos últimos 30 dias · " : "") + "Mapa de " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}) + (DEMO ? " · DADOS DE TESTE" : "");
     $("status2").textContent = (DEMO ? "Teste · " : "") + "Mapa " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"});
   } catch (e) {
@@ -1048,7 +1081,7 @@ async function recalcular(manterZoom){
 function trocar(mud){
   Object.assign(cfg, mud); salvarPrefs();
   $("bSimb").textContent = cfg.simbolo + " ▾";
-  montarTfs(); desenharLista(); conectarWS(); carregarDesenhos();
+  montarTfs(); desenharLista(); conectarWS(); conectarSpot(); carregarDesenhos();
   ocupado = false; recalcular(false);
 }
 
