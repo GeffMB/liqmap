@@ -213,6 +213,9 @@ button,select,input{font:inherit;color:inherit}
   <label>Candles <select id="barras"><option>300</option><option>500</option><option selected>1000</option><option>1500</option></select></label>
   <label>Filtro de ruído <input id="filtro" type="number" min="0" step="0.1" value="1.0"></label>
   <label>Média do volume (candles) <input id="mediaVol" type="number" min="20" step="1" value="610"></label>
+  <label>Médias móveis (períodos) <input id="mmPer" type="text" value="9, 21, 200" style="width:110px"></label>
+  <label>Tipo das médias <select id="mmTipo" style="width:150px"><option value="e">Exponencial (MME)</option><option value="s">Simples (MMS)</option></select></label>
+  <label>IFR / RSI (períodos) <input id="rsiPer" type="number" min="2" max="100" step="1" value="14"></label>
   <label>Recalcular mapa a cada <select id="auto"><option value="0">desligado</option><option value="5">5 min</option><option value="15" selected>15 min</option><option value="60">60 min</option></select></label>
   <label style="margin-top:10px">Pesos de alavancagem</label>
   <div class="pesos" id="pesos"></div>
@@ -271,13 +274,15 @@ const INDICADORES = [
   {id: "delta", nome: "Delta de volume",        desc: "compras − vendas agressivas",        padrao: false},
   {id: "cvd",   nome: "CVD",                    desc: "delta acumulado",                    padrao: true},
   {id: "oi",    nome: "Open Interest",          desc: "contratos em aberto (USD)",          padrao: false},
-  {id: "hv",    nome: "Velas por volume (heatmap)", desc: "pinta os candles pela força do volume", padrao: false}
+  {id: "hv",    nome: "Velas por volume (heatmap)", desc: "pinta os candles pela força do volume", padrao: false},
+  {id: "mm",    nome: "Médias móveis (MM)",     desc: "períodos e tipo em Ajustes",         padrao: false},
+  {id: "rsi",   nome: "IFR / RSI",              desc: "força relativa: 70 sobrecompra, 30 sobrevenda", padrao: false}
 ];
 
 // ---------- preferências (só neste navegador) ----------
 function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap2") || "{}"); } catch(e){ return {}; } }
 function salvarPrefs(){ try { localStorage.setItem("liqmap2", JSON.stringify(cfg)); } catch(e){} }
-const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
+const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, mmPer: "9, 21, 200", mmTipo: "e", rsiPer: 14, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
 if (!SIMBOLOS.includes(cfg.simbolo)) cfg.simbolo = "BTCUSDT";
 if (!TFS.includes(cfg.tf)) cfg.tf = "15m";
 if (!Array.isArray(cfg.pesos) || cfg.pesos.length !== 6) cfg.pesos = PESOS_PADRAO.slice();
@@ -444,7 +449,36 @@ function calcIndicadores(v, oiPorT){
     const o = oiPorT.get(k.time);
     if (o != null) oi.push({time: k.time, value: o});
   });
-  return {vol, delta, cvd, vwap, oi, z, nivel};
+  const mms = cfg.ind.mm ? periodosMM(cfg.mmPer).map(n => ({n, dados: calcMM(v, n, cfg.mmTipo)})) : [];
+  const rsi = cfg.ind.rsi ? calcRSI(v, cfg.rsiPer) : [];
+  return {vol, delta, cvd, vwap, oi, z, nivel, mms, rsi};
+}
+// ---------- médias móveis e IFR ----------
+const CORES_MM = ["#f5a300", "#e91e63", "#131722", "#00897b"];
+function periodosMM(txt){ return String(txt).split(/[^0-9]+/).map(Number).filter(n => n >= 2 && n <= 1000).slice(0, 4); }
+function calcMM(v, n, tipo){
+  const out = [];
+  if (tipo === "s") {
+    let soma = 0;
+    v.forEach((k, i) => { soma += k.close; if (i >= n) soma -= v[i - n].close; if (i >= n - 1) out.push({time: k.time, value: soma / n}); });
+  } else {
+    const a = 2 / (n + 1); let m = null, soma = 0;
+    v.forEach((k, i) => {
+      if (i < n) { soma += k.close; if (i === n - 1) { m = soma / n; out.push({time: k.time, value: m}); } return; }   // começa pela média simples
+      m = k.close * a + m * (1 - a); out.push({time: k.time, value: m});
+    });
+  }
+  return out;
+}
+function calcRSI(v, n){   // IFR de Wilder (o mesmo da TradingView)
+  const out = []; let ganho = 0, perda = 0;
+  for (let i = 1; i < v.length; i++) {
+    const d = v[i].close - v[i - 1].close, g = Math.max(d, 0), p = Math.max(-d, 0);
+    if (i <= n) { ganho += g / n; perda += p / n; if (i < n) continue; }
+    else { ganho = (ganho * (n - 1) + g) / n; perda = (perda * (n - 1) + p) / n; }
+    out.push({time: v[i].time, value: perda === 0 ? 100 : 100 - 100 / (1 + ganho / perda)});
+  }
+  return out;
 }
 
 // ---------- cores do mapa ----------
@@ -507,7 +541,15 @@ function criarPainel(id){
   op.layout.attributionLogo = false;
   const ch = LWC.createChart(c, op);
   const fmt = {type: "custom", formatter: usd, minMove: 1};
-  const s = id === "delta"
+  let s;
+  if (id === "rsi") {
+    s = ch.addLineSeries({color: "#7e57c2", lineWidth: 2, priceLineVisible: false, crosshairMarkerVisible: true,
+      priceFormat: {type: "custom", formatter: x => x.toFixed(1).replace(".", ","), minMove: 0.1},
+      autoscaleInfoProvider: () => ({priceRange: {minValue: 0, maxValue: 100}})});
+    ch.priceScale("right").applyOptions({scaleMargins: {top: 0.08, bottom: 0.08}});
+    for (const [nv, est] of [[70, LWC.LineStyle.Dashed], [50, LWC.LineStyle.Dotted], [30, LWC.LineStyle.Dashed]])
+      s.createPriceLine({price: nv, color: nv === 50 ? "#c3c6ce" : "#9598a1", lineWidth: 1, lineStyle: est, axisLabelVisible: nv !== 50, axisLabelColor: "#9598a1", axisLabelTextColor: "#ffffff"});
+  } else s = id === "delta"
     ? ch.addHistogramSeries({priceFormat: fmt, priceLineVisible: false})
     : ch.addLineSeries({color: id === "cvd" ? "#f57c00" : "#7e57c2", lineWidth: 2, priceFormat: fmt, priceLineVisible: false, crosshairMarkerVisible: true});
   if (id === "cvd") s.createPriceLine({price: 0, color: "#b2b5be", lineWidth: 1, lineStyle: LWC.LineStyle.Dotted, axisLabelVisible: false});
@@ -564,12 +606,12 @@ function aplicarIndicadores(){
   sVol.applyOptions({visible: cfg.ind.vol});
   if (velas.length) { ind = calcIndicadores(velas, oiPorT); aplicarVelas(); }
   sVwap.applyOptions({visible: cfg.ind.vwap});
-  for (const id of ["delta", "cvd", "oi"]) {
+  for (const id of ["delta", "cvd", "oi", "rsi"]) {
     if (cfg.ind[id] && !paineis[id]) criarPainel(id);
     if (!cfg.ind[id] && paineis[id]) removerPainel(id);
   }
   // só o painel mais baixo mostra o eixo de tempo
-  const ordem = ["delta", "cvd", "oi"].filter(id => paineis[id]);
+  const ordem = ["delta", "cvd", "oi", "rsi"].filter(id => paineis[id]);
   ordem.forEach(id => $("graf").append(paineis[id].div));
   chart.timeScale().applyOptions({visible: ordem.length === 0});
   ordem.forEach((id, i) => paineis[id].chart.timeScale().applyOptions({visible: i === ordem.length - 1}));
@@ -579,10 +621,18 @@ function aplicarIndicadores(){
   assinatura = "";
   atualizarLegenda();
 }
+let sMM = [];
+function preencherMM(){
+  const mms = ind ? ind.mms : [];
+  while (sMM.length > mms.length) chart.removeSeries(sMM.pop());
+  while (sMM.length < mms.length) sMM.push(chart.addLineSeries({lineWidth: 1.5, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false}));
+  mms.forEach((m, i) => { sMM[i].applyOptions({color: CORES_MM[i]}); sMM[i].setData(m.dados); });
+}
 function preencherSeries(){
   if (!ind) return;
   sVol.setData(ind.vol);
   sVwap.setData(ind.vwap);
+  preencherMM();
   for (const [id, p] of Object.entries(paineis)) p.serie.setData(ind[id] || []);
 }
 
@@ -718,14 +768,22 @@ function atualizarLegenda(param){
       el("b", {}, nv.nome), el("span", {class: "v"}, " (" + (ind.z[i] >= 0 ? "+" : "") + ind.z[i].toFixed(1).replace(".", ",") + " desvios)  "));
   }
   if (cfg.ind.vwap && ind && ind.vwap[i]) extra.push(el("span", {class: "v"}, "VWAP "), el("b", {style: "color:#2962ff"}, pr(ind.vwap[i].value)));
+  if (cfg.ind.mm && ind && ind.mms.length) {
+    const mm = [];
+    ind.mms.forEach((m, j) => { const pt = m.dados.find(x => x.time === k.time); mm.push(el("span", {class: "v"}, "  " + (cfg.mmTipo === "s" ? "MMS " : "MME ") + m.n + " "), el("b", {style: "color:" + CORES_MM[j]}, pt ? pr(pt.value) : "—")); });
+    linhas.push(el("div", {}, ...mm));
+  }
   if (extra.length) linhas.push(el("div", {}, ...extra));
   leg.replaceChildren(...linhas);
   // rótulos dos painéis
-  const nomes = {delta: "Delta de volume", cvd: "CVD", oi: "Open Interest"};
+  const nomes = {delta: "Delta de volume", cvd: "CVD", oi: "Open Interest", rsi: "IFR " + cfg.rsiPer};
   for (const [id, p] of Object.entries(paineis)) {
     const pt = ind ? (ind[id] || []).find(x => x.time === k.time) : null;
     const cor = id === "delta" ? (pt && pt.value >= 0 ? "up" : "down") : "";
-    p.rot.replaceChildren(el("span", {class: "v"}, nomes[id] + "  "), el("b", {class: cor}, pt ? usd(pt.value) : "—"));
+    if (id === "rsi") {
+      const z = pt ? (pt.value >= 70 ? "  sobrecomprado" : pt.value <= 30 ? "  sobrevendido" : "") : "";
+      p.rot.replaceChildren(el("span", {class: "v"}, nomes[id] + "  "), el("b", {style: "color:#7e57c2"}, pt ? pt.value.toFixed(1).replace(".", ",") : "—"), el("span", {class: "v"}, z));
+    } else p.rot.replaceChildren(el("span", {class: "v"}, nomes[id] + "  "), el("b", {class: cor}, pt ? usd(pt.value) : "—"));
   }
 }
 
@@ -855,6 +913,7 @@ function agendarTick(comIndicadores){
       const ultimo = arr => arr[arr.length - 1];
       if (ind.vol.length) sVol.update(ultimo(ind.vol));
       if (ind.vwap.length) sVwap.update(ultimo(ind.vwap));
+      ind.mms.forEach((m, i) => { if (sMM[i] && m.dados.length && m.dados[m.dados.length - 1].time === v.time) sMM[i].update(ultimo(m.dados)); });
       for (const [id, p] of Object.entries(paineis)) { const a = ind[id]; if (a && a.length && a[a.length - 1].time === v.time) p.serie.update(ultimo(a)); }
     }
     serie.update(vela(v, velas.length - 1));
@@ -982,7 +1041,7 @@ const pesosBox = $("pesos");
 LEVS.forEach((L, i) => pesosBox.append(el("label", {}, L + "×", el("input", {type: "number", min: "0", step: "1", id: "w" + i}))));
 $("bAjustes").addEventListener("click", e => {
   e.stopPropagation();
-  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto; $("mediaVol").value = cfg.mediaVol;
+  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto; $("mediaVol").value = cfg.mediaVol; $("mmPer").value = cfg.mmPer; $("mmTipo").value = cfg.mmTipo; $("rsiPer").value = cfg.rsiPer;
   cfg.pesos.forEach((v, i) => $("w" + i).value = v);
   abrirPop("pop", "bAjustes");
 });
@@ -992,6 +1051,8 @@ $("aplicar").addEventListener("click", () => {
   $("pop").classList.remove("aberto");
   trocar({barras: +$("barras").value, filtro: Math.max(0, +$("filtro").value || 0), auto: +$("auto").value,
           mediaVol: Math.max(20, Math.round(+$("mediaVol").value || 610)),
+          mmPer: periodosMM($("mmPer").value).join(", ") || "9, 21, 200", mmTipo: $("mmTipo").value,
+          rsiPer: Math.min(100, Math.max(2, Math.round(+$("rsiPer").value || 14))),
           pesos: LEVS.map((_, i) => Math.max(0, +$("w" + i).value || 0))});
 });
 
