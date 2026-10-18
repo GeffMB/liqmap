@@ -495,8 +495,8 @@ function calcIndicadores(v, oiPorT){
 
 // ---------- cores do mapa ----------
 // poucos níveis de calor, da mesma família de cores: roxo -> azul -> verde-água -> verde -> amarelo
-const PALETA = ["rgba(0,0,0,0)", "rgba(88,60,150,0.16)", "rgba(59,82,160,0.32)", "rgba(33,145,140,0.50)", "rgba(80,190,90,0.70)", "rgba(240,196,0,0.92)"];
-const CORES_ESCALA = ["#ddd6ee", "#a9b3d6", "#62b8b2", "#7ccc81", "#f0c400"];
+const PALETA = ["rgba(0,0,0,0)", "rgba(88,60,150,0.06)", "rgba(59,82,160,0.26)", "rgba(33,145,140,0.50)", "rgba(80,190,90,0.70)", "rgba(240,196,0,0.92)"];
+const CORES_ESCALA = ["#f1eef7", "#a9b3d6", "#62b8b2", "#7ccc81", "#f0c400"];
 const DEGRAUS = 20;   // intensidade guardada em 20 degraus; o limite de liquidez decide o que aparece e a cor
 const intensidade = (v, mx) => v > 0 ? Math.pow(v / mx, 0.6) : 0;
 // nível de cor (1 a 5) para uma intensidade t, ou 0 se estiver abaixo do limite de liquidez
