@@ -231,6 +231,7 @@ button,select,input{font:inherit;color:inherit}
   <h4>Ajustes do modelo</h4>
   <label>Candles <select id="barras"><option>300</option><option>500</option><option selected>1000</option><option>1500</option></select></label>
   <label>Filtro de ruído <input id="filtro" type="number" min="0" step="0.1" value="1.0"></label>
+  <label>Base do mapa <select id="baseMapa" style="width:150px"><option value="1h">1 hora (igual em todos)</option><option value="tf">Do tempo gráfico</option></select></label>
   <label>Média do volume (candles) <input id="mediaVol" type="number" min="20" step="1" value="610"></label>
   <label>Recalcular mapa a cada <select id="auto"><option value="0">desligado</option><option value="5">5 min</option><option value="15" selected>15 min</option><option value="60">60 min</option></select></label>
   <label style="margin-top:10px">Pesos de alavancagem</label>
@@ -265,7 +266,8 @@ const OI_PERIODOS = ["5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"];  
 // tempo gráfico usado para calcular o mapa (onde a Binance tem Open Interest)
 // a partir de 6h o mapa usa o Open Interest de 1 hora: ~720 pontos em 30 dias em vez de ~30 pontos diários
 const BASE_MAPA = {"1m": "5m", "3m": "5m", "2h": "1h", "4h": "1h", "6h": "1h", "8h": "1h", "12h": "1h", "1d": "1h", "3d": "1h", "1w": "1h", "1M": "1h", "3M": "1h", "6M": "1h", "12M": "1h"};
-const baseMapa = tf => BASE_MAPA[tf] || tf;
+// padrão: mesma base de 1h em todos os tempos gráficos -> zonas e valores iguais em qualquer tempo gráfico
+const baseMapa = tf => cfg.baseMapa === "tf" ? (BASE_MAPA[tf] || tf) : "1h";
 const intervaloBinance = tf => MESES_TF[tf] ? "1M" : tf;              // 3M, 6M e 12M são montados a partir do mensal
 function proximoFechamento(abertura, tf = cfg.tf){                   // abertura em ms -> fechamento do candle em ms
   const m = MESES_TF[tf];
@@ -305,7 +307,7 @@ const INDICADORES = [
 // ---------- preferências (só neste navegador) ----------
 function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap2") || "{}"); } catch(e){ return {}; } }
 function salvarPrefs(){ try { localStorage.setItem("liqmap2", JSON.stringify(cfg)); } catch(e){} }
-const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, limite: 0.25, limiteAuto: true, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
+const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, limite: 0.25, limiteAuto: true, baseMapa: "1h", pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
 if (!SIMBOLOS.includes(cfg.simbolo)) cfg.simbolo = "BTCUSDT";
 if (!TFS.includes(cfg.tf)) cfg.tf = "15m";
 if (!Array.isArray(cfg.pesos) || cfg.pesos.length !== 6) cfg.pesos = PESOS_PADRAO.slice();
@@ -451,7 +453,9 @@ function montarMapa(kl, oi, tf, filtro, pesos){
   const top = arr => [...arr].map((v, b) => [v, b]).filter(x => x[0] > 0).sort((a, b) => b[0] - a[0]).slice(0, 5)
     .map(([v, b]) => ({preco: centro(b), dist: (centro(b) / ultimo - 1) * 100, forca: v / mxAtual * 100, valor: v}));
   const perto = (arr, p) => { let s = 0; for (let b = 0; b < FAIXAS; b++) if (Math.abs(centro(b) / ultimo - 1) * 100 <= p) s += arr[b]; return s; };
-  return {pmin, w, cols, runs, mx, tb: kl.map(k => k.t / 1000), tfBase: TF_MS[tf] / 1000, ultimo, barrasOI: hist.length, shorts: top(shorts), longs: top(longs), s5: perto(shorts, 5), l5: perto(longs, 5)};
+  const runsPorFaixa = Array.from({length: FAIXAS}, () => []);
+  for (const rr of runs) runsPorFaixa[rr[0]].push(rr);
+  return {pmin, w, cols, runs, runsPorFaixa, mx, tb: kl.map(k => k.t / 1000), tfBase: TF_MS[tf] / 1000, ultimo, barrasOI: hist.length, shorts: top(shorts), longs: top(longs), s5: perto(shorts, 5), l5: perto(longs, 5)};
 }
 
 // ---------- indicadores de volume ----------
@@ -796,9 +800,11 @@ function atualizarDica(p){
   if (preco == null) { dica.style.display = "none"; return; }
   const futuro = p.time == null && p.logical != null && p.logical > velas.length - 1;
   const t = p.time != null ? p.time : velas[velas.length - 1].time;
-  const col = mapa.cols[colunaMapa(t)], b = Math.floor((preco - mapa.pmin) / mapa.w);
+  const ic = colunaMapa(t), col = mapa.cols[ic], b = Math.floor((preco - mapa.pmin) / mapa.w);
   const v = col && b >= 0 && b < FAIXAS ? col[b] : 0;
-  const q = v > 0 ? nivelCalor(v, mapa.mx) : 0;
+  // mesma cor que está desenhada no mapa naquele ponto (não recalcula pelo valor exato)
+  const run = b >= 0 && b < FAIXAS ? mapa.runsPorFaixa[b].find(rr => rr[1] <= ic && ic <= rr[2]) : null;
+  const q = run ? nivelPorT(run[3] / DEGRAUS) : 0;
   const sw = el("span", {class: "sw"}); sw.style.background = q ? CORES_ESCALA[q - 1] : "transparent";
   const ult = velas[velas.length - 1].close;
   dica.replaceChildren(
@@ -1132,7 +1138,7 @@ const pesosBox = $("pesos");
 LEVS.forEach((L, i) => pesosBox.append(el("label", {}, L + "×", el("input", {type: "number", min: "0", step: "1", id: "w" + i}))));
 $("bAjustes").addEventListener("click", e => {
   e.stopPropagation();
-  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto; $("mediaVol").value = cfg.mediaVol;
+  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto; $("mediaVol").value = cfg.mediaVol; $("baseMapa").value = cfg.baseMapa;
   cfg.pesos.forEach((v, i) => $("w" + i).value = v);
   abrirPop("pop", "bAjustes");
 });
@@ -1141,7 +1147,7 @@ document.addEventListener("click", () => document.querySelectorAll(".pop").forEa
 $("aplicar").addEventListener("click", () => {
   $("pop").classList.remove("aberto");
   trocar({barras: +$("barras").value, filtro: Math.max(0, +$("filtro").value || 0), auto: +$("auto").value,
-          mediaVol: Math.max(20, Math.round(+$("mediaVol").value || 610)),
+          mediaVol: Math.max(20, Math.round(+$("mediaVol").value || 610)), baseMapa: $("baseMapa").value,
           pesos: LEVS.map((_, i) => Math.max(0, +$("w" + i).value || 0))});
 });
 
