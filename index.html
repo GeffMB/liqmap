@@ -159,7 +159,6 @@ button,select,input{font:inherit;color:inherit}
   <button class="btn tfbtn" id="bTf" title="Tempo gráfico" aria-haspopup="true">15m ▾</button>
   <div class="sep"></div>
   <button class="btn" id="bInd" title="Indicadores">ƒx<span class="txt"> Indicadores</span></button>
-  <button class="btn" id="bHeat" aria-pressed="true" title="Mostrar/ocultar mapa de liquidações">▦<span class="txt"> Mapa de liquidações</span></button>
   <button class="btn" id="bAjustes" title="Ajustes do modelo">⚙<span class="txt"> Ajustes</span></button>
   <button class="btn" id="bAtualizar" title="Recalcular agora">⟳</button>
   <button class="btn" id="bFoto" title="Salvar imagem do gráfico">📷</button>
@@ -274,6 +273,7 @@ const DEMO = new URLSearchParams(location.search).has("demo");
 const $ = id => document.getElementById(id);
 
 const INDICADORES = [
+  {id: "mapa",  nome: "Mapa de liquidações",    desc: "zonas onde posições alavancadas seriam liquidadas", padrao: true},
   {id: "vol",   nome: "Volume",                 desc: "barras no rodapé do gráfico",        padrao: true},
   {id: "vwap",  nome: "VWAP diária",            desc: "preço médio ponderado pelo volume",  padrao: true},
   {id: "vpvr",  nome: "Perfil de volume (VPVR)", desc: "volume por faixa de preço + POC",   padrao: true},
@@ -1018,8 +1018,13 @@ $("bTf").addEventListener("click", e => { e.stopPropagation(); abrirPop("popTf",
 function montarListaInd(){
   const box = $("listaInd"); box.replaceChildren();
   for (const i of INDICADORES) {
-    const cb = el("input", {type: "checkbox"}); cb.checked = cfg.ind[i.id];
-    cb.addEventListener("change", () => { cfg.ind[i.id] = cb.checked; salvarPrefs(); aplicarIndicadores(); });
+    const cb = el("input", {type: "checkbox"}); cb.checked = i.id === "mapa" ? cfg.heat : cfg.ind[i.id];
+    cb.addEventListener("change", () => {
+      if (i.id === "mapa") {   // o mapa usa cfg.heat (mantém a escolha de quem já usava o botão antigo)
+        cfg.heat = cb.checked; salvarPrefs(); assinatura = ""; desenharEscala(); $("dica").style.display = "none"; return;
+      }
+      cfg.ind[i.id] = cb.checked; salvarPrefs(); aplicarIndicadores();
+    });
     box.append(el("label", {class: "ind"}, cb, el("span", {}, i.nome, el("small", {}, i.desc))));
   }
 }
@@ -1030,7 +1035,6 @@ function abrirPop(id, botao){
   $(id).classList.toggle("aberto");
 }
 $("bSimb").addEventListener("click", () => trocar({simbolo: SIMBOLOS[(SIMBOLOS.indexOf(cfg.simbolo) + 1) % SIMBOLOS.length]}));
-$("bHeat").addEventListener("click", () => { cfg.heat = !cfg.heat; salvarPrefs(); $("bHeat").setAttribute("aria-pressed", String(cfg.heat)); assinatura = ""; desenharEscala(); $("dica").style.display = "none"; });
 $("bAtualizar").addEventListener("click", () => recalcular(true));
 $("bInd").addEventListener("click", e => { e.stopPropagation(); montarListaInd(); abrirPop("popInd", "bInd"); });
 const pesosBox = $("pesos");
@@ -1072,7 +1076,6 @@ function carregarLib(){
   });
 }
 
-$("bHeat").setAttribute("aria-pressed", String(cfg.heat));
 $("bSimb").textContent = cfg.simbolo + " ▾";
 montarTfs(); desenharLista();
 // ================= ferramentas de desenho (barra da esquerda) =================
