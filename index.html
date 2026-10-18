@@ -157,6 +157,7 @@ button,select,input{font:inherit;color:inherit}
   <button class="btn simbolo" id="bSimb" title="Trocar ativo">BTCUSDT ▾</button>
   <div class="sep"></div>
   <button class="btn tfbtn" id="bTf" title="Tempo gráfico" aria-haspopup="true">15m ▾</button>
+  <button class="btn" id="bPer" title="Período do mapa (janela de tempo, como no CoinAnk)" aria-haspopup="true">Período ▾</button>
   <div class="sep"></div>
   <button class="btn" id="bInd" title="Indicadores">ƒx<span class="txt"> Indicadores</span></button>
   <button class="btn" id="bAjustes" title="Ajustes do modelo">⚙<span class="txt"> Ajustes</span></button>
@@ -210,6 +211,7 @@ button,select,input{font:inherit;color:inherit}
 </div>
 
 <div class="pop menuTf" id="popTf" role="menu" aria-label="Tempo gráfico"></div>
+<div class="pop menuTf" id="popPer" role="menu" aria-label="Período"></div>
 
 <div class="pop" id="popInd">
   <h4>Indicadores</h4>
@@ -241,6 +243,13 @@ const GRUPOS_TF = [
 ];
 // duração aproximada (meses variam; o fechamento exato vem de proximoFechamento)
 const TF_MS = {"1m":6e4,"3m":18e4,"6h":216e5,"8h":288e5,"12h":432e5,"3d":2592e5,"5m":3e5,"15m":9e5,"30m":18e5,"1h":36e5,"2h":72e5,"4h":144e5,"1d":864e5,"1w":6048e5,"1M":2592e6,"3M":7776e6,"6M":15552e6,"12M":31536e6};
+// período (janela de tempo) -> tempo gráfico usado e quantos candles cabem na janela
+const PERIODOS = [
+  ["12h", "12 horas", "1m", 720], ["1d", "1 dia", "3m", 480], ["3d", "3 dias", "5m", 864], ["1w", "1 semana", "15m", 672],
+  ["2w", "2 semanas", "30m", 672], ["1M", "1 mês", "1h", 720], ["3M", "3 meses", "4h", 540], ["6M", "6 meses", "6h", 720]
+];
+const ROTULO_PER = {"12h": "12h", "1d": "1D", "3d": "3D", "1w": "1S", "2w": "2S", "1M": "1M", "3M": "3M", "6M": "6M"};
+const periodoAtual = () => PERIODOS.find(p => p[0] === cfg.periodo && p[2] === cfg.tf);
 const ROTULO_TF = {"1m":"1m","3m":"3m","6h":"6h","8h":"8h","12h":"12h","3d":"3D","5m":"5m","15m":"15m","30m":"30m","1h":"1h","2h":"2h","4h":"4h","1d":"1D","1w":"1S","1M":"1M","3M":"3M","6M":"6M","12M":"12M"};
 const MESES_TF = {"1M": 1, "3M": 3, "6M": 6, "12M": 12};
 const OI_PERIODOS = ["5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"];   // a Binance só fornece Open Interest até 1 dia
@@ -497,7 +506,7 @@ function opcoesBase(){
                 vertLine: {color: "#9598a1", width: 1, style: LWC.LineStyle.Dashed, labelBackgroundColor: "#131722"},
                 horzLine: {color: "#9598a1", width: 1, style: LWC.LineStyle.Dashed, labelBackgroundColor: "#131722"}},
     rightPriceScale: {borderColor: "#e0e3eb", minimumWidth: LARG_ESCALA},
-    timeScale: {borderColor: "#e0e3eb", timeVisible: true, secondsVisible: false, rightOffset: 12, barSpacing: 6, tickMarkFormatter: marcaTempo},
+    timeScale: {borderColor: "#e0e3eb", timeVisible: true, secondsVisible: false, rightOffset: 12, barSpacing: 6, minBarSpacing: 0.1, tickMarkFormatter: marcaTempo},
     localization: {locale: "pt-BR", timeFormatter: t => horaLocal(t, true)}
   };
 }
@@ -946,10 +955,10 @@ async function recalcular(manterZoom){
     let kl, oi, klBase;
     const base = baseMapa(cfg.tf);
     if (DEMO) {
-      ({kl, oi} = dadosDemo(cfg.simbolo, cfg.tf, cfg.barras));
+      ({kl, oi} = dadosDemo(cfg.simbolo, cfg.tf, Math.max(cfg.barras, (periodoAtual() || [0, 0, 0, 0])[3] + 50)));
       if (base !== cfg.tf) ({kl: klBase, oi} = dadosDemo(cfg.simbolo, base, Math.round(OI_MAX_DIAS * 864e5 / TF_MS[base])));
     } else {
-      kl = await buscarCandles(cfg.simbolo, cfg.tf, cfg.barras);
+      kl = await buscarCandles(cfg.simbolo, cfg.tf, Math.max(cfg.barras, (periodoAtual() || [0, 0, 0, 0])[3] + 50));
       if (base !== cfg.tf) {   // os candles mais recentes da base (o Open Interest cobre até ~30 dias deles)
         const d = await getJSON("/fapi/v1/klines", {symbol: cfg.simbolo, interval: base, limit: 1500});
         klBase = d.map(k => ({t: +k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], q: +k[7], b: +k[10]}));
@@ -966,7 +975,8 @@ async function recalcular(manterZoom){
     const faixa = manterZoom ? chart.timeScale().getVisibleLogicalRange() : null;
     aplicarVelas();
     preencherSeries();
-    const alvo = faixa || {from: velas.length - 180, to: velas.length + 12};
+    const per = periodoAtual();
+    const alvo = faixa || (per ? {from: velas.length - per[3], to: velas.length + Math.round(per[3] * 0.06)} : {from: velas.length - 180, to: velas.length + 12});
     chart.timeScale().setVisibleLogicalRange(alvo);
     espelharFaixa(chart, alvo);
     assinatura = "";
@@ -992,6 +1002,20 @@ function trocar(mud){
 // ---------- controles ----------
 function montarTfs(){
   $("bTf").textContent = ROTULO_TF[cfg.tf] + " ▾";
+  const per = periodoAtual();
+  $("bPer").textContent = per ? "Período " + ROTULO_PER[per[0]] + " ▾" : "Período ▾";
+  $("bPer").setAttribute("aria-pressed", String(!!per));
+  const mp = $("popPer"); mp.replaceChildren(el("div", {class: "gr", style: "cursor:default"}, "Janela do mapa"));
+  for (const [id, nome, tf, n] of PERIODOS) {
+    const it = el("button", {class: "it", role: "menuitemradio", "aria-checked": String(!!per && per[0] === id)}, nome, el("small", {}, "candles de " + ROTULO_TF[tf]));
+    it.addEventListener("click", () => { mp.classList.remove("aberto"); trocar({tf, periodo: id}); });
+    mp.append(it);
+  }
+  if (per) {
+    const livre = el("button", {class: "it"}, "Livre", el("small", {}, "sem janela fixa"));
+    livre.addEventListener("click", () => { mp.classList.remove("aberto"); cfg.periodo = null; salvarPrefs(); montarTfs(); });
+    mp.append(livre);
+  }
   if (!Array.isArray(cfg.tfFechados)) cfg.tfFechados = [];
   const menu = $("popTf"); menu.replaceChildren();
   for (const [grupo, itens] of GRUPOS_TF) {
@@ -1009,13 +1033,14 @@ function montarTfs(){
     });
     for (const [tf, nome] of itens) {
       const it = el("button", {class: "it", role: "menuitemradio", "aria-checked": String(tf === cfg.tf)}, nome);
-      it.addEventListener("click", () => { $("popTf").classList.remove("aberto"); trocar({tf}); });
+      it.addEventListener("click", () => { $("popTf").classList.remove("aberto"); trocar({tf, periodo: null}); });
       lista.append(it);
     }
     menu.append(cab, lista);
   }
 }
 $("bTf").addEventListener("click", e => { e.stopPropagation(); abrirPop("popTf", "bTf"); });
+$("bPer").addEventListener("click", e => { e.stopPropagation(); abrirPop("popPer", "bPer"); });
 function montarListaInd(){
   const box = $("listaInd"); box.replaceChildren();
   for (const i of INDICADORES) {
@@ -1046,7 +1071,7 @@ $("bAjustes").addEventListener("click", e => {
   cfg.pesos.forEach((v, i) => $("w" + i).value = v);
   abrirPop("pop", "bAjustes");
 });
-for (const id of ["pop", "popInd", "popTf"]) $(id).addEventListener("click", e => e.stopPropagation());
+for (const id of ["pop", "popInd", "popTf", "popPer"]) $(id).addEventListener("click", e => e.stopPropagation());
 document.addEventListener("click", () => document.querySelectorAll(".pop").forEach(p => p.classList.remove("aberto")));
 $("aplicar").addEventListener("click", () => {
   $("pop").classList.remove("aberto");
