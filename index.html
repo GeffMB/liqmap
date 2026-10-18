@@ -276,6 +276,8 @@ const INDICADORES = [
   {id: "oi",    nome: "Open Interest",          desc: "contratos em aberto (USD)",          padrao: false},
   {id: "hv",    nome: "Velas por volume (heatmap)", desc: "pinta os candles pela força do volume", padrao: false},
   {id: "mm",    nome: "Médias móveis (MM)",     desc: "períodos e tipo em Ajustes",         padrao: false},
+  {id: "agr",   nome: "Agressão de mercado",    desc: "volume de compra × venda agressiva por candle", padrao: false},
+  {id: "mvrv",  nome: "MVRV (on-chain)",        desc: "valor de mercado ÷ valor realizado · diário (CoinMetrics)", padrao: false},
   {id: "rsi",   nome: "IFR / RSI",              desc: "força relativa: 70 sobrecompra, 30 sobrevenda", padrao: false}
 ];
 
@@ -451,8 +453,46 @@ function calcIndicadores(v, oiPorT){
   });
   const mms = cfg.ind.mm ? periodosMM(cfg.mmPer).map(n => ({n, dados: calcMM(v, n, cfg.mmTipo)})) : [];
   const rsi = cfg.ind.rsi ? calcRSI(v, cfg.rsiPer) : [];
-  return {vol, delta, cvd, vwap, oi, z, nivel, mms, rsi};
+  const agr = v.map(k => ({time: k.time, value: k.b})), agrV = v.map(k => ({time: k.time, value: -(k.q - k.b)}));
+  return {vol, delta, cvd, vwap, oi, z, nivel, mms, rsi, agr, agrV, mvrv: serieMVRV(v)};
 }
+// ---------- MVRV (dado on-chain diário, API pública da CoinMetrics) ----------
+const MVRV_ATIVO = {BTCUSDT: "btc", ETHUSDT: "eth"};
+const mvrvCache = {};   // ativo -> {dias: [t...], val: [...], quando, erro}
+async function carregarMVRV(){
+  const at = MVRV_ATIVO[cfg.simbolo];
+  if (!cfg.ind.mvrv || !at) return;
+  const c = mvrvCache[at];
+  if (c && (c.carregando || Date.now() - c.quando < 3600e3)) return;
+  mvrvCache[at] = {dias: c ? c.dias : [], val: c ? c.val : [], quando: Date.now(), carregando: true};
+  try {
+    let dias = [], val = [];
+    if (DEMO) {
+      for (let d = Math.floor(Date.now() / 864e5) - 2500; d <= Math.floor(Date.now() / 864e5); d++) { dias.push(d * 86400); val.push(1.6 + Math.sin(d / 180) * 0.9 + Math.sin(d / 23) * 0.1); }
+    } else {
+      const r = await fetch("https://community-api.coinmetrics.io/v4/timeseries/asset-metrics?" + new URLSearchParams({assets: at, metrics: "CapMVRVCur", frequency: "1d", start_time: "2015-01-01", page_size: 10000}));
+      if (!r.ok) throw new Error("CoinMetrics " + r.status);
+      for (const x of (await r.json()).data) if (x.CapMVRVCur != null) { dias.push(Math.floor(Date.parse(x.time) / 1000)); val.push(+x.CapMVRVCur); }
+    }
+    mvrvCache[at] = {dias, val, quando: Date.now()};
+  } catch (e) {
+    console.warn("MVRV indisponível:", e);
+    mvrvCache[at] = {dias: [], val: [], quando: Date.now() - 3300e3, erro: true};   // tenta de novo em ~5 min
+  }
+  if (velas.length && cfg.ind.mvrv) { ind = calcIndicadores(velas, oiPorT); preencherSeries(); atualizarLegenda(); }
+}
+// valor diário para cada candle (o dia ainda sem dado repete o último publicado)
+function serieMVRV(v){
+  const c = cfg.ind.mvrv && mvrvCache[MVRV_ATIVO[cfg.simbolo]];
+  if (!c || !c.dias.length) return [];
+  const out = []; let j = 0;
+  for (const k of v) {
+    while (j + 1 < c.dias.length && c.dias[j + 1] <= k.time) j++;
+    if (c.dias[j] <= k.time && k.time - c.dias[j] < 40 * 86400) out.push({time: k.time, value: c.val[j]});
+  }
+  return out;
+}
+function zonaMVRV(x){ return x < 1 ? "abaixo do custo médio (barato)" : x < 2.4 ? "neutro" : x < 3.5 ? "aquecido" : "sobrevalorizado (caro)"; }
 // ---------- médias móveis e IFR ----------
 const CORES_MM = ["#f5a300", "#e91e63", "#131722", "#00897b"];
 function periodosMM(txt){ return String(txt).split(/[^0-9]+/).map(Number).filter(n => n >= 2 && n <= 1000).slice(0, 4); }
@@ -541,8 +581,16 @@ function criarPainel(id){
   op.layout.attributionLogo = false;
   const ch = LWC.createChart(c, op);
   const fmt = {type: "custom", formatter: usd, minMove: 1};
-  let s;
-  if (id === "rsi") {
+  let s, s2 = null;
+  if (id === "agr") {
+    s = ch.addHistogramSeries({color: "rgba(8,153,129,0.75)", priceFormat: {type: "custom", formatter: x => usd(Math.abs(x)), minMove: 1}, priceLineVisible: false, lastValueVisible: false});
+    s2 = ch.addHistogramSeries({color: "rgba(242,54,69,0.75)", priceFormat: {type: "custom", formatter: x => usd(Math.abs(x)), minMove: 1}, priceLineVisible: false, lastValueVisible: false});
+  } else if (id === "mvrv") {
+    s = ch.addLineSeries({color: "#00897b", lineWidth: 2, priceLineVisible: false, crosshairMarkerVisible: true,
+      priceFormat: {type: "custom", formatter: x => x.toFixed(2).replace(".", ","), minMove: 0.01}});
+    for (const [nv, cor] of [[1, "#1565c0"], [3.5, "#e65100"]])
+      s.createPriceLine({price: nv, color: cor, lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, axisLabelColor: cor, axisLabelTextColor: "#ffffff"});
+  } else if (id === "rsi") {
     s = ch.addLineSeries({color: "#7e57c2", lineWidth: 2, priceLineVisible: false, crosshairMarkerVisible: true,
       priceFormat: {type: "custom", formatter: x => x.toFixed(1).replace(".", ","), minMove: 0.1},
       autoscaleInfoProvider: () => ({priceRange: {minValue: 0, maxValue: 100}})});
@@ -555,7 +603,7 @@ function criarPainel(id){
   if (id === "cvd") s.createPriceLine({price: 0, color: "#b2b5be", lineWidth: 1, lineStyle: LWC.LineStyle.Dotted, axisLabelVisible: false});
   ch.subscribeCrosshairMove(p => { atualizarLegenda(p); espelharCursor(ch, p); });
   ch.timeScale().subscribeVisibleLogicalRangeChange(r => espelharFaixa(ch, r));
-  paineis[id] = {div, chart: ch, serie: s, rot};
+  paineis[id] = {div, chart: ch, serie: s, serie2: s2, rot};
 }
 function removerPainel(id){
   const p = paineis[id]; if (!p) return;
@@ -603,15 +651,16 @@ function aplicarVelas(){
 // mostra/oculta indicadores e monta os painéis na ordem
 function aplicarIndicadores(){
   if (!chart) return;
+  carregarMVRV();
   sVol.applyOptions({visible: cfg.ind.vol});
   if (velas.length) { ind = calcIndicadores(velas, oiPorT); aplicarVelas(); }
   sVwap.applyOptions({visible: cfg.ind.vwap});
-  for (const id of ["delta", "cvd", "oi", "rsi"]) {
+  for (const id of ["delta", "agr", "cvd", "oi", "rsi", "mvrv"]) {
     if (cfg.ind[id] && !paineis[id]) criarPainel(id);
     if (!cfg.ind[id] && paineis[id]) removerPainel(id);
   }
   // só o painel mais baixo mostra o eixo de tempo
-  const ordem = ["delta", "cvd", "oi", "rsi"].filter(id => paineis[id]);
+  const ordem = ["delta", "agr", "cvd", "oi", "rsi", "mvrv"].filter(id => paineis[id]);
   ordem.forEach(id => $("graf").append(paineis[id].div));
   chart.timeScale().applyOptions({visible: ordem.length === 0});
   ordem.forEach((id, i) => paineis[id].chart.timeScale().applyOptions({visible: i === ordem.length - 1}));
@@ -633,7 +682,7 @@ function preencherSeries(){
   sVol.setData(ind.vol);
   sVwap.setData(ind.vwap);
   preencherMM();
-  for (const [id, p] of Object.entries(paineis)) p.serie.setData(ind[id] || []);
+  for (const [id, p] of Object.entries(paineis)) { p.serie.setData(ind[id] || []); if (p.serie2) p.serie2.setData(ind[id + "V"] || []); }
 }
 
 // redesenha mapa e perfil de volume quando zoom, rolagem, escala ou tamanho mudam
@@ -776,11 +825,20 @@ function atualizarLegenda(param){
   if (extra.length) linhas.push(el("div", {}, ...extra));
   leg.replaceChildren(...linhas);
   // rótulos dos painéis
-  const nomes = {delta: "Delta de volume", cvd: "CVD", oi: "Open Interest", rsi: "IFR " + cfg.rsiPer};
+  const nomes = {delta: "Delta de volume", cvd: "CVD", oi: "Open Interest", rsi: "IFR " + cfg.rsiPer, agr: "Agressão", mvrv: "MVRV"};
   for (const [id, p] of Object.entries(paineis)) {
     const pt = ind ? (ind[id] || []).find(x => x.time === k.time) : null;
     const cor = id === "delta" ? (pt && pt.value >= 0 ? "up" : "down") : "";
-    if (id === "rsi") {
+    if (id === "agr") {
+      const pc = Math.round(k.b / (k.q || 1) * 100);
+      p.rot.replaceChildren(el("span", {class: "v"}, "Agressão  compra "), el("b", {class: "up"}, usd(k.b) + " (" + pc + "%)"),
+        el("span", {class: "v"}, "  venda "), el("b", {class: "down"}, usd(k.q - k.b) + " (" + (100 - pc) + "%)"));
+    } else if (id === "mvrv") {
+      const c = mvrvCache[MVRV_ATIVO[cfg.simbolo]];
+      if (!MVRV_ATIVO[cfg.simbolo]) p.rot.replaceChildren(el("span", {class: "v"}, "MVRV  só para BTC e ETH"));
+      else if (!pt) p.rot.replaceChildren(el("span", {class: "v"}, "MVRV  " + (c && c.erro ? "fonte indisponível agora (CoinMetrics)" : c && c.carregando ? "carregando…" : "—")));
+      else p.rot.replaceChildren(el("span", {class: "v"}, "MVRV (diário)  "), el("b", {style: "color:#00897b"}, pt.value.toFixed(2).replace(".", ",")), el("span", {class: "v"}, "  " + zonaMVRV(pt.value)));
+    } else if (id === "rsi") {
       const z = pt ? (pt.value >= 70 ? "  sobrecomprado" : pt.value <= 30 ? "  sobrevendido" : "") : "";
       p.rot.replaceChildren(el("span", {class: "v"}, nomes[id] + "  "), el("b", {style: "color:#7e57c2"}, pt ? pt.value.toFixed(1).replace(".", ",") : "—"), el("span", {class: "v"}, z));
     } else p.rot.replaceChildren(el("span", {class: "v"}, nomes[id] + "  "), el("b", {class: cor}, pt ? usd(pt.value) : "—"));
@@ -914,7 +972,10 @@ function agendarTick(comIndicadores){
       if (ind.vol.length) sVol.update(ultimo(ind.vol));
       if (ind.vwap.length) sVwap.update(ultimo(ind.vwap));
       ind.mms.forEach((m, i) => { if (sMM[i] && m.dados.length && m.dados[m.dados.length - 1].time === v.time) sMM[i].update(ultimo(m.dados)); });
-      for (const [id, p] of Object.entries(paineis)) { const a = ind[id]; if (a && a.length && a[a.length - 1].time === v.time) p.serie.update(ultimo(a)); }
+      for (const [id, p] of Object.entries(paineis)) {
+        const a = ind[id]; if (a && a.length && a[a.length - 1].time === v.time) p.serie.update(ultimo(a));
+        const b2 = ind[id + "V"]; if (p.serie2 && b2 && b2.length && b2[b2.length - 1].time === v.time) p.serie2.update(ultimo(b2));
+      }
     }
     serie.update(vela(v, velas.length - 1));
     atualizarLegenda();
@@ -973,7 +1034,7 @@ async function recalcular(manterZoom){
     chart.timeScale().setVisibleLogicalRange(alvo);
     espelharFaixa(chart, alvo);
     assinatura = "";
-    atualizarLegenda(); desenharZonas(); atualizarDicaLiq();
+    atualizarLegenda(); desenharZonas(); atualizarDicaLiq(); carregarMVRV();
     $("status").textContent = (mapa.barrasOI ? "" : "Sem Open Interest para o período · ") + (baseMapa(cfg.tf) === "1d" && cfg.tf !== "1d" ? "Mapa dos últimos 30 dias · " : "") + "Mapa de " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}) + (DEMO ? " · DADOS DE TESTE" : "");
     $("status2").textContent = (DEMO ? "Teste · " : "") + "Mapa " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"});
   } catch (e) {
