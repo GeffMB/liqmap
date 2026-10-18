@@ -675,6 +675,29 @@ function colunaMapa(t){   // candle da base do mapa que contém o horário t
   while (b - a > 1) { const m = (a + b) >> 1; if (tb[m] <= t) a = m; else b = m; }
   return a;
 }
+// ---------- caixinha com o valor de liquidação (segue o mouse; não depende dos eventos do gráfico) ----------
+let mouseMapa = null;
+function atualizarDicaLiq(){
+  const dica = $("dicaLiq");
+  if (!mouseMapa || !mapa || !cfg.heat || !velas.length) { dica.style.display = "none"; return; }
+  const {x, y} = mouseMapa, W = principal.clientWidth - chart.priceScale("right").width();
+  const lg = chart.timeScale().coordinateToLogical(x);
+  if (x > W || lg == null) { dica.style.display = "none"; return; }
+  const k = velas[Math.max(0, Math.min(velas.length - 1, Math.round(lg)))];
+  const preco = serie.coordinateToPrice(y), col = mapa.cols[colunaMapa(k.time)];
+  const b = preco == null ? -1 : Math.floor((preco - mapa.pmin) / mapa.w);
+  if (!col || b < 0 || b >= FAIXAS || !(col[b] > 0)) { dica.style.display = "none"; return; }
+  const short = preco >= k.close;
+  dica.replaceChildren(
+    el("div", {class: "dl-p"}, pr(mapa.pmin + b * mapa.w) + " – " + pr(mapa.pmin + (b + 1) * mapa.w)),
+    el("div", {}, el("span", {class: "v"}, short ? "Liquidação de shorts " : "Liquidação de longs "), el("b", {class: short ? "s" : "l"}, usd(col[b]))));
+  dica.style.display = "block";
+  const lw = dica.offsetWidth, lh = dica.offsetHeight;
+  dica.style.left = (x + 14 + lw > W ? x - 14 - lw : x + 14) + "px";
+  dica.style.top = Math.max(4, y - lh - 10) + "px";
+}
+principal.addEventListener("pointermove", e => { const r = principal.getBoundingClientRect(); mouseMapa = {x: e.clientX - r.left, y: e.clientY - r.top}; atualizarDicaLiq(); });
+principal.addEventListener("pointerleave", () => { mouseMapa = null; atualizarDicaLiq(); });
 function atualizarLegenda(param){
   const leg = $("legenda");
   if (!velas.length) { leg.replaceChildren(); return; }
@@ -696,27 +719,6 @@ function atualizarLegenda(param){
   }
   if (cfg.ind.vwap && ind && ind.vwap[i]) extra.push(el("span", {class: "v"}, "VWAP "), el("b", {style: "color:#2962ff"}, pr(ind.vwap[i].value)));
   if (extra.length) linhas.push(el("div", {}, ...extra));
-  // valor de liquidação só aparece numa caixinha junto ao cursor, quando ele está sobre uma faixa do mapa
-  const dica = $("dicaLiq");
-  let mostrou = false;
-  if (mapa && cfg.heat && param && param.point && param.seriesData && param.seriesData.has(serie)) {
-    const preco = serie.coordinateToPrice(param.point.y);
-    const col = mapa.cols[colunaMapa(k.time)];
-    const b = Math.floor((preco - mapa.pmin) / mapa.w);
-    if (col && b >= 0 && b < FAIXAS && col[b] > 0) {
-      const short = preco >= k.close;
-      dica.replaceChildren(
-        el("div", {class: "dl-p"}, pr(mapa.pmin + b * mapa.w) + " – " + pr(mapa.pmin + (b + 1) * mapa.w)),
-        el("div", {}, el("span", {class: "v"}, short ? "Liquidação de shorts " : "Liquidação de longs "), el("b", {class: short ? "s" : "l"}, usd(col[b]))));
-      const W = principal.clientWidth, x = param.point.x, y = param.point.y;
-      dica.style.display = "block";
-      const lw = dica.offsetWidth, lh = dica.offsetHeight;
-      dica.style.left = (x + 14 + lw > W - 70 ? x - 14 - lw : x + 14) + "px";
-      dica.style.top = Math.max(4, y - lh - 10) + "px";
-      mostrou = true;
-    }
-  }
-  if (!mostrou) dica.style.display = "none";
   leg.replaceChildren(...linhas);
   // rótulos dos painéis
   const nomes = {delta: "Delta de volume", cvd: "CVD", oi: "Open Interest"};
@@ -912,7 +914,7 @@ async function recalcular(manterZoom){
     chart.timeScale().setVisibleLogicalRange(alvo);
     espelharFaixa(chart, alvo);
     assinatura = "";
-    atualizarLegenda(); desenharZonas();
+    atualizarLegenda(); desenharZonas(); atualizarDicaLiq();
     $("status").textContent = (mapa.barrasOI ? "" : "Sem Open Interest para o período · ") + (baseMapa(cfg.tf) === "1d" && cfg.tf !== "1d" ? "Mapa dos últimos 30 dias · " : "") + "Mapa de " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}) + (DEMO ? " · DADOS DE TESTE" : "");
     $("status2").textContent = (DEMO ? "Teste · " : "") + "Mapa " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"});
   } catch (e) {
