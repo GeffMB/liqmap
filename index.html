@@ -117,6 +117,9 @@ button,select,input{font:inherit;color:inherit}
 .rodape{display:flex;align-items:center;justify-content:flex-end;gap:12px;height:30px;flex:0 0 30px;border-top:1px solid var(--line);padding:0 14px;background:var(--bg);font-size:12px}
 .rodape .rel{color:var(--txt);font-variant-numeric:tabular-nums}
 #bLado,#status2{display:none}
+@media (min-width:761px){ body.sem-lado .lado{display:none} }
+#bPainel[aria-pressed="true"]{color:#2962ff}
+@media (max-width:760px){ #bPainel,#bCheia{display:none} }
 /* ---------- celular (estilo app da TradingView) ---------- */
 @media (max-width:820px){
   body{height:100dvh}
@@ -154,9 +157,11 @@ button,select,input{font:inherit;color:inherit}
   <button class="btn" id="bAjustes" title="Ajustes do modelo">⚙<span class="txt"> Ajustes</span></button>
   <button class="btn" id="bAtualizar" title="Recalcular agora">⟳</button>
   <button class="btn" id="bFoto" title="Salvar imagem do gráfico">📷</button>
+  <button class="btn" id="bCheia" title="Tela cheia (Esc para sair)">⛶</button>
   <div class="direita">
     <span class="status" id="status">Carregando…</span>
     <span class="ponto" id="ponto" title="Preço ao vivo"></span>
+    <button class="btn" id="bPainel" title="Mostrar/ocultar lista e zonas de liquidação">☰<span class="txt"> Lista e zonas</span></button>
     <a class="btn" href="https://geffmb.github.io/radar-b3/" title="Radar de Ações B3">Radar B3 ↗</a>
   </div>
 </div>
@@ -284,7 +289,7 @@ const INDICADORES = [
 // ---------- preferências (só neste navegador) ----------
 function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap2") || "{}"); } catch(e){ return {}; } }
 function salvarPrefs(){ try { localStorage.setItem("liqmap2", JSON.stringify(cfg)); } catch(e){} }
-const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, mmPer: "9, 21, 200", mmTipo: "e", rsiPer: 14, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
+const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, lado: false, mmPer: "9, 21, 200", mmTipo: "e", rsiPer: 14, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
 if (!SIMBOLOS.includes(cfg.simbolo)) cfg.simbolo = "BTCUSDT";
 if (!TFS.includes(cfg.tf)) cfg.tf = "15m";
 if (!Array.isArray(cfg.pesos) || cfg.pesos.length !== 6) cfg.pesos = PESOS_PADRAO.slice();
@@ -1638,6 +1643,13 @@ $("bFoto").addEventListener("click", () => {
 });
 
 // ---------- celular: gaveta da lista/zonas, seletor de tempo e relógio ----------
+// gráfico grande: painel lateral escondido por padrão no computador e botão de tela cheia
+function aplicarLado(){ document.body.classList.toggle("sem-lado", !cfg.lado); $("bPainel").setAttribute("aria-pressed", String(cfg.lado)); setTimeout(ajustarPaineis, 50); }
+aplicarLado();
+$("bPainel").addEventListener("click", () => { cfg.lado = !cfg.lado; salvarPrefs(); aplicarLado(); });
+$("bCheia").addEventListener("click", () => {
+  if (document.fullscreenElement) document.exitFullscreen(); else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+});
 $("bLado").addEventListener("click", () => {
   const aberta = $("lado").classList.toggle("aberta");
   $("bLado").textContent = aberta ? "Lista e zonas ▾" : "Lista e zonas ▴";
