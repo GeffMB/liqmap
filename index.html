@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LiqMap — Mapa de Liquidações</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link rel="apple-touch-icon" href="logo.svg">
 <style>
 :root{
   --bg:#ffffff;--panel:#ffffff;--panel2:#f0f3fa;--line:#e0e3eb;--hover:#f0f3fa;
@@ -19,6 +21,7 @@ button,select,input{font:inherit;color:inherit}
 .top::-webkit-scrollbar{display:none}
 .marca{font-weight:700;letter-spacing:.2px;padding:0 10px 0 4px;white-space:nowrap}
 .marca span{color:var(--accent)}
+.marca .logo{width:20px;height:20px;vertical-align:-4px;margin-right:6px;border-radius:5px}
 .sep{width:1px;height:24px;background:var(--line);margin:0 6px;flex:0 0 auto}
 .btn{background:transparent;border:0;border-radius:4px;padding:6px 8px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px;text-decoration:none;color:var(--txt)}
 .btn:hover{background:var(--hover)}
@@ -148,7 +151,7 @@ button,select,input{font:inherit;color:inherit}
 <body>
 
 <div class="top">
-  <div class="marca">Liq<span>Map</span></div>
+  <div class="marca"><img src="logo.svg" alt="" class="logo">Liq<span>Map</span></div>
   <button class="btn simbolo" id="bSimb" title="Trocar ativo">BTCUSDT ▾</button>
   <div class="sep"></div>
   <button class="btn tfbtn" id="bTf" title="Tempo gráfico" aria-haspopup="true">15m ▾</button>
@@ -946,7 +949,7 @@ function conectarWS(){
     if (!d) return;
     ultimoDado = Date.now(); $("ponto").classList.add("on");
     if (d.e === "aggTrade" && d.s === cfg.simbolo) aplicarPreco(+d.p, +d.T);
-    else if (d.e === "24hrMiniTicker") { tickers[d.s] = {c: +d.c, p: (+d.c / +d.o - 1) * 100}; desenharLista(); }
+    else if (d.e === "24hrMiniTicker") { tickers[d.s] = {c: +d.c, o: +d.o, p: (+d.c / +d.o - 1) * 100}; desenharLista(); }
     else if (d.e === "kline" && d.s === cfg.simbolo && d.k.i === intervaloBinance(cfg.tf) && velas.length) {
       const k = d.k;
       if (MESES_TF[cfg.tf] > 1 && mensais.length) {   // 3M/6M/12M: atualiza o mês e remonta o candle do período
@@ -979,6 +982,15 @@ function aplicarPreco(preco, T){
   if (tickers[cfg.simbolo]) { tickers[cfg.simbolo].c = preco; }
   agendarTick(false);
 }
+// título da aba como na TradingView: "ETHUSDT 2.411,68 ▼ −0,02%" (variação de 24 h)
+setInterval(() => {
+  if (!velas.length) return;
+  const preco = velas[velas.length - 1].close, t = tickers[cfg.simbolo];
+  let txt = cfg.simbolo + " " + pr(preco);
+  if (t && t.o) t.p = (preco / t.o - 1) * 100;
+  if (t && t.p != null && isFinite(t.p)) txt += " " + (t.p >= 0 ? "▲ +" : "▼ −") + Math.abs(t.p).toFixed(2).replace(".", ",") + "%";
+  if (document.title !== txt) document.title = txt;
+}, 1000);
 // junta várias atualizações num único redesenho por quadro de tela
 let recalcInd = false;
 // contagem até o fechamento do candle, logo abaixo do preço na escala (como na TradingView)
