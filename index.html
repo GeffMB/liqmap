@@ -277,6 +277,7 @@ const DEMO = new URLSearchParams(location.search).has("demo");
 const $ = id => document.getElementById(id);
 
 const INDICADORES = [
+  {id: "leg",   nome: "Legenda (valores do candle)", desc: "quadro no canto com preços, médias, volume e spot", padrao: false},
   {id: "vol",   nome: "Volume",                 desc: "barras no rodapé do gráfico",        padrao: true},
   {id: "spot",  nome: "Preço spot (referência)", desc: "linha do ETH/BTC à vista e a diferença (basis) para o futuro", padrao: true},
   {id: "vwap",  nome: "VWAP diária",            desc: "preço médio ponderado pelo volume",  padrao: true},
@@ -988,6 +989,7 @@ principal.addEventListener("pointermove", e => { const r = principal.getBounding
 principal.addEventListener("pointerleave", () => { mouseMapa = null; atualizarDicaLiq(); });
 function atualizarLegenda(param){
   const leg = $("legenda");
+  leg.style.display = cfg.ind.leg ? "" : "none";
   if (!velas.length) { leg.replaceChildren(); return; }
   let i = velas.length - 1;
   if (param && param.time != null) { const j = velas.findIndex(v => v.time === param.time); if (j >= 0) i = j; }
