@@ -222,6 +222,7 @@ button,select,input{font:inherit;color:inherit}
   <label>Média do volume (candles) <input id="mediaVol" type="number" min="20" step="1" value="610"></label>
   <label>Médias móveis (períodos) <input id="mmPer" type="text" value="9, 21, 200" style="width:110px"></label>
   <label>Tipo das médias <select id="mmTipo" style="width:150px"><option value="e">Exponencial (MME)</option><option value="s">Simples (MMS)</option></select></label>
+  <label>Baleia: negócio mínimo (US$, 0 = automático) <input id="baleiaMin" type="number" min="0" step="50000" value="0" style="width:110px"></label>
   <label>IFR / RSI (períodos) <input id="rsiPer" type="number" min="2" max="100" step="1" value="14"></label>
   <label>Recalcular mapa a cada <select id="auto"><option value="0">desligado</option><option value="5">5 min</option><option value="15" selected>15 min</option><option value="60">60 min</option></select></label>
   <label style="margin-top:10px">Pesos de alavancagem</label>
@@ -278,7 +279,9 @@ const INDICADORES = [
   {id: "vol",   nome: "Volume",                 desc: "barras no rodapé do gráfico",        padrao: true},
   {id: "spot",  nome: "Preço spot (referência)", desc: "linha do ETH/BTC à vista e a diferença (basis) para o futuro", padrao: true},
   {id: "vwap",  nome: "VWAP diária",            desc: "preço médio ponderado pelo volume",  padrao: true},
-  {id: "vpvr",  nome: "Perfil de volume (VPVR)", desc: "volume por faixa de preço + POC",   padrao: true},
+  {id: "vpvr",  nome: "Perfil de volume (VPVR)", desc: "volume por faixa de preço + POC e área de valor (VAH/VAL)", padrao: true},
+  {id: "pocs",  nome: "POCs nuas (diárias e semanais)", desc: "POCs de dias/semanas que o preço ainda não revisitou", padrao: false},
+  {id: "baleias", nome: "Bolhas de baleias",    desc: "negócios grandes ao vivo (verde compra, vermelho venda)", padrao: false},
   {id: "delta", nome: "Delta de volume",        desc: "compras − vendas agressivas",        padrao: false},
   {id: "cvd",   nome: "CVD",                    desc: "delta acumulado",                    padrao: true},
   {id: "oi",    nome: "Open Interest",          desc: "contratos em aberto (USD)",          padrao: false},
@@ -292,7 +295,7 @@ const INDICADORES = [
 // ---------- preferências (só neste navegador) ----------
 function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap2") || "{}"); } catch(e){ return {}; } }
 function salvarPrefs(){ try { localStorage.setItem("liqmap2", JSON.stringify(cfg)); } catch(e){} }
-const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, lado: false, mmPer: "9, 21, 200", mmTipo: "e", rsiPer: 14, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
+const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, baleiaMin: 0, lado: false, mmPer: "9, 21, 200", mmTipo: "e", rsiPer: 14, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
 if (!SIMBOLOS.includes(cfg.simbolo)) cfg.simbolo = "BTCUSDT";
 if (!TFS.includes(cfg.tf)) cfg.tf = "15m";
 if (!Array.isArray(cfg.pesos) || cfg.pesos.length !== 6) cfg.pesos = PESOS_PADRAO.slice();
@@ -463,6 +466,122 @@ function calcIndicadores(v, oiPorT){
   const rsi = cfg.ind.rsi ? calcRSI(v, cfg.rsiPer) : [];
   const agr = v.map(k => ({time: k.time, value: k.b})), agrV = v.map(k => ({time: k.time, value: -(k.q - k.b)}));
   return {vol, delta, cvd, vwap, oi, z, nivel, mms, rsi, agr, agrV, mvrv: serieMVRV(v)};
+}
+// ---------- POCs nuas diárias e semanais ----------
+// perfil de volume de cada dia/semana (UTC) com candles de 30 min dos últimos ~60 dias;
+// "nua" = o preço ainda não voltou a negociar na POC depois que o período terminou
+let perfis = null, perfisSimb = "", perfisQuando = 0, perfisCarregando = false;
+async function carregarPerfis(){
+  if (!cfg.ind.pocs || perfisCarregando) return;
+  if (perfis && perfisSimb === cfg.simbolo && Date.now() - perfisQuando < 15 * 60e3) return;
+  perfisCarregando = true;
+  const simb = cfg.simbolo;
+  try {
+    let kl;
+    if (DEMO) kl = dadosDemo(simb, "30m", 2900).kl;
+    else {
+      const conv = k => ({t: +k[0], h: +k[2], l: +k[3], c: +k[4], q: +k[7]});
+      const b = (await getJSON("/fapi/v1/klines", {symbol: simb, interval: "30m", limit: 1500})).map(conv);
+      const a = b.length ? (await getJSON("/fapi/v1/klines", {symbol: simb, interval: "30m", endTime: b[0].t - 1, limit: 1500})).map(conv) : [];
+      kl = a.concat(b);
+    }
+    if (cfg.simbolo !== simb) return;
+    perfis = calcPOCs(kl); perfisSimb = simb; perfisQuando = Date.now(); assinatura = "";
+  } catch (e) { console.warn("POCs indisponíveis:", e); }
+  finally { perfisCarregando = false; }
+}
+function calcPOCs(kl){
+  if (!kl.length) return [];
+  const passo = kl[kl.length - 1].c * 0.001;   // faixas de 0,1% do preço
+  const grupos = new Map();
+  for (const k of kl) {
+    const dia = Math.floor(k.t / 864e5) * 864e5, sem = dia - ((new Date(dia).getUTCDay() + 6) % 7) * 864e5;   // semana começa na segunda
+    for (const [tipo, ini, dur] of [["D", dia, 864e5], ["S", sem, 7 * 864e5]]) {
+      const ch = tipo + ini;
+      if (!grupos.has(ch)) grupos.set(ch, {tipo, ini, fim: ini + dur, vol: new Map(), n: 0});
+      const g = grupos.get(ch); g.n++;
+      const a = Math.floor(k.l / passo), z = Math.floor(k.h / passo), n = z - a + 1;
+      for (let b = a; b <= z; b++) g.vol.set(b, (g.vol.get(b) || 0) + k.q / n);
+    }
+  }
+  const agora = Date.now(), out = [];
+  for (const g of grupos.values()) {
+    if (g.fim > agora) continue;                                   // período ainda aberto
+    if (g.n < (g.tipo === "D" ? 40 : 250)) continue;               // período incompleto no início dos dados
+    let mx = 0, bin = 0; for (const [b, v] of g.vol) if (v > mx) { mx = v; bin = b; }
+    const preco = (bin + 0.5) * passo;
+    let tocou = false;
+    for (const k of kl) if (k.t >= g.fim && k.l <= preco && k.h >= preco) { tocou = true; break; }
+    if (!tocou) out.push({tipo: g.tipo, ini: g.ini, fim: g.fim, preco});
+  }
+  return out;
+}
+function desenharPOCs(W, H){
+  if (!perfis || perfisSimb !== cfg.simbolo) { carregarPerfis(); return; }
+  const g = geo(); if (!g) return;
+  ctx.font = "11px -apple-system,Segoe UI,Roboto,sans-serif";
+  for (const p of perfis) {
+    // o candle ao vivo também pode "fechar" a POC
+    let tocou = false;
+    for (let i = velas.length - 1; i >= 0 && velas[i].time * 1000 >= p.fim - TF_MS[cfg.tf]; i--) if (velas[i].low <= p.preco && velas[i].high >= p.preco && velas[i].time * 1000 >= perfisQuando - TF_MS[cfg.tf]) { tocou = true; break; }
+    if (tocou) continue;
+    const y = serie.priceToCoordinate(p.preco); if (y == null || y < 0 || y > H) continue;
+    const xa = Math.max(0, g.x0 + (idxDeT(p.fim / 1000) - 0.5) * g.passo);
+    if (xa >= W) continue;
+    const sem = p.tipo === "S", cor = sem ? "rgba(230,81,0,0.9)" : "rgba(124,77,255,0.85)";
+    ctx.strokeStyle = cor; ctx.lineWidth = sem ? 1.6 : 1; ctx.setLineDash(sem ? [8, 4] : [3, 3]);
+    ctx.beginPath(); ctx.moveTo(xa, y); ctx.lineTo(W, y); ctx.stroke(); ctx.setLineDash([]);
+    const d = new Date(p.ini), dt = String(d.getUTCDate()).padStart(2, "0") + "/" + String(d.getUTCMonth() + 1).padStart(2, "0");
+    const txt = (sem ? "POC semana " : "POC dia ") + dt + "  " + pr(p.preco);
+    const tw = ctx.measureText(txt).width;
+    ctx.fillStyle = "rgba(255,255,255,0.85)"; ctx.fillRect(W - tw - 70, y - 13, tw + 6, 13);
+    ctx.fillStyle = cor; ctx.fillText(txt, W - tw - 67, y - 3);
+  }
+}
+
+// ---------- bolhas de baleias (negócios grandes ao vivo) ----------
+const BALEIA_AUTO = {BTCUSDT: 1e6, ETHUSDT: 5e5};
+const minBaleia = () => cfg.baleiaMin > 0 ? cfg.baleiaMin : (BALEIA_AUTO[cfg.simbolo] || 2e5);
+let baleias = [];
+function lerBaleias(){
+  try { baleias = JSON.parse(localStorage.getItem("liqmap-baleias-" + cfg.simbolo) || "[]").filter(b => Date.now() - b.t < 3 * 864e5); } catch (e) { baleias = []; }
+}
+let baleiaSalvar = 0;
+function novaBaleia(t, p, usdv, compra){
+  baleias.push({t, p, u: usdv, c: compra ? 1 : 0});
+  if (baleias.length > 3000) baleias.splice(0, baleias.length - 3000);
+  assinatura = "";
+  clearTimeout(baleiaSalvar);
+  baleiaSalvar = setTimeout(() => { try { localStorage.setItem("liqmap-baleias-" + cfg.simbolo, JSON.stringify(baleias)); } catch (e) {} }, 2000);
+}
+function ouvirTrade(d){   // chamado a cada aggTrade do ativo
+  if (!cfg.ind.baleias) return;
+  const v = +d.p * +d.q;
+  if (v >= minBaleia()) novaBaleia(+d.T, +d.p, v, !d.m);   // m = comprador é o lado passivo → agressor vendeu
+}
+if (DEMO) setInterval(() => {   // teste: simula negócios grandes
+  if (!cfg.ind.baleias || !velas.length) return;
+  const k = velas[velas.length - 1], m = minBaleia();
+  ouvirTrade({p: k.close * (1 + (Math.random() - 0.5) * 0.002), q: m * (0.5 + Math.random() * 3) / k.close, T: Date.now() - Math.random() * TF_MS[cfg.tf] * 0.5, m: Math.random() < 0.5});
+}, 700);
+function posBaleias(){
+  const g = geo(); if (!g) return [];
+  const min = minBaleia(), out = [];
+  for (const b of baleias) {
+    if (b.u < min) continue;
+    const x = g.x0 + (idxDeT(b.t / 1000) - 0.5) * g.passo, y = serie.priceToCoordinate(b.p);
+    if (y == null) continue;
+    out.push({b, x, y, r: Math.min(22, 3 + 4 * Math.sqrt(b.u / min))});
+  }
+  return out;
+}
+function desenharBaleias(W, H){
+  for (const {b, x, y, r} of posBaleias()) {
+    if (x < -r || x > W + r || y < -r || y > H + r) continue;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 7);
+    ctx.fillStyle = b.c ? "rgba(8,153,129,0.35)" : "rgba(242,54,69,0.35)"; ctx.fill();
+    ctx.lineWidth = 1; ctx.strokeStyle = b.c ? "rgba(8,153,129,0.9)" : "rgba(242,54,69,0.9)"; ctx.stroke();
+  }
 }
 // ---------- MVRV (dado on-chain diário, API pública da CoinMetrics) ----------
 const MVRV_ATIVO = {BTCUSDT: "btc", ETHUSDT: "eth"};
@@ -757,6 +876,10 @@ function desenharCanvas(){
 
   // 2) perfil de volume da parte visível (VPVR)
   if (cfg.ind.vpvr) {
+    desenharVPVR(); }
+  if (cfg.ind.pocs) desenharPOCs(W, H);
+  if (cfg.ind.baleias) desenharBaleias(W, H);
+  function desenharVPVR(){
     const r = ts.getVisibleLogicalRange();
     if (!r) return;
     const ini = Math.max(0, Math.floor(r.from)), fim = Math.min(ult, Math.ceil(r.to));
@@ -771,18 +894,25 @@ function desenharCanvas(){
       const n = z - a + 1;
       for (let b = a; b <= z; b++) { compra[b] += k.b / n; venda[b] += (k.q - k.b) / n; }
     }
-    let mx = 0, poc = -1;
-    for (let b = 0; b < N; b++) { const t = compra[b] + venda[b]; if (t > mx) { mx = t; poc = b; } }
+    let mx = 0, poc = -1, total = 0;
+    for (let b = 0; b < N; b++) { const t = compra[b] + venda[b]; total += t; if (t > mx) { mx = t; poc = b; } }
     if (!mx) return;
+    // área de valor: a partir da POC, inclui a faixa vizinha de maior volume até somar 70%
+    let va0 = poc, va1 = poc, soma = mx;
+    while (soma < total * 0.7 && (va0 > 0 || va1 < N - 1)) {
+      const acima = va1 < N - 1 ? compra[va1 + 1] + venda[va1 + 1] : -1, abaixo = va0 > 0 ? compra[va0 - 1] + venda[va0 - 1] : -1;
+      if (acima >= abaixo) { va1++; soma += acima; } else { va0--; soma += abaixo; }
+    }
     const larg = W * (W < 500 ? 0.15 : 0.24);
     for (let b = 0; b < N; b++) {
       const t = compra[b] + venda[b]; if (!t) continue;
       const y1 = serie.priceToCoordinate(baixo + (b + 1) * passoP), y0 = serie.priceToCoordinate(baixo + b * passoP);
       const h = Math.max(1, Math.abs(y0 - y1) - 1), y = Math.min(y0, y1) + 0.5;
       const wc = compra[b] / mx * larg, wv = venda[b] / mx * larg;
-      ctx.fillStyle = b === poc ? "rgba(41,98,255,0.75)" : "rgba(41,98,255,0.32)";
+      const naVA = b >= va0 && b <= va1;
+      ctx.fillStyle = b === poc ? "rgba(41,98,255,0.75)" : naVA ? "rgba(41,98,255,0.40)" : "rgba(41,98,255,0.18)";
       ctx.fillRect(W - wc - wv, y, wc, h);
-      ctx.fillStyle = b === poc ? "rgba(255,183,77,0.75)" : "rgba(255,183,77,0.30)";
+      ctx.fillStyle = b === poc ? "rgba(255,183,77,0.75)" : naVA ? "rgba(255,183,77,0.40)" : "rgba(255,183,77,0.16)";
       ctx.fillRect(W - wv, y, wv, h);
     }
     const yPoc = serie.priceToCoordinate(baixo + (poc + 0.5) * passoP);
@@ -790,6 +920,12 @@ function desenharCanvas(){
     ctx.beginPath(); ctx.moveTo(0, yPoc); ctx.lineTo(W, yPoc); ctx.stroke(); ctx.setLineDash([]);
     ctx.fillStyle = "rgba(19,23,34,0.75)"; ctx.font = "11px sans-serif";
     ctx.fillText("POC " + pr(baixo + (poc + 0.5) * passoP), 8, yPoc - 4);
+    for (const [nome, preco] of [["VAH", baixo + (va1 + 1) * passoP], ["VAL", baixo + va0 * passoP]]) {
+      const y = serie.priceToCoordinate(preco); if (y == null) continue;
+      ctx.strokeStyle = "rgba(41,98,255,0.55)"; ctx.setLineDash([2, 4]);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(41,98,255,0.85)"; ctx.fillText(nome + " " + pr(preco), 8, nome === "VAH" ? y - 4 : y + 12);
+    }
   }
 }
 
@@ -804,8 +940,22 @@ function colunaMapa(t){   // candle da base do mapa que contém o horário t
 let mouseMapa = null;
 function atualizarDicaLiq(){
   const dica = $("dicaLiq");
-  if (!mouseMapa || !mapa || !cfg.heat || !velas.length) { dica.style.display = "none"; return; }
+  if (!mouseMapa || !velas.length) { dica.style.display = "none"; return; }
   const {x, y} = mouseMapa, W = principal.clientWidth - chart.priceScale("right").width();
+  if (cfg.ind.baleias) {   // cursor sobre uma bolha de baleia
+    let perto = null;
+    for (const q of posBaleias()) if (Math.hypot(q.x - x, q.y - y) <= q.r + 2 && (!perto || q.b.u > perto.b.u)) perto = q;
+    if (perto) {
+      const b = perto.b, h = new Date(b.t).toLocaleTimeString("pt-BR");
+      dica.replaceChildren(el("div", {class: "dl-p"}, "Baleia · " + h),
+        el("div", {}, el("span", {class: "v"}, b.c ? "Compra agressiva " : "Venda agressiva "), el("b", {class: b.c ? "up" : "down"}, usd(b.u)), el("span", {class: "v"}, " em " + pr(b.p))));
+      dica.style.display = "block";
+      dica.style.left = Math.max(4, x + 14 + dica.offsetWidth > W ? x - 14 - dica.offsetWidth : x + 14) + "px";
+      dica.style.top = Math.max(4, y - dica.offsetHeight - 10) + "px";
+      return;
+    }
+  }
+  if (!mapa || !cfg.heat) { dica.style.display = "none"; return; }
   const lg = chart.timeScale().coordinateToLogical(x);
   if (x > W || lg == null) { dica.style.display = "none"; return; }
   const k = velas[Math.max(0, Math.min(velas.length - 1, Math.round(lg)))];
@@ -948,7 +1098,7 @@ function conectarWS(){
     const d = JSON.parse(ev.data).data;
     if (!d) return;
     ultimoDado = Date.now(); $("ponto").classList.add("on");
-    if (d.e === "aggTrade" && d.s === cfg.simbolo) aplicarPreco(+d.p, +d.T);
+    if (d.e === "aggTrade" && d.s === cfg.simbolo) { aplicarPreco(+d.p, +d.T); ouvirTrade(d); }
     else if (d.e === "24hrMiniTicker") { tickers[d.s] = {c: +d.c, o: +d.o, p: (+d.c / +d.o - 1) * 100}; desenharLista(); }
     else if (d.e === "kline" && d.s === cfg.simbolo && d.k.i === intervaloBinance(cfg.tf) && velas.length) {
       const k = d.k;
@@ -1114,7 +1264,7 @@ async function recalcular(manterZoom){
 function trocar(mud){
   Object.assign(cfg, mud); salvarPrefs();
   $("bSimb").textContent = cfg.simbolo + " ▾";
-  montarTfs(); desenharLista(); conectarWS(); conectarSpot(); carregarDesenhos();
+  montarTfs(); desenharLista(); conectarWS(); conectarSpot(); carregarDesenhos(); lerBaleias(); perfis = null;
   ocupado = false; recalcular(false);
 }
 
@@ -1169,7 +1319,7 @@ const pesosBox = $("pesos");
 LEVS.forEach((L, i) => pesosBox.append(el("label", {}, L + "×", el("input", {type: "number", min: "0", step: "1", id: "w" + i}))));
 $("bAjustes").addEventListener("click", e => {
   e.stopPropagation();
-  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto; $("mediaVol").value = cfg.mediaVol; $("mmPer").value = cfg.mmPer; $("mmTipo").value = cfg.mmTipo; $("rsiPer").value = cfg.rsiPer;
+  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto; $("mediaVol").value = cfg.mediaVol; $("mmPer").value = cfg.mmPer; $("mmTipo").value = cfg.mmTipo; $("rsiPer").value = cfg.rsiPer; $("baleiaMin").value = cfg.baleiaMin;
   cfg.pesos.forEach((v, i) => $("w" + i).value = v);
   abrirPop("pop", "bAjustes");
 });
@@ -1180,6 +1330,7 @@ $("aplicar").addEventListener("click", () => {
   trocar({barras: +$("barras").value, filtro: Math.max(0, +$("filtro").value || 0), auto: +$("auto").value,
           mediaVol: Math.max(20, Math.round(+$("mediaVol").value || 610)),
           mmPer: periodosMM($("mmPer").value).join(", ") || "9, 21, 200", mmTipo: $("mmTipo").value,
+          baleiaMin: Math.max(0, +$("baleiaMin").value || 0),
           rsiPer: Math.min(100, Math.max(2, Math.round(+$("rsiPer").value || 14))),
           pesos: LEVS.map((_, i) => Math.max(0, +$("w" + i).value || 0))});
 });
@@ -1675,7 +1826,7 @@ carregarLib().then(ok => {
   criarGrafico();
   carregarDesenhos();
   carregarTickers();
-  conectarWS();
+  conectarWS(); lerBaleias();
   recalcular(false);
 });
 </script>
