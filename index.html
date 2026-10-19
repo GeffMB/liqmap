@@ -86,6 +86,10 @@ button,select,input{font:inherit;color:inherit}
 .pesos{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:4px}
 .pesos label{flex-direction:column;align-items:stretch;margin:0;font-size:11px}
 .pesos input{width:100%}
+.sync{margin-top:14px;padding-top:10px;border-top:1px solid var(--line);font-size:12px;color:var(--sub)}
+.sync p{margin:0 0 6px}.sync ol{margin:4px 0 6px;padding-left:18px}.sync li{margin:2px 0}
+.sync a{color:var(--accent)}
+.pop .sec{margin-top:6px;width:100%;background:transparent;border:1px solid var(--line);border-radius:4px;padding:6px;color:var(--sub);cursor:pointer}
 .pop .ok{margin-top:10px;width:100%;background:var(--accent);border:0;border-radius:4px;padding:7px;color:#fff;cursor:pointer}
 /* ---------- ferramentas de desenho (esquerda) ---------- */
 .ferr{flex:0 0 44px;width:44px;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;overflow-y:auto;scrollbar-width:none;background:var(--bg)}
@@ -229,6 +233,23 @@ button,select,input{font:inherit;color:inherit}
   <label style="margin-top:10px">Pesos de alavancagem</label>
   <div class="pesos" id="pesos"></div>
   <button class="ok" id="aplicar">Aplicar</button>
+  <div class="sync">
+    <h4>Sincronizar entre aparelhos</h4>
+    <p id="syncInfo">Guarda desenhos, indicadores e ajustes num Gist privado da sua conta GitHub, para aparecerem em qualquer PC ou celular.</p>
+    <div id="syncOff">
+      <ol>
+        <li><a href="https://github.com/settings/tokens/new?scopes=gist&amp;description=LiqMap%20sync" target="_blank" rel="noopener">Crie um token no GitHub ↗</a> (só a permissão <b>gist</b>; em "Expiration" escolha a validade)</li>
+        <li>Cole o token aqui (fica só neste navegador):</li>
+      </ol>
+      <input id="syncToken" type="password" placeholder="ghp_..." autocomplete="off" style="width:100%">
+      <button class="ok" id="syncLigar">Conectar</button>
+    </div>
+    <div id="syncOn" style="display:none">
+      <div id="syncStatus" class="v"></div>
+      <button class="ok" id="syncAgora">Sincronizar agora</button>
+      <button class="sec" id="syncDesligar">Desconectar este aparelho</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -297,7 +318,7 @@ const INDICADORES = [
 
 // ---------- preferências (só neste navegador) ----------
 function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap2") || "{}"); } catch(e){ return {}; } }
-function salvarPrefs(){ try { localStorage.setItem("liqmap2", JSON.stringify(cfg)); } catch(e){} }
+function salvarPrefs(){ try { localStorage.setItem("liqmap2", JSON.stringify(cfg)); } catch(e){} if (typeof agendarSync === "function") agendarSync(); }
 const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, baleiaMin: 0, lado: false, mmPer: "9, 21, 200", mmTipo: "e", rsiPer: 14, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
 if (!SIMBOLOS.includes(cfg.simbolo)) cfg.simbolo = "BTCUSDT";
 if (!TFS.includes(cfg.tf)) cfg.tf = "15m";
@@ -556,7 +577,7 @@ function novaBaleia(t, p, usdv, compra){
   if (baleias.length > 3000) baleias.splice(0, baleias.length - 3000);
   assinatura = "";
   clearTimeout(baleiaSalvar);
-  baleiaSalvar = setTimeout(() => { try { localStorage.setItem("liqmap-baleias-" + cfg.simbolo, JSON.stringify(baleias)); } catch (e) {} }, 2000);
+  baleiaSalvar = setTimeout(() => { try { localStorage.setItem("liqmap-baleias-" + cfg.simbolo, JSON.stringify(baleias)); } catch (e) {} agendarSync(60000); }, 2000);
 }
 // uma ordem a mercado grande "varre" vários preços e chega em vários aggTrades com o mesmo horário e lado;
 // junta esses pedaços numa ordem só antes de comparar com o mínimo
@@ -1364,7 +1385,7 @@ $("bAjustes").addEventListener("click", e => {
   cfg.pesos.forEach((v, i) => $("w" + i).value = v);
   abrirPop("pop", "bAjustes");
 });
-for (const id of ["pop", "popInd", "popTf"]) $(id).addEventListener("click", e => e.stopPropagation());
+for (const id of ["pop", "popInd", "popTf", "popSimb"]) $(id).addEventListener("click", e => e.stopPropagation());
 document.addEventListener("click", () => document.querySelectorAll(".pop").forEach(p => p.classList.remove("aberto")));
 $("aplicar").addEventListener("click", () => {
   $("pop").classList.remove("aberto");
@@ -1530,6 +1551,7 @@ function carregarDesenhos(){
 }
 function salvarDesenhos(){
   try { localStorage.setItem("liqmap-des-" + cfg.simbolo, JSON.stringify(desenhos)); } catch(e) {}
+  agendarSync();
   desVersao++; atualizarBarra();
 }
 
@@ -1828,6 +1850,100 @@ function desenharDesenhos(){
   if (rascunho) desenharUm(dctx, g, rascunho, W);
   if (medida) desenharUm(dctx, g, medida, W);
 }
+
+// ---------- sincronização entre aparelhos (Gist privado do GitHub do próprio usuário) ----------
+// Guarda todas as chaves "liqmap..." do navegador num arquivo JSON de um Gist secreto. O token fica só
+// no localStorage deste aparelho e nunca é sincronizado. Vale a versão salva por último (aparelho a aparelho).
+const SYNC_ARQ = "liqmap-sync.json";
+let syncTimer = 0, syncEnviando = false, syncPronto = false;   // pronto = já comparou com a nuvem ao abrir
+function syncCfg(){ try { return JSON.parse(localStorage.getItem("liqmapSyncCfg") || "null"); } catch (e) { return null; } }
+function gh(caminho, op = {}){
+  const c = syncCfg();
+  return fetch("https://api.github.com" + caminho, Object.assign({}, op, {headers: {"Authorization": "Bearer " + (op.token || c.token), "Accept": "application/vnd.github+json", "Content-Type": "application/json"}}))
+    .then(async r => { if (!r.ok) throw new Error(r.status === 401 ? "token inválido ou vencido" : r.status === 403 ? "token sem permissão de gist" : "GitHub respondeu " + r.status); return r.json(); });
+}
+function pacoteLocal(){
+  const dados = {};
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k || !k.startsWith("liqmap") || k === "liqmapSyncCfg" || k === "liqmapSyncTs") continue;
+    let v = localStorage.getItem(k);
+    if (k.startsWith("liqmap-baleias-")) { try { v = JSON.stringify(JSON.parse(v).slice(-1000)); } catch (e) {} }
+    dados[k] = v;
+  }
+  return {versao: 1, atualizado: +(localStorage.getItem("liqmapSyncTs") || 0), dados};
+}
+function mostrarSync(msg){
+  const c = syncCfg();
+  $("syncOff").style.display = c ? "none" : ""; $("syncOn").style.display = c ? "" : "none";
+  if (msg != null) $("syncStatus").textContent = msg;
+  else if (c) $("syncStatus").textContent = c.ultimo ? "Sincronizado às " + new Date(c.ultimo).toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}) : "Conectado";
+}
+// mudanca=false (histórico de baleias) envia junto, mas não conta como "edição mais nova" deste aparelho
+function agendarSync(espera = 4000, mudanca = espera < 60000){
+  if (mudanca && syncPronto) try { localStorage.setItem("liqmapSyncTs", String(Date.now())); } catch (e) {}
+  if (!syncCfg()) return;
+  clearTimeout(syncTimer); syncTimer = setTimeout(enviarSync, espera);
+}
+async function enviarSync(){
+  const c = syncCfg(); if (!c || syncEnviando) return;
+  syncEnviando = true;
+  try {
+    const pac = pacoteLocal();
+    if (!pac.atualizado) { pac.atualizado = Date.now(); localStorage.setItem("liqmapSyncTs", String(pac.atualizado)); }
+    await gh("/gists/" + c.gist, {method: "PATCH", body: JSON.stringify({files: {[SYNC_ARQ]: {content: JSON.stringify(pac)}}})});
+    c.ultimo = Date.now(); localStorage.setItem("liqmapSyncCfg", JSON.stringify(c)); mostrarSync();
+  } catch (e) { mostrarSync("Erro ao sincronizar: " + e.message); }
+  finally { syncEnviando = false; }
+}
+async function lerRemoto(c){
+  const g = await gh("/gists/" + c.gist);
+  const f = g.files && g.files[SYNC_ARQ]; if (!f) return null;
+  const txt = f.truncated ? await (await fetch(f.raw_url)).text() : f.content;
+  try { return JSON.parse(txt); } catch (e) { return null; }
+}
+// ao abrir (ou voltar para a aba): se a nuvem tem algo mais novo que este aparelho, aplica e recarrega
+async function puxarSync(forcar){
+  const c = syncCfg(); if (!c) { syncPronto = true; return; }
+  try {
+    const rem = await lerRemoto(c);
+    const local = +(localStorage.getItem("liqmapSyncTs") || 0);
+    if (rem && (forcar || rem.atualizado > local + 1000)) {
+      for (const k of Object.keys(localStorage)) if (k.startsWith("liqmap") && k !== "liqmapSyncCfg" && !(k in rem.dados)) localStorage.removeItem(k);
+      for (const [k, v] of Object.entries(rem.dados)) localStorage.setItem(k, v);
+      localStorage.setItem("liqmapSyncTs", String(rem.atualizado));
+      c.ultimo = Date.now(); localStorage.setItem("liqmapSyncCfg", JSON.stringify(c));
+      location.reload(); return;
+    }
+    if (!rem || local > rem.atualizado + 1000) await enviarSync();   // este aparelho está mais novo
+    else { c.ultimo = Date.now(); localStorage.setItem("liqmapSyncCfg", JSON.stringify(c)); mostrarSync(); }
+  } catch (e) { mostrarSync("Erro ao sincronizar: " + e.message); }
+  finally { syncPronto = true; }
+}
+$("syncLigar").addEventListener("click", async () => {
+  const token = $("syncToken").value.trim(); if (!token) return;
+  $("syncLigar").disabled = true; $("syncLigar").textContent = "Conectando…";
+  try {
+    // procura um Gist do LiqMap já existente (criado em outro aparelho); se não houver, cria um secreto
+    let gist = null;
+    for (let pg = 1; pg <= 5 && !gist; pg++) {
+      const lista = await gh("/gists?per_page=100&page=" + pg, {token});
+      const g = lista.find(x => x.files && x.files[SYNC_ARQ]); if (g) gist = g.id;
+      if (lista.length < 100) break;
+    }
+    const novo = !gist;
+    if (novo) gist = (await gh("/gists", {token, method: "POST", body: JSON.stringify({description: "LiqMap — sincronização (desenhos e ajustes)", public: false, files: {[SYNC_ARQ]: {content: JSON.stringify(pacoteLocal())}}})})).id;
+    localStorage.setItem("liqmapSyncCfg", JSON.stringify({token, gist}));
+    $("syncToken").value = "";
+    if (novo) { syncPronto = true; agendarSync(0); await enviarSync(); } else await puxarSync(true);   // aparelho novo: a nuvem vale
+    mostrarSync();
+  } catch (e) { alert("Não foi possível conectar: " + e.message); }
+  finally { $("syncLigar").disabled = false; $("syncLigar").textContent = "Conectar"; }
+});
+$("syncAgora").addEventListener("click", () => puxarSync());
+$("syncDesligar").addEventListener("click", () => { localStorage.removeItem("liqmapSyncCfg"); mostrarSync(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") puxarSync(); else if (syncTimer) { clearTimeout(syncTimer); enviarSync(); } });
+mostrarSync(); puxarSync();
 
 // ---------- foto do gráfico (mapa + candles + desenhos) ----------
 $("bFoto").addEventListener("click", () => {
