@@ -541,7 +541,7 @@ function desenharPOCs(W, H){
 }
 
 // ---------- bolhas de baleias (negócios grandes ao vivo) ----------
-const BALEIA_AUTO = {BTCUSDT: 1e6, ETHUSDT: 5e5};
+const BALEIA_AUTO = {BTCUSDT: 5e5, ETHUSDT: 2.5e5};
 const minBaleia = () => cfg.baleiaMin > 0 ? cfg.baleiaMin : (BALEIA_AUTO[cfg.simbolo] || 2e5);
 let baleias = [];
 function lerBaleias(){
@@ -550,15 +550,27 @@ function lerBaleias(){
 let baleiaSalvar = 0;
 function novaBaleia(t, p, usdv, compra){
   baleias.push({t, p, u: usdv, c: compra ? 1 : 0});
+  atualizarLegenda();
   if (baleias.length > 3000) baleias.splice(0, baleias.length - 3000);
   assinatura = "";
   clearTimeout(baleiaSalvar);
   baleiaSalvar = setTimeout(() => { try { localStorage.setItem("liqmap-baleias-" + cfg.simbolo, JSON.stringify(baleias)); } catch (e) {} }, 2000);
 }
+// uma ordem a mercado grande "varre" vários preços e chega em vários aggTrades com o mesmo horário e lado;
+// junta esses pedaços numa ordem só antes de comparar com o mínimo
+let ordemAtual = null, ordemTimer = 0;
+function fecharOrdem(){
+  clearTimeout(ordemTimer);
+  const o = ordemAtual; ordemAtual = null;
+  if (o && o.u >= minBaleia()) novaBaleia(o.t, o.pq / o.q, o.u, o.c);
+}
 function ouvirTrade(d){   // chamado a cada aggTrade do ativo
   if (!cfg.ind.baleias) return;
-  const v = +d.p * +d.q;
-  if (v >= minBaleia()) novaBaleia(+d.T, +d.p, v, !d.m);   // m = comprador é o lado passivo → agressor vendeu
+  const p = +d.p, q = +d.q, T = +d.T, compra = !d.m;   // m = comprador é o lado passivo → agressor vendeu
+  if (ordemAtual && (Math.abs(ordemAtual.t - T) > 5 || ordemAtual.c !== compra)) fecharOrdem();
+  if (!ordemAtual) ordemAtual = {t: T, c: compra, q: 0, pq: 0, u: 0};
+  ordemAtual.q += q; ordemAtual.pq += p * q; ordemAtual.u += p * q;
+  clearTimeout(ordemTimer); ordemTimer = setTimeout(fecharOrdem, 60);
 }
 if (DEMO) setInterval(() => {   // teste: simula negócios grandes
   if (!cfg.ind.baleias || !velas.length) return;
@@ -996,6 +1008,12 @@ function atualizarLegenda(param){
   if (cfg.ind.spot && spot != null && i === velas.length - 1) {
     const b = (k.close / spot - 1) * 100;
     extra.push(el("span", {class: "v"}, "Spot "), el("b", {}, pr(spot)), el("span", {class: "v"}, " (basis " + (b >= 0 ? "+" : "") + b.toFixed(2).replace(".", ",") + "%)  "));
+  }
+  if (cfg.ind.baleias) {
+    const min = minBaleia(), desde = Date.now() - 864e5;
+    let nc = 0, vc = 0, nv = 0, vv2 = 0;
+    for (const b of baleias) if (b.t >= desde && b.u >= min) { if (b.c) { nc++; vc += b.u; } else { nv++; vv2 += b.u; } }
+    extra.push(el("span", {class: "v"}, "Baleias 24h (≥ " + usd(min) + "): "), el("b", {class: "up"}, nc + " compras " + usd(vc)), el("span", {class: "v"}, " · "), el("b", {class: "down"}, nv + " vendas " + usd(vv2)), el("span", {class: "v"}, "  "));
   }
   if (cfg.ind.vwap && ind && ind.vwap[i]) extra.push(el("span", {class: "v"}, "VWAP "), el("b", {style: "color:#2962ff"}, pr(ind.vwap[i].value)));
   if (cfg.ind.mm && ind && ind.mms.length) {
