@@ -893,6 +893,7 @@ function desenharCanvas(){
   if (cfg.ind.vpvr) {
     desenharVPVR(); }
   if (cfg.ind.pocs) desenharPOCs(W, H);
+  desenharLinhaSpot(W, H);
   if (cfg.ind.baleias) desenharBaleias(W, H);
   function desenharVPVR(){
     const r = ts.getVisibleLogicalRange();
@@ -1100,11 +1101,20 @@ function agendarSpot(){
   spotPendente = true;
   setTimeout(() => { spotPendente = false; desenharSpot(); atualizarLegenda(); }, 250);   // até 4 atualizações por segundo
 }
-function desenharSpot(){
-  if (!serie) return;
-  if (!cfg.ind.spot || spot == null) { if (linhaSpot) { serie.removePriceLine(linhaSpot); linhaSpot = null; } return; }
-  const op = {price: spot, color: "#9598a1", lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: "Spot", axisLabelColor: "#9598a1", axisLabelTextColor: "#ffffff"};
-  if (linhaSpot) linhaSpot.applyOptions(op); else linhaSpot = serie.createPriceLine(op);
+// a linha do spot é desenhada no nosso canvas (sem etiqueta na escala), para não cobrir o preço do futuro,
+// que fica quase no mesmo lugar da escala
+function desenharSpot(){ assinatura = ""; }
+function desenharLinhaSpot(W, H){
+  if (!cfg.ind.spot || spot == null || !velas.length) return;
+  const y = serie.priceToCoordinate(spot); if (y == null || y < 0 || y > H) return;
+  ctx.strokeStyle = "rgba(120,123,134,0.8)"; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); ctx.setLineDash([]);
+  const b = (velas[velas.length - 1].close / spot - 1) * 100;
+  const txt = "Spot " + pr(spot) + "  (basis " + (b >= 0 ? "+" : "") + b.toFixed(2).replace(".", ",") + "%)";
+  ctx.font = "11px -apple-system,Segoe UI,Roboto,sans-serif";
+  const tw = ctx.measureText(txt).width, yy = y < 18 ? y + 4 : y - 15;
+  ctx.fillStyle = "rgba(255,255,255,0.88)"; ctx.fillRect(6, yy, tw + 8, 13);
+  ctx.fillStyle = "#787b86"; ctx.fillText(txt, 10, yy + 10);
 }
 function conectarWS(){
   if (DEMO) return;
@@ -1162,7 +1172,7 @@ setInterval(() => {
   if (t && t.o) t.p = (preco / t.o - 1) * 100;
   if (t && t.p != null && isFinite(t.p)) txt += " " + (t.p >= 0 ? "▲ +" : "▼ −") + Math.abs(t.p).toFixed(2).replace(".", ",") + "%";
   if (document.title !== txt) document.title = txt;
-}, 1000);
+}, 250);
 // junta várias atualizações num único redesenho por quadro de tela
 let recalcInd = false;
 // contagem até o fechamento do candle, logo abaixo do preço na escala (como na TradingView)
