@@ -75,6 +75,7 @@ button,select,input{font:inherit;color:inherit}
 /* ---------- menus ---------- */
 .pop{position:fixed;top:48px;z-index:20;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px;width:290px;box-shadow:0 8px 24px rgba(19,23,34,.15);display:none}
 .pop.aberto{display:block}
+.pop{max-height:calc(100vh - 60px);max-height:calc(100dvh - 60px);overflow-y:auto;overscroll-behavior:contain}
 .pop h4{margin:0 0 8px;font-size:13px}
 .pop label{display:flex;justify-content:space-between;align-items:center;margin:6px 0;color:var(--sub);gap:8px}
 .pop input,.pop select{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:4px 6px;width:90px;color:var(--txt)}
