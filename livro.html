@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Livro de ofertas completo — LiqMap</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg?v=2">
+<style>
+:root{
+  --bg:#ffffff;--panel:#ffffff;--panel2:#f0f3fa;--line:#e0e3eb;--hover:#f0f3fa;
+  --txt:#131722;--sub:#787b86;--up:#089981;--down:#f23645;--accent:#2962ff;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.4 -apple-system,BlinkMacSystemFont,"Trebuchet MS",Roboto,Ubuntu,"Segoe UI",sans-serif;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:2px;height:44px;padding:0 8px;border-bottom:1px solid var(--line);background:var(--bg);flex:0 0 auto;overflow-x:auto;scrollbar-width:none}
+.marca{font-weight:700;letter-spacing:.2px;padding:0 10px 0 4px;white-space:nowrap;color:var(--txt);text-decoration:none}
+.marca span{color:var(--accent)}
+.marca .logo{width:20px;height:20px;vertical-align:-4px;margin-right:6px;border-radius:5px}
+.sep{width:1px;height:24px;background:var(--line);margin:0 6px;flex:0 0 auto}
+.btn{background:transparent;border:0;border-radius:4px;padding:6px 8px;cursor:pointer;white-space:nowrap;text-decoration:none;color:var(--txt);font:inherit}
+.btn:hover{background:var(--hover)}
+.btn.ativo{color:var(--accent);font-weight:600}
+.status{color:var(--sub);font-size:12px;white-space:nowrap}
+.status.err{color:var(--down)}
+.filtros{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:10px 14px;border-bottom:1px solid var(--line)}
+.filtros label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--sub)}
+.filtros select{min-width:96px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--txt);font:inherit;cursor:pointer}
+.exs{display:flex;gap:4px;flex-wrap:wrap}
+.ex{display:inline-flex;align-items:center;gap:5px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;cursor:pointer;font-size:12px;color:var(--txt);user-select:none}
+.ex input{margin:0}
+.ex i{width:9px;height:9px;border-radius:2px;display:inline-block}
+.ex .st{font-size:10.5px;color:var(--sub)}
+.corpo{flex:1 1 auto;display:flex;min-height:0}
+.grafico{flex:1 1 auto;position:relative;min-width:0}
+canvas{position:absolute;inset:0;width:100%;height:100%}
+.lado{width:300px;flex:0 0 300px;border-left:1px solid var(--line);overflow-y:auto;padding:12px 14px}
+.lado h3{font-size:13px;margin:4px 0 8px}
+.tab{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:12px;margin-bottom:14px}
+.tab th{color:var(--sub);font-weight:500;text-align:right;padding:4px 2px}
+.tab th:first-child,.tab td:first-child{text-align:left}
+.tab td{text-align:right;padding:4px 2px;border-top:1px solid var(--line)}
+.barra{height:6px;border-radius:3px;background:var(--down);overflow:hidden;margin-top:3px}
+.barra i{display:block;height:100%;background:var(--up)}
+.up{color:var(--up)}.down{color:var(--down)}.k{color:var(--sub)}
+.dica{position:absolute;pointer-events:none;background:rgba(255,255,255,.97);border:1px solid #d1d4dc;border-radius:6px;padding:6px 9px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.12);display:none;white-space:nowrap;z-index:3;font-variant-numeric:tabular-nums}
+.nota{color:var(--sub);font-size:11.5px;line-height:1.5}
+@media (max-width:760px){
+  .corpo{flex-direction:column}
+  .grafico{flex:0 0 62vh}
+  .lado{width:auto;flex:1 0 auto;border-left:0;border-top:1px solid var(--line)}
+  .marca .txt,.top .status{display:none}
+}
+</style>
+</head>
+<body>
+<div class="top">
+  <a class="marca" href="./"><img src="logo.svg?v=2" alt="" class="logo">Liq<span>Map</span></a>
+  <div class="sep"></div>
+  <a class="btn" href="./">Gráfico</a>
+  <a class="btn" href="retornos.html">Retornos</a>
+  <a class="btn ativo" href="livro.html">Livro de ofertas</a>
+  <span style="flex:1"></span>
+  <span class="status" id="status"></span>
+</div>
+<div class="filtros">
+  <label>Moeda <select id="moeda"></select></label>
+  <label>Faixa de preço <select id="faixa">
+    <option value="2">±2%</option><option value="5">±5%</option><option value="10">±10%</option>
+    <option value="25">±25%</option><option value="50">±50%</option><option value="100">Todo o livro</option>
+  </select></label>
+  <label>Agrupar em <select id="grupo">
+    <option value="0">Automático</option><option value="0.05">0,05%</option><option value="0.1">0,1%</option><option value="0.25">0,25%</option>
+    <option value="0.5">0,5%</option><option value="1">1%</option><option value="2">2%</option>
+  </select></label>
+  <label>Cores <select id="cores"><option value="lado">Compra e venda</option><option value="ex">Por corretora</option></select></label>
+  <label>Atualizar <select id="atualizar"><option value="10">10 s</option><option value="20">20 s</option><option value="60">1 min</option><option value="0">Parado</option></select></label>
+  <label>Corretoras <span class="exs" id="exs"></span></label>
+</div>
+<div class="corpo">
+  <div class="grafico" id="grafico"><canvas id="cv"></canvas><div class="dica" id="dica"></div></div>
+  <aside class="lado">
+    <h3>Compra × venda perto do preço</h3>
+    <table class="tab" id="tabFaixas"></table>
+    <h3>Maiores paredes de compra</h3>
+    <table class="tab" id="tabCompras"></table>
+    <h3>Maiores paredes de venda</h3>
+    <table class="tab" id="tabVendas"></table>
+    <p class="nota">Soma das ordens limitadas paradas no livro (em US$) de cada corretora marcada, agrupadas por faixa de preço.
+    Coinbase e Bitstamp mandam o livro inteiro; Binance, OKX e Kraken mandam só a parte mais perto do preço, por isso a faixa larga mostra sobretudo Coinbase e Bitstamp.
+    Paredes podem ser retiradas a qualquer momento (inclusive de propósito): use como mapa de liquidez, não como garantia de suporte ou resistência.</p>
+  </aside>
+</div>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const DEMO = new URLSearchParams(location.search).has("demo");
+const MOEDAS = {
+  BTC: {binance: "BTCUSDT", okx: "BTC-USDT", coinbase: "BTC-USD", kraken: "XBTUSD", bitstamp: "btcusd"},
+  ETH: {binance: "ETHUSDT", okx: "ETH-USDT", coinbase: "ETH-USD", kraken: "ETHUSD", bitstamp: "ethusd"},
+  SOL: {binance: "SOLUSDT", okx: "SOL-USDT", coinbase: "SOL-USD", kraken: "SOLUSD", bitstamp: "solusd"},
+  XRP: {binance: "XRPUSDT", okx: "XRP-USDT", coinbase: "XRP-USD", kraken: "XRPUSD", bitstamp: "xrpusd"},
+  QNT: {binance: "QNTUSDT", okx: "QNT-USDT", coinbase: "QNT-USD", kraken: "QNTUSD", bitstamp: null}
+};
+// cada corretora devolve {bids: [[preço, qtd]], asks: [[preço, qtd]]}
+const CORRETORAS = [
+  {id: "binance", nome: "Binance", cor: "#f0b90b", url: s => "https://data-api.binance.vision/api/v3/depth?limit=5000&symbol=" + s, ler: j => j},
+  {id: "binanceF", nome: "Binance Futuros", cor: "#c99400", par: "binance", url: s => "https://fapi.binance.com/fapi/v1/depth?limit=1000&symbol=" + s, ler: j => j},
+  {id: "okx", nome: "OKX", cor: "#5b6170", url: s => "https://www.okx.com/api/v5/market/books-full?sz=5000&instId=" + s, ler: j => j.data[0]},
+  {id: "coinbase", nome: "Coinbase", cor: "#2962ff", url: s => "https://api.exchange.coinbase.com/products/" + s + "/book?level=2", ler: j => j},
+  {id: "kraken", nome: "Kraken", cor: "#7e57c2", url: s => "https://api.kraken.com/0/public/Depth?count=500&pair=" + s, ler: j => Object.values(j.result)[0]},
+  {id: "bitstamp", nome: "Bitstamp", cor: "#26a69a", url: s => "https://www.bitstamp.net/api/v2/order_book/" + s + "/", ler: j => j}
+];
+
+function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap-livro") || "{}"); } catch (e) { return {}; } }
+const pref = Object.assign({moeda: "BTC", faixa: "10", grupo: "0", atualizar: "20", cores: "lado", ex: {}}, lerPrefs());
+const salvar = () => { try { localStorage.setItem("liqmap-livro", JSON.stringify(pref)); } catch (e) {} };
+for (const m of Object.keys(MOEDAS)) $("moeda").append(new Option(m, m));
+for (const id of ["moeda", "faixa", "grupo", "atualizar", "cores"]) {
+  $(id).value = pref[id];
+  $(id).addEventListener("change", () => { pref[id] = $(id).value; salvar(); if (id === "moeda") { livros = {}; carregar(); } else if (id === "atualizar") agendar(); else montar(); });
+}
+const estadoEx = {};
+for (const c of CORRETORAS) {
+  if (pref.ex[c.id] === undefined) pref.ex[c.id] = true;
+  const cb = Object.assign(document.createElement("input"), {type: "checkbox", checked: pref.ex[c.id]});
+  const st = Object.assign(document.createElement("span"), {className: "st"});
+  const lb = document.createElement("label"); lb.className = "ex";
+  const sw = document.createElement("i"); sw.style.background = c.cor;
+  lb.append(cb, sw, c.nome, st);
+  cb.addEventListener("change", () => { pref.ex[c.id] = cb.checked; salvar(); montar(); });
+  $("exs").append(lb); estadoEx[c.id] = st;
+}
+
+// ---------- dados ----------
+let livros = {}, timer = 0, carregando = false;
+const fmtUsd = x => { const a = Math.abs(x); return a >= 1e9 ? "$" + (a / 1e9).toFixed(2) + "B" : a >= 1e6 ? "$" + (a / 1e6).toFixed(1) + "M" : a >= 1e3 ? "$" + (a / 1e3).toFixed(0) + "K" : "$" + a.toFixed(0); };
+const casas = p => p >= 1000 ? 1 : p >= 10 ? 2 : 4;
+const pr = p => p.toLocaleString("pt-BR", {minimumFractionDigits: casas(p), maximumFractionDigits: casas(p)});
+function livroDemo(base){
+  const lado = (s) => { const out = []; for (let i = 1; i < 4000; i++) { const p = base * (1 + s * i * 0.00025 * (1 + i / 600)); const q = (0.2 + Math.random()) * (i % 97 === 0 ? 40 : i % 13 === 0 ? 6 : 1) * 2e5 / base; out.push([p, q]); } return out; };
+  return {bids: lado(-1), asks: lado(1)};
+}
+async function carregar(){
+  if (carregando) return;
+  carregando = true; $("status").textContent = "Atualizando…"; $("status").className = "status";
+  const moeda = pref.moeda, simb = MOEDAS[moeda];
+  await Promise.allSettled(CORRETORAS.map(async c => {
+    const s = simb[c.par || c.id];
+    if (!s) { livros[c.id] = null; estadoEx[c.id].textContent = "sem par"; return; }
+    try {
+      let lv;
+      if (DEMO) lv = livroDemo({BTC: 82500, ETH: 2400, SOL: 150, XRP: 2.3, QNT: 95}[moeda] * (1 + (Math.random() - 0.5) * 0.0004));
+      else {
+        const r = await fetch(c.url(s), {cache: "no-store"});
+        if (!r.ok) throw new Error(r.status);
+        lv = c.ler(await r.json());
+      }
+      livros[c.id] = {bids: lv.bids.map(x => [+x[0], +x[1]]), asks: lv.asks.map(x => [+x[0], +x[1]])};
+      estadoEx[c.id].textContent = "";
+    } catch (e) { livros[c.id] = null; estadoEx[c.id].textContent = "indisponível"; }
+  }));
+  carregando = false;
+  if (pref.moeda !== moeda) return;
+  $("status").textContent = "Livro de " + new Date().toLocaleTimeString("pt-BR");
+  montar();
+}
+function agendar(){ clearInterval(timer); const s = +pref.atualizar; if (s > 0) timer = setInterval(carregar, s * 1000); }
+
+// ---------- agregação por faixa de preço ----------
+let vista = null;
+function montar(){
+  const ativos = CORRETORAS.filter(c => pref.ex[c.id] && livros[c.id] && livros[c.id].bids.length && livros[c.id].asks.length);
+  if (!ativos.length) { vista = null; desenhar(); return; }
+  // preço de referência: mediana dos meios de livro das corretoras ativas
+  const meios = ativos.map(c => (livros[c.id].bids[0][0] + livros[c.id].asks[0][0]) / 2).sort((a, b) => a - b);
+  const mid = meios[meios.length >> 1];
+  const faixa = +pref.faixa / 100, lo = faixa >= 1 ? mid * 0.0 + mid * 0.02 : mid * (1 - faixa), hi = faixa >= 1 ? mid * 2 : mid * (1 + faixa);
+  const pctGrupo = +pref.grupo > 0 ? +pref.grupo / 100 : ({0.02: 0.0005, 0.05: 0.001, 0.1: 0.0025, 0.25: 0.005, 0.5: 0.01, 1: 0.02})[faixa] || 0.0025;
+  const passo = mid * pctGrupo;
+  const idx = p => Math.floor((p - mid) / passo);
+  const n0 = idx(lo), n1 = idx(hi), N = n1 - n0 + 1;
+  const comp = new Float64Array(N), vend = new Float64Array(N), porEx = ativos.map(() => ({c: new Float64Array(N), v: new Float64Array(N)}));
+  ativos.forEach((c, k) => {
+    for (const [p, q] of livros[c.id].bids) { if (p < lo || p > mid) continue; const i = idx(p) - n0; if (i >= 0 && i < N) { comp[i] += p * q; porEx[k].c[i] += p * q; } }
+    for (const [p, q] of livros[c.id].asks) { if (p > hi || p < mid) continue; const i = idx(p) - n0; if (i >= 0 && i < N) { vend[i] += p * q; porEx[k].v[i] += p * q; } }
+  });
+  vista = {mid, passo, n0, N, comp, vend, porEx, ativos, lo, hi};
+  resumo(); desenhar();
+}
+
+function resumo(){
+  const v = vista; if (!v) return;
+  const somar = pct => { let c = 0, s = 0; for (let i = 0; i < v.N; i++) { const p = v.mid + (v.n0 + i + 0.5) * v.passo, d = Math.abs(p / v.mid - 1) * 100; if (d <= pct) { c += v.comp[i]; s += v.vend[i]; } } return [c, s]; };
+  const t = $("tabFaixas"); t.innerHTML = "<tr><th>Faixa</th><th>Compra</th><th>Venda</th><th>Compra %</th></tr>";
+  for (const pct of [0.5, 1, 2, 5, 10].filter(p => p <= +pref.faixa)) {
+    const [c, s] = somar(pct), pc = c + s ? c / (c + s) * 100 : 50;
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>±${String(pct).replace(".", ",")}%</td><td class="up">${fmtUsd(c)}</td><td class="down">${fmtUsd(s)}</td><td><b class="${pc >= 50 ? "up" : "down"}">${pc.toFixed(0)}%</b><div class="barra"><i style="width:${pc}%"></i></div></td>`;
+    t.append(tr);
+  }
+  const paredes = (arr, el) => {
+    const lst = [...arr].map((x, i) => [x, i]).filter(x => x[0] > 0).sort((a, b) => b[0] - a[0]).slice(0, 6);
+    el.innerHTML = "<tr><th>Preço</th><th>Dist.</th><th>Valor</th></tr>";
+    for (const [x, i] of lst) {
+      const p = v.mid + (v.n0 + i + 0.5) * v.passo, d = (p / v.mid - 1) * 100;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${pr(p)}</td><td class="k">${(d >= 0 ? "+" : "") + d.toFixed(2).replace(".", ",")}%</td><td><b>${fmtUsd(x)}</b></td>`;
+      el.append(tr);
+    }
+  };
+  paredes(v.comp, $("tabCompras")); paredes(v.vend, $("tabVendas"));
+}
+
+// ---------- desenho (escada de preços: vendas em cima, compras embaixo) ----------
+const cv = $("cv"), ctx = cv.getContext("2d");
+let geo = null;
+function desenhar(){
+  const dpr = window.devicePixelRatio || 1, W = $("grafico").clientWidth, H = $("grafico").clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  const v = vista;
+  if (!v) { ctx.fillStyle = "#787b86"; ctx.font = "13px sans-serif"; ctx.fillText(carregando ? "Carregando livros…" : "Nenhuma corretora disponível", 20, 30); return; }
+  const esq = 86, dir = 12, cima = 10, baixo = 10, larg = W - esq - dir;
+  const yDe = p => cima + (v.hi - p) / (v.hi - v.lo) * (H - cima - baixo);
+  let mx = 0; for (let i = 0; i < v.N; i++) mx = Math.max(mx, v.comp[i], v.vend[i]);
+  mx = mx || 1;
+  // grade de preços
+  ctx.font = "11px -apple-system,Segoe UI,Roboto,sans-serif"; ctx.textAlign = "right";
+  const nLinhas = Math.max(4, Math.floor((H - 20) / 48));
+  for (let k = 0; k <= nLinhas; k++) {
+    const p = v.lo + (v.hi - v.lo) * k / nLinhas, y = yDe(p);
+    ctx.strokeStyle = "#eef0f4"; ctx.beginPath(); ctx.moveTo(esq, y); ctx.lineTo(W - dir, y); ctx.stroke();
+    ctx.fillStyle = "#787b86"; ctx.fillText(pr(p), esq - 8, y + 4);
+  }
+  // barras empilhadas por corretora (cor da corretora, com tom verde/vermelho na borda)
+  const alturaBar = Math.max(1, Math.abs(yDe(v.mid) - yDe(v.mid + v.passo)) - 1);
+  for (let i = 0; i < v.N; i++) {
+    const p0 = v.mid + (v.n0 + i) * v.passo, y = yDe(p0 + v.passo);
+    for (const [lado, tot] of [["c", v.comp[i]], ["v", v.vend[i]]]) {
+      if (!tot) continue;
+      let x = esq;
+      v.porEx.forEach((e, k) => {
+        const val = e[lado][i]; if (!val) return;
+        const w = val / mx * larg;
+        ctx.fillStyle = pref.cores === "ex" ? v.ativos[k].cor : (lado === "c" ? (k % 2 ? "#26a69a" : "#089981") : (k % 2 ? "#ef5350" : "#f23645"));
+        ctx.globalAlpha = pref.cores === "ex" ? 0.85 : 0.75; ctx.fillRect(x, y, w, alturaBar); x += w;
+      });
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = lado === "c" ? "rgba(8,153,129,0.9)" : "rgba(242,54,69,0.9)";
+      ctx.fillRect(esq - 4, y, 3, alturaBar);
+    }
+  }
+  // preço atual
+  const ym = yDe(v.mid);
+  ctx.strokeStyle = "#131722"; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(esq, ym); ctx.lineTo(W - dir, ym); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = "#131722"; ctx.fillRect(2, ym - 9, esq - 8, 18); ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.fillText(pr(v.mid), (esq - 6) / 2 + 1, ym + 4);
+  ctx.textAlign = "left";
+  for (const [t, c, yy] of [["VENDAS ↑", "#f23645", ym - 8], ["COMPRAS ↓", "#089981", ym + 16]]) { const tw = ctx.measureText(t).width; ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.fillRect(W - dir - tw - 10, yy - 11, tw + 8, 15); ctx.fillStyle = c; ctx.fillText(t, W - dir - tw - 6, yy); }
+  geo = {esq, larg, yDe, mx};
+}
+
+// caixinha ao passar o mouse
+$("grafico").addEventListener("pointermove", ev => {
+  const v = vista, d = $("dica"); if (!v || !geo) return;
+  const r = $("grafico").getBoundingClientRect(), y = ev.clientY - r.top, x = ev.clientX - r.left;
+  const p = v.hi - (y - 10) / (r.height - 20) * (v.hi - v.lo), i = Math.floor((p - v.mid) / v.passo) - v.n0;
+  if (i < 0 || i >= v.N || (!v.comp[i] && !v.vend[i])) { d.style.display = "none"; return; }
+  const p0 = v.mid + (v.n0 + i) * v.passo, compra = v.comp[i] > 0, tot = compra ? v.comp[i] : v.vend[i];
+  const linhas = v.porEx.map((e, k) => [v.ativos[k], compra ? e.c[i] : e.v[i]]).filter(z => z[1] > 0).sort((a, b) => b[1] - a[1])
+    .map(([c, val]) => `<div><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${c.cor};margin-right:5px"></i>${c.nome}: <b>${fmtUsd(val)}</b></div>`).join("");
+  d.innerHTML = `<div class="k">${pr(p0)} – ${pr(p0 + v.passo)} (${((p0 / v.mid - 1) * 100).toFixed(2).replace(".", ",")}%)</div><div><b class="${compra ? "up" : "down"}">${compra ? "Compras" : "Vendas"} ${fmtUsd(tot)}</b></div>${linhas}`;
+  d.style.display = "block";
+  d.style.left = Math.min(x + 14, r.width - d.offsetWidth - 6) + "px"; d.style.top = Math.max(4, y - d.offsetHeight - 8) + "px";
+});
+$("grafico").addEventListener("pointerleave", () => { $("dica").style.display = "none"; });
+window.addEventListener("resize", desenhar);
+carregar(); agendar();
+</script>
+</body>
+</html>
