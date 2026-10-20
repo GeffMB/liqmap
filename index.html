@@ -743,7 +743,7 @@ function mostrarNtfy(msg){
   else if (!vigiaInfo) v.textContent = "Vigia 24h: ainda não rodou (falta o segredo GIST_TOKEN no GitHub).";
   else {
     const min = Math.round((Date.now() / 1000 - vigiaInfo.ultimo) / 60);
-    v.textContent = "Vigia 24h: " + (min > 30 ? "⚠ parado há " + min + " min" : "ativo ✓ · última verificação há " + Math.max(0, min) + " min") + " · " + (vigiaInfo.ativos || 0) + " alerta(s) ligado(s)";
+    v.textContent = "Vigia 24h" + (vigiaInfo.fonte === "cloudflare" ? " (Cloudflare)" : " (GitHub)") + ": " + (min > 30 ? "⚠ parado há " + min + " min" : "ativo ✓ · última verificação há " + Math.max(0, min) + " min") + " · " + (vigiaInfo.ativos || 0) + " alerta(s) ligado(s)";
   }
 }
 $("ntfyCriar").addEventListener("click", () => {
@@ -2197,7 +2197,7 @@ function pacoteLocal(){
     const k = localStorage.key(i);
     if (!k || !k.startsWith("liqmap") || k === "liqmapSyncCfg" || k === "liqmapSyncTs") continue;
     let v = localStorage.getItem(k);
-    if (k.startsWith("liqmap-baleias-")) { try { v = JSON.stringify(JSON.parse(v).slice(-1000)); } catch (e) {} }
+    if (k.startsWith("liqmap-baleias-") || k.startsWith("liqmap-liqs-")) { try { v = JSON.stringify(JSON.parse(v).slice(-300)); } catch (e) {} }   // histórico enxuto: arquivo leve para o vigia
     dados[k] = v;
   }
   return {versao: 1, atualizado: +(localStorage.getItem("liqmapSyncTs") || 0), dados};

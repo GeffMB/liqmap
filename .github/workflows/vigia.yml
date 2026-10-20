@@ -2,7 +2,7 @@ name: Vigia de alertas 24h
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # a cada 5 min (o GitHub pode atrasar alguns minutos em horários de pico)
+    - cron: "*/30 * * * *"  # reserva do vigia do Cloudflare (o GitHub costuma atrasar agendamentos)
   workflow_dispatch:          # botão "Run workflow" para testar na hora
 
 permissions:
