@@ -284,8 +284,8 @@ button,select,input{font:inherit;color:inherit}
 "use strict";
 const BASE = "https://fapi.binance.com";
 const WS = "wss://fstream.binance.com/market/stream?streams=";
-const SIMBOLOS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT"];
-const NOMES_SIMB = {BTCUSDT: "Bitcoin", ETHUSDT: "Ethereum", SOLUSDT: "Solana", XRPUSDT: "XRP"};
+const SIMBOLOS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "QNTUSDT"];
+const NOMES_SIMB = {BTCUSDT: "Bitcoin", ETHUSDT: "Ethereum", SOLUSDT: "Solana", XRPUSDT: "XRP", QNTUSDT: "Quant"};
 const TFS = ["1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w", "1M", "3M", "6M", "12M"];
 const GRUPOS_TF = [
   ["Minutos", [["1m", "1 minuto"], ["3m", "3 minutos"], ["5m", "5 minutos"], ["15m", "15 minutos"], ["30m", "30 minutos"]]],
@@ -406,11 +406,11 @@ function dadosDemo(sym, tf, n){
     if (MESES_TF[tf] > 1) { mensais = kl; return {kl: agruparMeses(kl, MESES_TF[tf]), oi: new Map()}; }
     return {kl, oi: new Map()};
   }
-  let seed = {BTCUSDT: 7, ETHUSDT: 11, SOLUSDT: 13, XRPUSDT: 17}[sym] || 19;
+  let seed = {BTCUSDT: 7, ETHUSDT: 11, SOLUSDT: 13, XRPUSDT: 17, QNTUSDT: 23}[sym] || 19;
   const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   const g = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
   const tfms = TF_MS[tf], t0 = (Math.floor(Date.now() / tfms) - n + 1) * tfms;
-  let p = {BTCUSDT: 65000, ETHUSDT: 3200, SOLUSDT: 150, XRPUSDT: 2.4}[sym] || 100, o = 8e9;
+  let p = {BTCUSDT: 65000, ETHUSDT: 3200, SOLUSDT: 150, XRPUSDT: 2.4, QNTUSDT: 95}[sym] || 100, o = 8e9;
   const kl = [], oi = new Map();
   for (let i = 0; i < n; i++) {
     const t = t0 + i * tfms; oi.set(t, o);
@@ -595,7 +595,7 @@ function desenharPOCs(W, H){
 }
 
 // ---------- bolhas de baleias (negócios grandes ao vivo) ----------
-const BALEIA_AUTO = {BTCUSDT: 5e5, ETHUSDT: 2.5e5, SOLUSDT: 1.5e5, XRPUSDT: 1.5e5};
+const BALEIA_AUTO = {BTCUSDT: 5e5, ETHUSDT: 2.5e5, SOLUSDT: 1.5e5, XRPUSDT: 1.5e5, QNTUSDT: 3e4};
 const minBaleia = () => cfg.baleiaMin > 0 ? cfg.baleiaMin : (BALEIA_AUTO[cfg.simbolo] || 2e5);
 let baleias = [];
 function lerBaleias(){
@@ -1532,7 +1532,7 @@ setInterval(() => { if (!DEMO && ws && ultimoDado && Date.now() - ultimoDado > 2
 // modo de teste: simula negócios para ver o preço oscilar
 if (DEMO) setInterval(() => { if (velas.length) { const u = velas[velas.length - 1]; aplicarPreco(u.close * (1 + (Math.random() - 0.5) * 0.0008), u.time * 1000 + 1); } }, 200);
 async function carregarTickers(){
-  if (DEMO) { tickers.BTCUSDT = {c: 65000, p: 1.2}; tickers.ETHUSDT = {c: 3200, p: -0.8}; tickers.SOLUSDT = {c: 150, p: 2.1}; tickers.XRPUSDT = {c: 2.4, p: -1.5}; desenharLista(); return; }
+  if (DEMO) { tickers.BTCUSDT = {c: 65000, p: 1.2}; tickers.ETHUSDT = {c: 3200, p: -0.8}; tickers.SOLUSDT = {c: 150, p: 2.1}; tickers.XRPUSDT = {c: 2.4, p: -1.5}; tickers.QNTUSDT = {c: 95, p: 0.6}; desenharLista(); return; }
   for (const s of SIMBOLOS) {
     try { const d = await getJSON("/fapi/v1/ticker/24hr", {symbol: s}); tickers[s] = {c: +d.lastPrice, p: +d.priceChangePercent}; } catch(e) {}
   }
