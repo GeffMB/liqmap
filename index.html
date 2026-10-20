@@ -247,6 +247,20 @@ button,select,input{font:inherit;color:inherit}
   <div class="pesos" id="pesos"></div>
   <button class="ok" id="aplicar">Aplicar</button>
   <div class="sync">
+    <h4>Alertas no celular</h4>
+    <p>Usa o app gratuito <b>ntfy</b> (Android e iPhone): quando um alerta dispara aqui, o celular toca.</p>
+    <div id="ntfyOff"><button class="ok" id="ntfyCriar">Criar meu canal de alertas</button></div>
+    <div id="ntfyOn" style="display:none">
+      <ol>
+        <li>Instale o app <b>ntfy</b> (<a href="https://play.google.com/store/apps/details?id=io.heckel.ntfy" target="_blank" rel="noopener">Android ↗</a> · <a href="https://apps.apple.com/app/ntfy/id1625396347" target="_blank" rel="noopener">iPhone ↗</a>)</li>
+        <li>No app, toque em <b>+</b> e inscreva-se no canal:<br><b id="ntfyTopico" style="user-select:all;color:var(--txt)"></b></li>
+      </ol>
+      <button class="ok" id="ntfyTestar">Enviar teste para o celular</button>
+      <button class="sec" id="ntfyDesligar">Desligar alertas no celular</button>
+      <div id="ntfyStatus" class="v" style="margin-top:4px"></div>
+    </div>
+  </div>
+  <div class="sync">
     <h4>Sincronizar entre aparelhos</h4>
     <p id="syncInfo">Guarda desenhos, indicadores e ajustes num Gist privado da sua conta GitHub, para aparecerem em qualquer PC ou celular.</p>
     <div id="syncOff">
@@ -712,8 +726,32 @@ function somAlerta(){
     setTimeout(() => ac.close(), 800);
   } catch (e) {}
 }
+// envio para o celular pelo ntfy.sh (requisição simples, sem cadastro; o canal é um nome aleatório só seu)
+function enviarCelular(titulo, txt){
+  if (!cfg.ntfy) return Promise.resolve(false);
+  const url = "https://ntfy.sh/" + encodeURIComponent(cfg.ntfy) + "?" + new URLSearchParams({title: titulo, priority: "high", tags: "bell,chart_with_upwards_trend", click: "https://geffmb.github.io/liqmap/"});
+  return fetch(url, {method: "POST", body: txt}).then(r => r.ok).catch(() => false);
+}
+function mostrarNtfy(msg){
+  $("ntfyOff").style.display = cfg.ntfy ? "none" : ""; $("ntfyOn").style.display = cfg.ntfy ? "" : "none";
+  $("ntfyTopico").textContent = cfg.ntfy || "";
+  if (msg != null) $("ntfyStatus").textContent = msg;
+}
+$("ntfyCriar").addEventListener("click", () => {
+  const a = new Uint8Array(9); crypto.getRandomValues(a);
+  cfg.ntfy = "liqmap-" + Array.from(a, b => "abcdefghijkmnpqrstuvwxyz23456789"[b % 32]).join("");
+  salvarPrefs(); mostrarNtfy("");
+});
+$("ntfyTestar").addEventListener("click", async () => {
+  mostrarNtfy("Enviando…");
+  const ok = await enviarCelular("LiqMap — teste", "Se você recebeu isto, os alertas vão tocar no celular. 🔔");
+  mostrarNtfy(ok ? "Enviado! Confira o celular." : "Não foi possível enviar (verifique a internet).");
+});
+$("ntfyDesligar").addEventListener("click", () => { cfg.ntfy = ""; salvarPrefs(); mostrarNtfy(""); });
+mostrarNtfy();
 function dispararAlerta(txt){
   somAlerta();
+  enviarCelular("LiqMap — alerta " + cfg.simbolo, txt);
   const caixa = el("div", {class: "al"}, "🔔 " + txt + "  ·  " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}));
   const x = el("button", {title: "Fechar"}, "✕"); x.addEventListener("click", () => caixa.remove()); caixa.append(x);
   $("alertas").prepend(caixa); setTimeout(() => caixa.remove(), 120000);
