@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retornos históricos — LiqMap</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg?v=2">
+<style>
+:root{
+  --bg:#ffffff;--panel:#ffffff;--panel2:#f0f3fa;--line:#e0e3eb;--hover:#f0f3fa;
+  --txt:#131722;--sub:#787b86;--up:#089981;--down:#f23645;--accent:#2962ff;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.4 -apple-system,BlinkMacSystemFont,"Trebuchet MS",Roboto,Ubuntu,"Segoe UI",sans-serif}
+.top{display:flex;align-items:center;gap:2px;height:44px;padding:0 8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+.marca{font-weight:700;letter-spacing:.2px;padding:0 10px 0 4px;white-space:nowrap;color:var(--txt);text-decoration:none}
+.marca span{color:var(--accent)}
+.marca .logo{width:20px;height:20px;vertical-align:-4px;margin-right:6px;border-radius:5px}
+.sep{width:1px;height:24px;background:var(--line);margin:0 6px}
+.btn{background:transparent;border:0;border-radius:4px;padding:6px 8px;cursor:pointer;white-space:nowrap;text-decoration:none;color:var(--txt);font:inherit}
+.btn:hover{background:var(--hover)}
+.btn.ativo{color:var(--accent);font-weight:600}
+.conteudo{max-width:1500px;margin:0 auto;padding:18px 16px 40px}
+.cab{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:14px}
+h1{font-size:20px;margin:0}
+.sub{color:var(--sub);margin-top:4px;font-size:12.5px}
+.filtros{display:flex;gap:10px;flex-wrap:wrap}
+.filtros label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--sub)}
+.filtros select{min-width:110px;padding:7px 8px;border:1px solid var(--line);border-radius:6px;background:var(--panel2);color:var(--txt);font:inherit;cursor:pointer}
+.cartao{border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden}
+.rolagem{overflow-x:auto}
+table{border-collapse:separate;border-spacing:3px;width:100%;min-width:640px;font-variant-numeric:tabular-nums}
+th{font-weight:500;color:var(--sub);font-size:12px;padding:6px 4px;white-space:nowrap}
+th.ano{text-align:right;padding-right:10px;color:var(--txt);position:sticky;left:0;background:var(--panel);z-index:1}
+td{text-align:center;font-size:12px;padding:8px 4px;border-radius:5px;white-space:nowrap;min-width:52px}
+td.vazio{background:transparent}
+td.atual{outline:2px solid var(--accent);outline-offset:-2px}
+tr.resumo th.ano{color:var(--accent)}
+tr.resumo td{font-weight:600}
+tr.sepr td,tr.sepr th{border-top:0;padding:2px}
+.legenda{display:flex;flex-wrap:wrap;gap:16px;color:var(--sub);font-size:12px;margin-top:12px;align-items:center}
+.escala{display:inline-flex;border-radius:4px;overflow:hidden;vertical-align:middle;margin:0 6px}
+.escala i{width:18px;height:10px;display:block}
+.status{color:var(--sub);font-size:12px}
+.status.err{color:var(--down)}
+.destaques{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:14px}
+.dest{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.dest .k{color:var(--sub);font-size:11.5px}
+.dest .v{font-size:18px;font-weight:600;margin-top:2px}
+.up{color:var(--up)}.down{color:var(--down)}
+@media (max-width:760px){ .marca .txt{display:none} .top .status{display:none} h1{font-size:17px} .conteudo{padding:12px 8px 30px} }
+</style>
+</head>
+<body>
+<div class="top">
+  <a class="marca" href="./"><img src="logo.svg?v=2" alt="" class="logo">Liq<span>Map</span></a>
+  <div class="sep"></div>
+  <a class="btn" href="./">Gráfico</a>
+  <a class="btn ativo" href="retornos.html">Retornos históricos</a>
+  <span style="flex:1"></span>
+  <span class="status" id="status"></span>
+</div>
+
+<div class="conteudo">
+  <div class="cab">
+    <div>
+      <h1 id="titulo">Retorno histórico</h1>
+      <div class="sub" id="subtitulo">Variação % de fechamento a fechamento (preço à vista, em dólar)</div>
+    </div>
+    <div class="filtros">
+      <label>Moeda <select id="moeda"></select></label>
+      <label>Tipo <select id="tipo">
+        <option value="mes">Mensal</option>
+        <option value="dia">Diário (por mês)</option>
+        <option value="semana">Dia da semana</option>
+        <option value="tri">Trimestral</option>
+      </select></label>
+      <label id="lblMes">Mês <select id="mes"></select></label>
+    </div>
+  </div>
+  <div class="destaques" id="destaques"></div>
+  <div class="cartao"><div class="rolagem"><table id="tabela"></table></div></div>
+  <div class="legenda">
+    <span>Queda<span class="escala" id="escala"></span>Alta</span>
+    <span>Contorno azul = período atual (ainda aberto)</span>
+    <span id="fonte"></span>
+  </div>
+  <p class="sub" style="margin-top:14px">Estatística do passado não garante o futuro: use como contexto (sazonalidade), não como sinal de compra ou venda.</p>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const DEMO = new URLSearchParams(location.search).has("demo");
+const MOEDAS = [
+  {s: "BTCUSDT", n: "BTC", cg: "bitcoin"},
+  {s: "ETHUSDT", n: "ETH", cg: "ethereum"},
+  {s: "SOLUSDT", n: "SOL", cg: "solana"},
+  {s: "XRPUSDT", n: "XRP", cg: "ripple"},
+  {s: "QNTUSDT", n: "QNT", cg: "quant-network"}
+];
+const MESES = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+const MESES_LONGOS = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const SEMANA = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+
+function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap-retornos") || "{}"); } catch (e) { return {}; } }
+const pref = Object.assign({moeda: "BTCUSDT", tipo: "mes", mes: new Date().getUTCMonth()}, lerPrefs());
+function salvar(){ try { localStorage.setItem("liqmap-retornos", JSON.stringify(pref)); } catch (e) {} }
+
+for (const m of MOEDAS) $("moeda").append(new Option(m.n, m.s));
+MESES_LONGOS.forEach((m, i) => $("mes").append(new Option(m[0].toUpperCase() + m.slice(1), i)));
+$("moeda").value = pref.moeda; $("tipo").value = pref.tipo; $("mes").value = pref.mes;
+
+// ---------- dados: fechamentos diários (UTC) ----------
+const cache = {};
+async function fechamentosBinance(sym){
+  const out = [];
+  let ini = Date.UTC(2010, 0, 1);
+  for (let i = 0; i < 12; i++) {
+    const r = await fetch("https://data-api.binance.vision/api/v3/klines?" + new URLSearchParams({symbol: sym, interval: "1d", startTime: ini, limit: 1000}));
+    if (!r.ok) throw new Error("Binance " + r.status);
+    const d = await r.json();
+    for (const k of d) out.push([k[0], +k[4]]);
+    if (d.length < 1000) break;
+    ini = d[d.length - 1][0] + 864e5;
+  }
+  return out;
+}
+// histórico anterior à Binance (ex.: BTC desde 2013) pelo CoinGecko; se falhar, segue só com a Binance
+async function fechamentosAntigos(cg){
+  try {
+    const r = await fetch("https://api.coingecko.com/api/v3/coins/" + cg + "/market_chart?vs_currency=usd&days=max&interval=daily");
+    if (!r.ok) return [];
+    const d = await r.json();
+    return (d.prices || []).map(([t, p]) => [Math.floor(t / 864e5) * 864e5, p]);
+  } catch (e) { return []; }
+}
+function demo(sym){
+  let seed = sym.length * 7919, p = 100;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const out = [];
+  for (let t = Date.UTC(2014, 0, 1); t <= Date.now(); t += 864e5) { p *= Math.exp((rnd() - 0.495) * 0.06); out.push([t, p]); }
+  return out;
+}
+async function carregar(sym){
+  if (cache[sym]) return cache[sym];
+  let serie, fonte;
+  if (DEMO) { serie = demo(sym); fonte = "dados de teste"; }
+  else {
+    const m = MOEDAS.find(x => x.s === sym);
+    const [bin, antigos] = await Promise.all([fechamentosBinance(sym), fechamentosAntigos(m.cg)]);
+    const ini = bin.length ? bin[0][0] : Infinity;
+    serie = antigos.filter(x => x[0] < ini).concat(bin);
+    fonte = "Fonte: Binance (à vista)" + (antigos.some(x => x[0] < ini) ? " + CoinGecko antes de " + new Date(ini).getUTCFullYear() : "");
+  }
+  // um fechamento por dia, em ordem
+  const mapa = new Map(); for (const [t, p] of serie) mapa.set(Math.floor(t / 864e5) * 864e5, p);
+  const dias = [...mapa.entries()].sort((a, b) => a[0] - b[0]);
+  return (cache[sym] = {dias, fonte});
+}
+
+// ---------- cálculos ----------
+// retorno de um período = fechamento do último dia do período ÷ fechamento do último dia do período anterior − 1
+function retornosPor(dias, chave){
+  const grupos = new Map(); let ultimoAnterior = null, chaveAtual = null, ultimo = null;
+  for (const [t, p] of dias) {
+    const k = chave(new Date(t));
+    if (k !== chaveAtual) { if (chaveAtual !== null) ultimoAnterior = ultimo; chaveAtual = k; }
+    ultimo = p;
+    if (ultimoAnterior != null) grupos.set(k, {ret: (p / ultimoAnterior - 1) * 100});
+  }
+  return grupos;
+}
+function retornosDiarios(dias){
+  const out = new Map();
+  for (let i = 1; i < dias.length; i++) {
+    if (dias[i][0] - dias[i - 1][0] > 864e5 * 1.5) continue;   // buraco nos dados: não inventa retorno
+    out.set(dias[i][0], (dias[i][1] / dias[i - 1][1] - 1) * 100);
+  }
+  return out;
+}
+const media = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
+const mediana = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const pctPos = a => a.length ? a.filter(x => x > 0).length / a.length * 100 : null;
+
+// ---------- desenho ----------
+function cor(v, max){
+  if (v == null || !isFinite(v)) return "";
+  const f = Math.min(1, Math.abs(v) / max), a = 0.14 + f * 0.62;
+  return v >= 0 ? `background:rgba(8,153,129,${a.toFixed(2)});color:${f > 0.55 ? "#fff" : "#056b5a"}` : `background:rgba(242,54,69,${a.toFixed(2)});color:${f > 0.55 ? "#fff" : "#b3202e"}`;
+}
+const fmt = v => v == null || !isFinite(v) ? "" : (v > 0 ? "+" : "") + v.toFixed(Math.abs(v) >= 100 ? 0 : 2).replace(".", ",") + "%";
+
+function montarTabela(colunas, linhas, atual, maxCor){
+  // linhas: [{ano, vals: [v|null...]}] ; atual: {ano, col}
+  const t = $("tabela"); t.replaceChildren();
+  const cab = document.createElement("tr");
+  cab.append(Object.assign(document.createElement("th"), {className: "ano", textContent: ""}));
+  for (const c of colunas) cab.append(Object.assign(document.createElement("th"), {textContent: c}));
+  t.append(cab);
+  for (const l of linhas) {
+    const tr = document.createElement("tr");
+    tr.append(Object.assign(document.createElement("th"), {className: "ano", textContent: l.ano}));
+    l.vals.forEach((v, i) => {
+      const td = document.createElement("td");
+      if (v == null) td.className = "vazio";
+      else { td.textContent = fmt(v); td.style.cssText = cor(v, maxCor); }
+      if (atual && atual.ano === l.ano && atual.col === i) td.classList.add("atual");
+      tr.append(td);
+    });
+    t.append(tr);
+  }
+  // resumo por coluna
+  // o período atual (ainda aberto) fica fora das estatísticas
+  const porCol = colunas.map((_, i) => linhas.filter(l => !(atual && l.ano === atual.ano && i === atual.col)).map(l => l.vals[i]).filter(v => v != null));
+  t.append(Object.assign(document.createElement("tr"), {className: "sepr"}));
+  for (const [nome, f, ehPct] of [["Média", media], ["Mediana", mediana], ["% de altas", pctPos, true]]) {
+    const tr = document.createElement("tr"); tr.className = "resumo";
+    tr.append(Object.assign(document.createElement("th"), {className: "ano", textContent: nome}));
+    porCol.forEach(a => {
+      const v = f(a), td = document.createElement("td");
+      if (v == null) td.className = "vazio";
+      else if (ehPct) { td.textContent = Math.round(v) + "%"; td.style.cssText = cor(v - 50, 50); }
+      else { td.textContent = fmt(v); td.style.cssText = cor(v, maxCor); }
+      tr.append(td);
+    });
+    t.append(tr);
+  }
+  return porCol;
+}
+function destaques(colunas, porCol, rotulo){
+  const box = $("destaques"); box.replaceChildren();
+  const meds = porCol.map(media), pos = porCol.map(pctPos);
+  const valid = meds.map((v, i) => [v, i]).filter(x => x[0] != null);
+  if (!valid.length) return;
+  const melhor = valid.reduce((a, b) => b[0] > a[0] ? b : a), pior = valid.reduce((a, b) => b[0] < a[0] ? b : a);
+  const maisAltas = pos.map((v, i) => [v, i]).filter(x => x[0] != null).reduce((a, b) => b[0] > a[0] ? b : a);
+  const itens = [
+    ["Melhor " + rotulo + " (média)", colunas[melhor[1]], fmt(melhor[0]), "up"],
+    ["Pior " + rotulo + " (média)", colunas[pior[1]], fmt(pior[0]), "down"],
+    ["Mais vezes em alta", colunas[maisAltas[1]], Math.round(maisAltas[0]) + "% dos anos", ""]
+  ];
+  for (const [k, c, v, cl] of itens) {
+    const d = document.createElement("div"); d.className = "dest";
+    d.innerHTML = `<div class="k"></div><div class="v"></div>`;
+    d.querySelector(".k").textContent = k;
+    d.querySelector(".v").textContent = c + "  " + v; d.querySelector(".v").className = "v " + cl;
+    box.append(d);
+  }
+}
+
+async function desenhar(){
+  const sym = pref.moeda, tipo = pref.tipo, m = MOEDAS.find(x => x.s === sym);
+  $("lblMes").style.display = tipo === "dia" ? "" : "none";
+  $("status").textContent = "Carregando…"; $("status").className = "status";
+  let dados;
+  try { dados = await carregar(sym); }
+  catch (e) { $("status").textContent = "Erro ao carregar: " + e.message; $("status").className = "status err"; return; }
+  if (pref.moeda !== sym || pref.tipo !== tipo) return;
+  const {dias, fonte} = dados;
+  if (!dias.length) { $("status").textContent = "Sem dados"; return; }
+  const anoIni = new Date(dias[0][0]).getUTCFullYear(), anoFim = new Date(dias[dias.length - 1][0]).getUTCFullYear();
+  const anos = []; for (let a = anoFim; a >= anoIni; a--) anos.push(a);
+  const hoje = new Date();
+  let colunas, linhas, atual, maxCor, porCol, rotulo;
+
+  if (tipo === "mes" || tipo === "tri") {
+    const tri = tipo === "tri";
+    const g = retornosPor(dias, d => d.getUTCFullYear() * 100 + (tri ? Math.floor(d.getUTCMonth() / 3) : d.getUTCMonth()));
+    colunas = tri ? ["1º tri", "2º tri", "3º tri", "4º tri"] : MESES;
+    linhas = anos.map(a => ({ano: a, vals: colunas.map((_, i) => { const x = g.get(a * 100 + i); return x ? x.ret : null; })}));
+    // ano inteiro como coluna extra
+    const ga = retornosPor(dias, d => d.getUTCFullYear());
+    colunas = colunas.concat(["Ano"]);
+    linhas.forEach(l => { const x = ga.get(l.ano); l.vals.push(x ? x.ret : null); });
+    atual = {ano: hoje.getUTCFullYear(), col: tri ? Math.floor(hoje.getUTCMonth() / 3) : hoje.getUTCMonth()};
+    maxCor = tri ? 60 : 30; rotulo = tri ? "trimestre" : "mês";
+    $("titulo").textContent = m.n + " — retorno " + (tri ? "trimestral" : "mensal") + " (%)";
+  } else if (tipo === "dia") {
+    const mes = +pref.mes, rd = retornosDiarios(dias);
+    colunas = Array.from({length: 31}, (_, i) => String(i + 1));
+    linhas = anos.map(a => ({ano: a, vals: colunas.map((_, i) => { const t = Date.UTC(a, mes, i + 1); if (new Date(t).getUTCMonth() !== mes) return null; const v = rd.get(t); return v == null ? null : v; })}));
+    atual = hoje.getUTCMonth() === mes ? {ano: hoje.getUTCFullYear(), col: hoje.getUTCDate() - 1} : null;
+    maxCor = 6; rotulo = "dia";
+    $("titulo").textContent = m.n + " — retorno diário em " + MESES_LONGOS[mes] + " (%)";
+  } else {
+    const rd = retornosDiarios(dias);
+    colunas = SEMANA;
+    const soma = new Map();
+    for (const [t, v] of rd) { const d = new Date(t), a = d.getUTCFullYear(), w = (d.getUTCDay() + 6) % 7; const k = a * 10 + w; const s = soma.get(k) || []; s.push(v); soma.set(k, s); }
+    linhas = anos.map(a => ({ano: a, vals: colunas.map((_, i) => { const s = soma.get(a * 10 + i); return s ? media(s) : null; })}));
+    atual = null; maxCor = 1; rotulo = "dia da semana";
+    $("titulo").textContent = m.n + " — retorno médio por dia da semana (%)";
+  }
+  $("subtitulo").textContent = tipo === "semana" ? "Média das variações diárias de cada dia da semana, ano a ano (horário UTC)"
+    : "Variação % de fechamento a fechamento (preço à vista em dólar, dias em UTC)";
+  porCol = montarTabela(colunas, linhas, atual, maxCor);
+  const colsSemAno = colunas[colunas.length - 1] === "Ano" ? colunas.slice(0, -1) : colunas;
+  destaques(tipo === "dia" ? colsSemAno.map(c => "Dia " + c) : colsSemAno, porCol.slice(0, colsSemAno.length), rotulo);
+  $("fonte").textContent = fonte + " · " + anoIni + "–" + anoFim;
+  $("status").textContent = "Atualizado " + hoje.toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"});
+}
+
+// escala de cores da legenda
+for (const v of [-1, -0.6, -0.25, 0.25, 0.6, 1]) { const i = document.createElement("i"); i.style.cssText = cor(v, 1); $("escala").append(i); }
+for (const id of ["moeda", "tipo", "mes"]) $(id).addEventListener("change", () => { pref[id] = id === "mes" ? +$(id).value : $(id).value; salvar(); desenhar(); });
+desenhar();
+setInterval(() => { for (const k in cache) delete cache[k]; desenhar(); }, 30 * 60e3);   // atualiza o dia/mês corrente
+</script>
+</body>
+</html>
