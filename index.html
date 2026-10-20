@@ -258,6 +258,7 @@ button,select,input{font:inherit;color:inherit}
       <button class="ok" id="ntfyTestar">Enviar teste para o celular</button>
       <button class="sec" id="ntfyDesligar">Desligar alertas no celular</button>
       <div id="ntfyStatus" class="v" style="margin-top:4px"></div>
+      <div id="vigiaStatus" class="v" style="margin-top:4px"></div>
     </div>
   </div>
   <div class="sync">
@@ -732,10 +733,18 @@ function enviarCelular(titulo, txt){
   const url = "https://ntfy.sh/" + encodeURIComponent(cfg.ntfy) + "?" + new URLSearchParams({title: titulo, priority: "high", tags: "bell,chart_with_upwards_trend", click: "https://geffmb.github.io/liqmap/"});
   return fetch(url, {method: "POST", body: txt}).then(r => r.ok).catch(() => false);
 }
+let vigiaInfo = null;
 function mostrarNtfy(msg){
   $("ntfyOff").style.display = cfg.ntfy ? "none" : ""; $("ntfyOn").style.display = cfg.ntfy ? "" : "none";
   $("ntfyTopico").textContent = cfg.ntfy || "";
   if (msg != null) $("ntfyStatus").textContent = msg;
+  const v = $("vigiaStatus"); if (!v) return;
+  if (!syncCfg()) v.textContent = "Vigia 24h: precisa da sincronização ligada (abaixo).";
+  else if (!vigiaInfo) v.textContent = "Vigia 24h: ainda não rodou (falta o segredo GIST_TOKEN no GitHub).";
+  else {
+    const min = Math.round((Date.now() / 1000 - vigiaInfo.ultimo) / 60);
+    v.textContent = "Vigia 24h: " + (min > 30 ? "⚠ parado há " + min + " min" : "ativo ✓ · última verificação há " + Math.max(0, min) + " min") + " · " + (vigiaInfo.ativos || 0) + " alerta(s) ligado(s)";
+  }
 }
 $("ntfyCriar").addEventListener("click", () => {
   const a = new Uint8Array(9); crypto.getRandomValues(a);
@@ -761,6 +770,7 @@ function dispararAlerta(txt){
 $("selAlerta").addEventListener("click", () => {
   if (selecionado < 0) return;
   const d = desenhos[selecionado]; d.alerta = !d.alerta;
+  if (d.alerta) d.alertaDesde = Date.now();
   if (d.alerta && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
   avisar(d.alerta ? "Alerta ligado: aviso com som e notificação quando o preço cruzar" : "Alerta desligado");
   salvarDesenhos(); mostrarSel();
@@ -2217,6 +2227,9 @@ async function enviarSync(){
 }
 async function lerRemoto(c){
   const g = await gh("/gists/" + c.gist);
+  const fv = g.files && g.files["liqmap-vigia.json"];
+  try { vigiaInfo = fv ? JSON.parse(fv.content) : null; } catch (e) { vigiaInfo = null; }
+  mostrarNtfy();
   const f = g.files && g.files[SYNC_ARQ]; if (!f) return null;
   const txt = f.truncated ? await (await fetch(f.raw_url)).text() : f.content;
   try { return JSON.parse(txt); } catch (e) { return null; }
@@ -2263,6 +2276,7 @@ $("syncAgora").addEventListener("click", () => puxarSync());
 $("syncDesligar").addEventListener("click", () => { localStorage.removeItem("liqmapSyncCfg"); mostrarSync(); });
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") puxarSync(); else if (syncTimer) { clearTimeout(syncTimer); enviarSync(); } });
 mostrarSync(); puxarSync();
+setInterval(() => { if (document.visibilityState === "visible" && !arrasto && !rascunho) puxarSync(); }, 3 * 60e3);   // pega alertas desligados pelo vigia e mudanças de outros aparelhos
 
 // ---------- foto do gráfico (mapa + candles + desenhos) ----------
 $("bFoto").addEventListener("click", () => {
