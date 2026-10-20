@@ -1432,6 +1432,9 @@ const ICONES = {
   cursor: '<path d="M11 3v6M11 13v6M3 11h6M13 11h6"/>',
   linha: '<path d="M4 18L18 4"/><circle cx="4" cy="18" r="1.4"/><circle cx="18" cy="4" r="1.4"/>',
   horizontal: '<path d="M2 11h18"/><circle cx="11" cy="11" r="1.4"/>',
+  raio: '<path d="M5 17L20 4"/><circle cx="5" cy="17" r="1.4"/><circle cx="11" cy="12" r="1.4"/>',
+  raioH: '<path d="M7 11h13"/><circle cx="6" cy="11" r="1.4"/>',
+  seta: '<path d="M4 18L18 4"/><path d="M10 4h8v8"/>',
   retangulo: '<rect x="4" y="6" width="14" height="10" rx="1"/>',
   zonaLiq: '<path d="M2 7h18M2 15h18"/><path d="M5 9.5h8M5 12.5h12" stroke-width="2.4" opacity=".55"/>',
   fib: '<path d="M3 4h16M3 8h16M3 12h16M3 18h16"/><path d="M5 18L17 4" stroke-dasharray="2 2"/>',
@@ -1456,7 +1459,10 @@ const svg = nome => '<svg viewBox="0 0 22 22" aria-hidden="true">' + ICONES[nome
 const BARRA = [
   ["cursor", "cursor", "Cursor (cruz)", "f"],
   ["linha", "linha", "Linha de tendência", "f"],
+  ["raio", "raio", "Raio (linha que segue até a borda)", "f"],
   ["horizontal", "horizontal", "Linha horizontal", "f"],
+  ["raioH", "raioH", "Raio horizontal (do ponto para a direita)", "f"],
+  ["seta", "seta", "Seta", "f"],
   ["retangulo", "retangulo", "Retângulo", "f"],
   ["zonaLiq", "zonaLiq", "Zona de liquidação (soma shorts e longs numa faixa de preço)", "f"],
   ["fib", "fib", "Retração de Fibonacci", "f"],
@@ -1512,6 +1518,9 @@ function avisar(txt){
 const DICAS = {
   linha: "Toque no ponto inicial e depois no final (ou arraste)",
   horizontal: "Toque no preço da linha",
+  raio: "Toque no ponto inicial e num segundo ponto da direção",
+  raioH: "Toque no ponto onde o raio começa",
+  seta: "Toque na base e depois na ponta da seta",
   retangulo: "Toque em dois cantos opostos (ou arraste)",
   zonaLiq: "Toque no preço inicial e no final da zona (ou arraste)",
   fib: "Toque no topo/fundo e depois no outro extremo",
@@ -1598,7 +1607,7 @@ function pontoDe(ev, semIma){
 
 // ---------- interação ----------
 let arrastando = false, inicioToque = null;
-const DOIS_PONTOS = ["linha", "retangulo", "zonaLiq", "fib", "regua"];
+const DOIS_PONTOS = ["linha", "raio", "seta", "retangulo", "zonaLiq", "fib", "regua"];
 function finalizar(d){
   if (d.tipo === "regua") { medida = d; }
   else { desenhos.push(d); salvarDesenhos(); }
@@ -1608,7 +1617,7 @@ desCanvas.addEventListener("pointerdown", ev => {
   ev.preventDefault();
   const pt = pontoDe(ev); if (!pt) return;
   if (ferramenta === "borracha") { apagarPerto(ev); return; }
-  if (ferramenta === "horizontal") { finalizar({tipo: "horizontal", pts: [pt]}); return; }
+  if (ferramenta === "horizontal" || ferramenta === "raioH") { finalizar({tipo: ferramenta, pts: [pt]}); return; }
   if (ferramenta === "texto") {
     const txt = window.prompt("Texto:");
     if (txt && txt.trim()) finalizar({tipo: "texto", pts: [pt], texto: txt.trim().slice(0, 80)});
@@ -1658,7 +1667,7 @@ function acharDesenho(px, py){
   desenhos.forEach((d, i) => {
     const P = pontosTela(g, d);
     if (P.some(q => q[1] == null)) return;
-    if (["linha", "retangulo", "zonaLiq", "fib"].includes(d.tipo)) P.forEach((q, k) => {
+    if (["linha", "raio", "seta", "raioH", "retangulo", "zonaLiq", "fib"].includes(d.tipo)) P.forEach((q, k) => {
       const dd = Math.hypot(px - q[0], py - q[1]) - 2;     // alças têm preferência
       if (dd < menor) { menor = dd; achado = {i, alca: k}; }
     });
@@ -1666,7 +1675,9 @@ function acharDesenho(px, py){
     if (d.tipo === "horizontal") dist = px <= W ? Math.abs(py - P[0][1]) : Infinity;
     else if (d.tipo === "zonaLiq") { const y1 = Math.min(P[0][1], P[1][1]), y2 = Math.max(P[0][1], P[1][1]); dist = px <= W ? (py >= y1 && py <= y2 ? 0 : Math.min(Math.abs(py - y1), Math.abs(py - y2))) : Infinity; }
     else if (d.tipo === "texto") { const w = 9 * d.texto.length; dist = (px >= P[0][0] - 4 && px <= P[0][0] + w && py >= P[0][1] - 18 && py <= P[0][1] + 6) ? 0 : Infinity; }
-    else if (d.tipo === "linha") dist = distSeg(px, py, ...P[0], ...P[1]);
+    else if (d.tipo === "linha" || d.tipo === "seta") dist = distSeg(px, py, ...P[0], ...P[1]);
+    else if (d.tipo === "raio") dist = distSeg(px, py, ...P[0], ...pontaRaio(P[0], P[1], W, 4000));
+    else if (d.tipo === "raioH") dist = px >= P[0][0] - 4 && px <= W ? Math.abs(py - P[0][1]) : Infinity;
     else if (d.tipo === "pincel") for (let k = 1; k < P.length; k++) dist = Math.min(dist, distSeg(px, py, ...P[k - 1], ...P[k]));
     else if (d.tipo === "retangulo" || d.tipo === "fib") {
       const [a, b] = P, xs = [a[0], b[0]], ys = [a[1], b[1]];
@@ -1685,7 +1696,7 @@ function apagarPerto(ev){
   if (h) { desenhos.splice(h.i, 1); selecionado = -1; salvarDesenhos(); mostrarSel(); }
   else avisar("Nenhum desenho aqui");
 }
-const NOMES_DES = {linha: "Linha de tendência", horizontal: "Linha horizontal", retangulo: "Retângulo", zonaLiq: "Zona de liquidação", fib: "Fibonacci", pincel: "Pincel", texto: "Texto"};
+const NOMES_DES = {raio: "Raio", raioH: "Raio horizontal", seta: "Seta", linha: "Linha de tendência", horizontal: "Linha horizontal", retangulo: "Retângulo", zonaLiq: "Zona de liquidação", fib: "Fibonacci", pincel: "Pincel", texto: "Texto"};
 function mostrarSel(){
   if (selecionado >= desenhos.length) selecionado = -1;
   const bar = $("selbar");
@@ -1781,6 +1792,11 @@ function desenharZonaLiq(c, d, P, W){
   c.beginPath(); c.roundRect ? c.roundRect(bx, by, bw, bh, 6) : c.rect(bx, by, bw, bh); c.fill(); c.stroke();
   linhas.forEach(([t, cor, f], k) => { c.font = fonte(f); c.fillStyle = cor; c.fillText(t, bx + 8, by + 18 + k * 17); });
 }
+// ponto bem distante na direção a→b (o canvas recorta o que passar da borda)
+function pontaRaio(a, b, W, longe){
+  const dx = b[0] - a[0], dy = b[1] - a[1], n = Math.hypot(dx, dy) || 1;
+  return [a[0] + dx / n * longe, a[1] + dy / n * longe];
+}
 function desenharUm(c, g, d, W){
   const P = d.pts.map(q => [xDe(g, q.t), serie.priceToCoordinate(q.p)]);
   if (P.some(q => q[1] == null)) return;
@@ -1788,6 +1804,21 @@ function desenharUm(c, g, d, W){
   if (d.tipo === "linha") {
     c.beginPath(); c.moveTo(...P[0]); c.lineTo(...P[1]); c.stroke();
     for (const q of P) { c.beginPath(); c.arc(q[0], q[1], 2.2, 0, 7); c.fill(); }
+  } else if (d.tipo === "raio") {
+    c.beginPath(); c.moveTo(...P[0]); c.lineTo(...pontaRaio(P[0], P[1], W, 4000)); c.stroke();
+    for (const q of P) { c.beginPath(); c.arc(q[0], q[1], 2.2, 0, 7); c.fill(); }
+  } else if (d.tipo === "raioH") {
+    c.lineWidth = 1.1; c.beginPath(); c.moveTo(P[0][0], P[0][1]); c.lineTo(W, P[0][1]); c.stroke();
+    c.beginPath(); c.arc(P[0][0], P[0][1], 2.2, 0, 7); c.fill();
+    const txt = pr(d.pts[0].p); c.font = "11px sans-serif";
+    etiqueta(c, txt, W - c.measureText(txt).width - 12, P[0][1], COR_DES);
+  } else if (d.tipo === "seta") {
+    const [a, b] = P, ang = Math.atan2(b[1] - a[1], b[0] - a[0]), L = 11;
+    c.lineWidth = 1.6; c.beginPath(); c.moveTo(...a); c.lineTo(b[0] - Math.cos(ang) * L * 0.6, b[1] - Math.sin(ang) * L * 0.6); c.stroke();
+    c.beginPath(); c.moveTo(...b);
+    c.lineTo(b[0] - L * Math.cos(ang - 0.45), b[1] - L * Math.sin(ang - 0.45));
+    c.lineTo(b[0] - L * Math.cos(ang + 0.45), b[1] - L * Math.sin(ang + 0.45));
+    c.closePath(); c.fill();
   } else if (d.tipo === "horizontal") {
     c.lineWidth = 1.1; c.beginPath(); c.moveTo(0, P[0][1]); c.lineTo(W, P[0][1]); c.stroke();
     const txt = pr(d.pts[0].p); c.font = "11px sans-serif";
