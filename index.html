@@ -333,7 +333,7 @@ const INDICADORES = [
   {id: "vwap",  nome: "VWAP diária",            desc: "preço médio ponderado pelo volume",  padrao: true},
   {id: "vpvr",  nome: "Perfil de volume (VPVR)", desc: "volume por faixa de preço + POC e área de valor (VAH/VAL)", padrao: true},
   {id: "pocs",  nome: "POCs nuas (diárias e semanais)", desc: "POCs de dias/semanas que o preço ainda não revisitou", padrao: false},
-  {id: "deriv", nome: "Painel de derivativos",  desc: "funding, long/short dos grandes, variação do OI e liquidações reais", padrao: true},
+  {id: "deriv", nome: "Painel de derivativos",  desc: "funding, long/short dos grandes, variação do OI e liquidações reais", padrao: false},
   {id: "liqs",  nome: "Liquidações reais (ao vivo)", desc: "losangos onde posições foram liquidadas (azul long, laranja short)", padrao: true},
   {id: "baleias", nome: "Bolhas de baleias",    desc: "negócios grandes ao vivo (verde compra, vermelho venda)", padrao: false},
   {id: "delta", nome: "Delta de volume",        desc: "compras − vendas agressivas",        padrao: false},
@@ -356,6 +356,7 @@ if (!TFS.includes(cfg.tf)) cfg.tf = "15m";
 if (!Array.isArray(cfg.pesos) || cfg.pesos.length !== 6) cfg.pesos = PESOS_PADRAO.slice();
 if (!cfg.ind || typeof cfg.ind !== "object") cfg.ind = {};
 for (const i of INDICADORES) if (typeof cfg.ind[i.id] !== "boolean") cfg.ind[i.id] = i.padrao;
+if (!cfg.derivOff1) { cfg.ind.deriv = false; cfg.derivOff1 = true; }   // painel de derivativos passou a vir desligado
 
 // ---------- formatação ----------
 const usd = x => { const a = Math.abs(x), s = x < 0 ? "−" : ""; return a >= 1e9 ? s + "$" + (a/1e9).toFixed(2) + "B" : a >= 1e6 ? s + "$" + (a/1e6).toFixed(1) + "M" : a >= 1e3 ? s + "$" + (a/1e3).toFixed(1) + "K" : s + "$" + a.toFixed(0); };
