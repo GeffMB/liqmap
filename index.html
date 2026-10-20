@@ -45,6 +45,13 @@ button,select,input{font:inherit;color:inherit}
 .painel .c{position:absolute;inset:0}
 .rot{position:absolute;left:12px;top:4px;z-index:2;pointer-events:none;font-size:12px;text-shadow:0 0 3px var(--bg)}
 .rot .v{color:var(--sub)}
+.deriv{position:absolute;left:8px;top:6px;z-index:2;pointer-events:none;font-size:11.5px;line-height:1.55;background:rgba(255,255,255,.9);padding:4px 8px;box-shadow:0 1px 3px rgba(19,23,34,.1);border-radius:4px;display:none;font-variant-numeric:tabular-nums}
+.deriv .r{white-space:nowrap}.deriv .k{color:var(--sub)}.deriv .tag{font-size:10.5px;padding:0 4px;border-radius:3px;margin-left:4px}
+.alertas{position:absolute;right:90px;top:8px;z-index:8;display:flex;flex-direction:column;gap:6px;max-width:340px}
+.alertas .al{background:#131722;color:#fff;font-size:12.5px;padding:8px 30px 8px 10px;border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.25);position:relative;line-height:1.4}
+.alertas .al button{position:absolute;right:6px;top:6px;border:0;background:transparent;color:#aaa;cursor:pointer;font-size:14px}
+.deriv{pointer-events:auto;cursor:pointer}.deriv.min .r:not(:first-child){display:none}
+@media (max-width:760px){ .deriv{font-size:10px;left:4px;max-width:calc(100% - 70px)} .deriv .r{white-space:normal} .alertas{right:8px;left:8px;max-width:none} }
 .legenda{position:absolute;left:8px;top:6px;z-index:2;pointer-events:none;font-size:13px;line-height:1.6;background:rgba(255,255,255,.88);padding:2px 8px 4px;box-shadow:0 1px 3px rgba(19,23,34,.08);border-radius:4px}
 .legenda .t{font-size:15px;font-weight:600}
 .legenda b{font-weight:500}
@@ -182,8 +189,10 @@ button,select,input{font:inherit;color:inherit}
       <div id="chart"></div>
       <canvas id="des"></canvas>
       <div class="aviso" id="aviso"></div>
-      <div class="selbar" id="selbar"><span id="selNome"></span><button id="selApagar" title="Apagar desenho (Delete)">🗑 Apagar</button><button id="selFechar" title="Tirar seleção (Esc)">✕</button></div>
+      <div class="selbar" id="selbar"><span id="selNome"></span><button id="selAlerta" title="Avisar quando o preço cruzar este desenho">🔔 Alerta</button><button id="selApagar" title="Apagar desenho (Delete)">🗑 Apagar</button><button id="selFechar" title="Tirar seleção (Esc)">✕</button></div>
       <div class="legenda" id="legenda"></div>
+      <div class="deriv" id="deriv"></div>
+      <div class="alertas" id="alertas"></div>
       <div class="contagem" id="contagem"></div>
       <div class="carregando" id="carregando">Carregando dados da Binance…</div>
     </div>
@@ -227,6 +236,10 @@ button,select,input{font:inherit;color:inherit}
   <label>Média do volume (candles) <input id="mediaVol" type="number" min="20" step="1" value="610"></label>
   <label>Médias móveis (períodos) <input id="mmPer" type="text" value="9, 21, 200" style="width:110px"></label>
   <label>Tipo das médias <select id="mmTipo" style="width:150px"><option value="e">Exponencial (MME)</option><option value="s">Simples (MMS)</option></select></label>
+  <h4 style="margin-top:12px">Calculadora de posição</h4>
+  <label>Capital da conta (US$) <input id="conta" type="number" min="1" step="100" value="1000"></label>
+  <label>Risco por operação (%) <input id="riscoPct" type="number" min="0.1" max="100" step="0.1" value="1"></label>
+  <label>Alavancagem (×) <input id="alav" type="number" min="1" max="125" step="1" value="10"></label>
   <label>Baleia: negócio mínimo (US$, 0 = automático) <input id="baleiaMin" type="number" min="0" step="50000" value="0" style="width:110px"></label>
   <label>IFR / RSI (períodos) <input id="rsiPer" type="number" min="2" max="100" step="1" value="14"></label>
   <label>Recalcular mapa a cada <select id="auto"><option value="0">desligado</option><option value="5">5 min</option><option value="15" selected>15 min</option><option value="60">60 min</option></select></label>
@@ -305,6 +318,8 @@ const INDICADORES = [
   {id: "vwap",  nome: "VWAP diária",            desc: "preço médio ponderado pelo volume",  padrao: true},
   {id: "vpvr",  nome: "Perfil de volume (VPVR)", desc: "volume por faixa de preço + POC e área de valor (VAH/VAL)", padrao: true},
   {id: "pocs",  nome: "POCs nuas (diárias e semanais)", desc: "POCs de dias/semanas que o preço ainda não revisitou", padrao: false},
+  {id: "deriv", nome: "Painel de derivativos",  desc: "funding, long/short dos grandes, variação do OI e liquidações reais", padrao: true},
+  {id: "liqs",  nome: "Liquidações reais (ao vivo)", desc: "losangos onde posições foram liquidadas (azul long, laranja short)", padrao: true},
   {id: "baleias", nome: "Bolhas de baleias",    desc: "negócios grandes ao vivo (verde compra, vermelho venda)", padrao: false},
   {id: "delta", nome: "Delta de volume",        desc: "compras − vendas agressivas",        padrao: false},
   {id: "cvd",   nome: "CVD",                    desc: "delta acumulado",                    padrao: true},
@@ -319,8 +334,9 @@ const INDICADORES = [
 // ---------- preferências (só neste navegador) ----------
 function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap2") || "{}"); } catch(e){ return {}; } }
 function salvarPrefs(){ try { localStorage.setItem("liqmap2", JSON.stringify(cfg)); } catch(e){} if (typeof agendarSync === "function") agendarSync(); }
-const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, baleiaMin: 0, lado: false, mmPer: "9, 21, 200", mmTipo: "e", rsiPer: 14, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
+const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, baleiaMin: 0, conta: 1000, riscoPct: 1, alav: 10, lado: false, mmPer: "9, 21, 200", mmTipo: "e", rsiPer: 14, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
 if (!SIMBOLOS.includes(cfg.simbolo)) cfg.simbolo = "BTCUSDT";
+if (cfg.derivMin === undefined) cfg.derivMin = matchMedia("(max-width: 760px)").matches;   // celular: painel de derivativos começa recolhido
 if (!TFS.includes(cfg.tf)) cfg.tf = "15m";
 if (!Array.isArray(cfg.pesos) || cfg.pesos.length !== 6) cfg.pesos = PESOS_PADRAO.slice();
 if (!cfg.ind || typeof cfg.ind !== "object") cfg.ind = {};
@@ -619,6 +635,199 @@ function desenharBaleias(W, H){
     ctx.lineWidth = 1; ctx.strokeStyle = b.c ? "rgba(8,153,129,0.9)" : "rgba(242,54,69,0.9)"; ctx.stroke();
   }
 }
+// ---------- calculadora de posição (ferramenta Posição comprada/vendida) ----------
+function calcPosicao(d){
+  const E = d.pts[0].p, S = d.pts[1].p, T = d.pts[2].p, L = d.lado === "L";
+  const dist = Math.abs(E - S) || 1e-9, risco = cfg.conta * cfg.riscoPct / 100;
+  const qtd = risco / dist, nocional = qtd * E, margem = nocional / cfg.alav;
+  const liq = L ? E * (1 - 1 / cfg.alav + MMR) : E * (1 + 1 / cfg.alav - MMR);
+  const stopOk = L ? S < E : S > E, alvoOk = L ? T > E : T < E;
+  return {E, S, T, L, risco, qtd, nocional, margem, liq, ganho: qtd * Math.abs(T - E), rr: Math.abs(T - E) / dist,
+    liqAntes: L ? liq >= S : liq <= S, stopOk, alvoOk, semMargem: margem > cfg.conta};
+}
+function desenharPosicao(c, d, P, W){
+  const k = calcPosicao(d), moeda = cfg.simbolo.replace(/USDT$/, "");
+  const xa = Math.min(P[0][0], P[1][0]), xb = Math.max(P[0][0], P[1][0]), w = Math.max(2, xb - xa);
+  const yE = P[0][1], yS = P[1][1], yT = P[2][1];
+  c.fillStyle = "rgba(242,54,69,0.16)"; c.fillRect(xa, Math.min(yE, yS), w, Math.abs(yS - yE));
+  c.fillStyle = "rgba(8,153,129,0.16)"; c.fillRect(xa, Math.min(yE, yT), w, Math.abs(yT - yE));
+  c.lineWidth = 1; c.setLineDash([]);
+  c.strokeStyle = "#787b86"; c.beginPath(); c.moveTo(xa, yE); c.lineTo(xb, yE); c.stroke();
+  c.strokeStyle = "#f23645"; c.beginPath(); c.moveTo(xa, yS); c.lineTo(xb, yS); c.stroke();
+  c.strokeStyle = "#089981"; c.beginPath(); c.moveTo(xa, yT); c.lineTo(xb, yT); c.stroke();
+  const yL = serie.priceToCoordinate(k.liq);
+  if (yL != null) {
+    c.strokeStyle = "#7e57c2"; c.setLineDash([4, 3]); c.beginPath(); c.moveTo(xa, yL); c.lineTo(xb, yL); c.stroke(); c.setLineDash([]);
+    etiqueta(c, "Liquidação ~" + pr(k.liq) + " (" + cfg.alav + "×)" + (k.liqAntes ? " ⚠ antes do stop!" : ""), xa + 4, yL + (k.L ? 11 : -11), k.liqAntes ? "#f23645" : "#7e57c2");
+  }
+  const pc = x => (x >= 0 ? "+" : "") + x.toFixed(2).replace(".", ",") + "%";
+  etiqueta(c, "Alvo " + pr(k.T) + " (" + pc((k.T / k.E - 1) * 100) + ")  +" + usd(k.ganho) + "  ·  R:R " + k.rr.toFixed(2).replace(".", ","), xa + 4, yT + (yT < yE ? -11 : 11), k.alvoOk ? "#089981" : "#787b86");
+  etiqueta(c, "Stop " + pr(k.S) + " (" + pc((k.S / k.E - 1) * 100) + ")  −" + usd(k.risco), xa + 4, yS + (yS > yE ? 11 : -11), k.stopOk ? "#f23645" : "#787b86");
+  const q = k.qtd >= 100 ? k.qtd.toFixed(0) : k.qtd >= 1 ? k.qtd.toFixed(2) : k.qtd.toFixed(4);
+  etiqueta(c, (k.L ? "COMPRA " : "VENDA ") + q.replace(".", ",") + " " + moeda + " (" + usd(k.nocional) + ") · margem " + usd(k.margem) + (k.semMargem ? " ⚠ maior que a conta" : ""), xa + 4, yE + (yT < yE ? 11 : -11), "#131722");
+}
+
+// ---------- alertas (som + notificação do sistema) ----------
+const ALERTAVEIS = ["horizontal", "raioH", "linha", "raio", "zonaLiq", "posicao", "retangulo"];
+function niveisAlerta(d){
+  const t = Date.now() / 1000, pts = d.pts;
+  if (d.tipo === "horizontal" || d.tipo === "raioH") return [[pts[0].p, "a linha em " + pr(pts[0].p)]];
+  if (d.tipo === "zonaLiq" || d.tipo === "retangulo") { const lo = Math.min(pts[0].p, pts[1].p), hi = Math.max(pts[0].p, pts[1].p); return [[lo, "o fundo da zona (" + pr(lo) + ")"], [hi, "o topo da zona (" + pr(hi) + ")"]]; }
+  if (d.tipo === "posicao") return [[pts[1].p, "o STOP (" + pr(pts[1].p) + ")"], [pts[2].p, "o ALVO (" + pr(pts[2].p) + ")"]];
+  if (d.tipo === "linha" || d.tipo === "raio") {
+    const i0 = idxDeT(pts[0].t), i1 = idxDeT(pts[1].t), it = idxDeT(t);
+    if (i1 === i0) return [];
+    if (d.tipo === "linha" && (it < Math.min(i0, i1) || it > Math.max(i0, i1))) return [];
+    if (d.tipo === "raio" && (it - i0) * (i1 - i0) < 0) return [];
+    const p = pts[0].p + (pts[1].p - pts[0].p) * (it - i0) / (i1 - i0);
+    return [[p, "a " + (d.tipo === "raio" ? "linha do raio" : "linha de tendência") + " (" + pr(p) + ")"]];
+  }
+  return [];
+}
+let precoAnt = null;
+function checarAlertas(preco){
+  const ant = precoAnt; precoAnt = preco;
+  if (ant == null || ant === preco) return;
+  let mudou = false;
+  for (const d of desenhos) {
+    if (!d.alerta) continue;
+    for (const [nv, desc] of niveisAlerta(d)) {
+      if ((ant < nv && preco >= nv) || (ant > nv && preco <= nv)) {
+        d.alerta = false; mudou = true;
+        dispararAlerta(cfg.simbolo + " " + (preco > ant ? "subiu e cruzou " : "caiu e cruzou ") + desc + " · preço " + pr(preco));
+        break;
+      }
+    }
+  }
+  if (mudou) { salvarDesenhos(); mostrarSel(); }
+}
+function somAlerta(){
+  try {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    [[880, 0], [1175, 0.18], [880, 0.36]].forEach(([f, t0]) => {
+      const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = f; o.type = "sine";
+      g.gain.setValueAtTime(0.0001, ac.currentTime + t0); g.gain.exponentialRampToValueAtTime(0.25, ac.currentTime + t0 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + t0 + 0.16);
+      o.connect(g); g.connect(ac.destination); o.start(ac.currentTime + t0); o.stop(ac.currentTime + t0 + 0.18);
+    });
+    setTimeout(() => ac.close(), 800);
+  } catch (e) {}
+}
+function dispararAlerta(txt){
+  somAlerta();
+  const caixa = el("div", {class: "al"}, "🔔 " + txt + "  ·  " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}));
+  const x = el("button", {title: "Fechar"}, "✕"); x.addEventListener("click", () => caixa.remove()); caixa.append(x);
+  $("alertas").prepend(caixa); setTimeout(() => caixa.remove(), 120000);
+  try { if ("Notification" in window && Notification.permission === "granted") new Notification("LiqMap — alerta", {body: txt, icon: "logo.svg", tag: "liqmap-" + Date.now()}); } catch (e) {}
+  const t0 = document.title; let n = 0; const pisca = setInterval(() => { document.title = n++ % 2 ? t0 : "🔔 ALERTA " + cfg.simbolo; if (n > 10) clearInterval(pisca); }, 700);
+}
+$("selAlerta").addEventListener("click", () => {
+  if (selecionado < 0) return;
+  const d = desenhos[selecionado]; d.alerta = !d.alerta;
+  if (d.alerta && "Notification" in window && Notification.permission === "default") Notification.requestPermission();
+  avisar(d.alerta ? "Alerta ligado: aviso com som e notificação quando o preço cruzar" : "Alerta desligado");
+  salvarDesenhos(); mostrarSel();
+});
+
+// ---------- liquidações reais (stream público forceOrder da Binance) ----------
+const liqs = {};   // símbolo -> [{t, p, u, l}] (l = 1: long liquidado)
+function lerLiqs(){ for (const sm of SIMBOLOS) { try { liqs[sm] = JSON.parse(localStorage.getItem("liqmap-liqs-" + sm) || "[]").filter(x => Date.now() - x.t < 3 * 864e5); } catch (e) { liqs[sm] = []; } } }
+lerLiqs();
+const liqSalvar = {};
+function novaLiq(sm, t, p, u, long){
+  if (!liqs[sm]) liqs[sm] = [];
+  liqs[sm].push({t, p, u, l: long ? 1 : 0});
+  if (liqs[sm].length > 4000) liqs[sm].splice(0, liqs[sm].length - 4000);
+  clearTimeout(liqSalvar[sm]);
+  liqSalvar[sm] = setTimeout(() => { try { localStorage.setItem("liqmap-liqs-" + sm, JSON.stringify(liqs[sm])); } catch (e) {} agendarSync(60000); }, 3000);
+  if (sm === cfg.simbolo && cfg.ind.liqs) assinatura = "";
+}
+function totaisLiq(sm, ms){
+  const desde = Date.now() - ms; let lo = 0, sh = 0;
+  for (const x of liqs[sm] || []) if (x.t >= desde) { if (x.l) lo += x.u; else sh += x.u; }
+  return [lo, sh];
+}
+function posLiqs(){
+  const g = geo(); if (!g) return [];
+  const out = [];
+  for (const x of liqs[cfg.simbolo] || []) {
+    const px = g.x0 + (idxDeT(x.t / 1000) - 0.5) * g.passo, y = serie.priceToCoordinate(x.p);
+    if (y == null) continue;
+    out.push({x: x, px, y, r: Math.min(16, 3 + 2.5 * Math.sqrt(x.u / 2e4))});
+  }
+  return out;
+}
+function desenharLiqs(W, H){
+  for (const {x, px, y, r} of posLiqs()) {
+    if (px < -r || px > W + r || y < -r || y > H + r) continue;
+    ctx.beginPath(); ctx.moveTo(px, y - r); ctx.lineTo(px + r, y); ctx.lineTo(px, y + r); ctx.lineTo(px - r, y); ctx.closePath();
+    ctx.fillStyle = x.l ? "rgba(41,98,255,0.45)" : "rgba(245,124,0,0.5)"; ctx.fill();
+    ctx.lineWidth = 1; ctx.strokeStyle = x.l ? "#1565c0" : "#e65100"; ctx.stroke();
+  }
+}
+if (DEMO) setInterval(() => {   // teste: simula liquidações
+  if (!velas.length) return;
+  const k = velas[velas.length - 1], lg = Math.random() < 0.5;
+  novaLiq(cfg.simbolo, Date.now() - Math.random() * TF_MS[cfg.tf] * 0.4, k.close * (1 + (lg ? -1 : 1) * Math.random() * 0.002), 5e3 + Math.random() * 3e5, lg);
+}, 1500);
+
+// ---------- painel de derivativos ----------
+const deriv = {funding: null, prox: null, mark: null, lsTop: null, lsContas: null, oi: null, oiVar: {}, simb: ""};
+let derivTimer = 0;
+async function carregarDeriv(){
+  const sm = cfg.simbolo;
+  if (deriv.simb !== sm) Object.assign(deriv, {funding: null, prox: null, lsTop: null, lsContas: null, oi: null, oiVar: {}, simb: sm});
+  if (DEMO) { Object.assign(deriv, {funding: 0.0001, prox: Math.ceil(Date.now() / 288e5) * 288e5, lsTop: {r: 1.85, l: 0.65}, lsContas: {r: 2.4, l: 0.706}, oi: 11.2e9, oiVar: {h1: 0.8, h4: -1.2, h24: 3.4}}); return; }
+  const tarefas = [
+    getJSON("/fapi/v1/premiumIndex", {symbol: sm}).then(d => { deriv.funding = +d.lastFundingRate; deriv.prox = +d.nextFundingTime; }),
+    getJSON("/futures/data/topLongShortPositionRatio", {symbol: sm, period: "5m", limit: 1}).then(d => { if (d[0]) deriv.lsTop = {r: +d[0].longShortRatio, l: +d[0].longAccount}; }),
+    getJSON("/futures/data/globalLongShortAccountRatio", {symbol: sm, period: "5m", limit: 1}).then(d => { if (d[0]) deriv.lsContas = {r: +d[0].longShortRatio, l: +d[0].longAccount}; }),
+    getJSON("/futures/data/openInterestHist", {symbol: sm, period: "5m", limit: 289}).then(d => {
+      if (!d.length) return;
+      const v = d.map(x => +x.sumOpenInterestValue), u = v[v.length - 1], ant = n => v[Math.max(0, v.length - 1 - n)];
+      deriv.oi = u; deriv.oiVar = {h1: (u / ant(12) - 1) * 100, h4: (u / ant(48) - 1) * 100, h24: (u / ant(288) - 1) * 100};
+    })
+  ];
+  await Promise.allSettled(tarefas);
+}
+function iniciarDeriv(){
+  clearInterval(derivTimer);
+  if (!cfg.ind.deriv) { $("deriv").style.display = "none"; return; }
+  carregarDeriv().then(desenharDeriv);
+  derivTimer = setInterval(() => carregarDeriv().then(desenharDeriv), 5 * 60e3);
+}
+function desenharDeriv(){
+  const box = $("deriv");
+  if (!cfg.ind.deriv) { box.style.display = "none"; return; }
+  box.style.display = "block";
+  const leg = $("legenda"); box.style.top = (cfg.ind.leg && leg.offsetHeight ? leg.offsetTop + leg.offsetHeight + 6 : 6) + "px";
+  const pc = x => x == null || !isFinite(x) ? "—" : (x >= 0 ? "+" : "−") + Math.abs(x).toFixed(2).replace(".", ",") + "%";
+  const cor = x => x == null ? "" : x >= 0 ? "up" : "down";
+  const linhas = [];
+  // funding
+  if (deriv.funding != null) {
+    const f = deriv.funding * 100, falta = deriv.prox ? Math.max(0, deriv.prox - Date.now()) : null;
+    const hh = falta == null ? "" : String(Math.floor(falta / 36e5)).padStart(2, "0") + ":" + String(Math.floor(falta / 6e4) % 60).padStart(2, "0") + ":" + String(Math.floor(falta / 1e3) % 60).padStart(2, "0");
+    const tag = f >= 0.05 ? ["alto · longs pagando caro", "#fdecea", "#c62828"] : f <= -0.01 ? ["negativo · shorts pagando", "#e3f2fd", "#1565c0"] : null;
+    linhas.push(el("div", {class: "r"}, el("span", {class: "k"}, "Funding "), el("b", {class: f >= 0 ? "up" : "down"}, (f >= 0 ? "+" : "−") + Math.abs(f).toFixed(4).replace(".", ",") + "%"),
+      el("span", {class: "k"}, hh ? "  próxima em " + hh : ""), tag ? el("span", {class: "tag", style: "background:" + tag[1] + ";color:" + tag[2]}, tag[0]) : ""));
+  }
+  if (deriv.lsTop) linhas.push(el("div", {class: "r"}, el("span", {class: "k"}, "Long/Short grandes traders "), el("b", {}, deriv.lsTop.r.toFixed(2).replace(".", ",")), el("span", {class: "k"}, "  (" + Math.round(deriv.lsTop.l * 100) + "% long)")));
+  if (deriv.lsContas) linhas.push(el("div", {class: "r"}, el("span", {class: "k"}, "Long/Short todas as contas "), el("b", {}, deriv.lsContas.r.toFixed(2).replace(".", ",")), el("span", {class: "k"}, "  (" + Math.round(deriv.lsContas.l * 100) + "% long)")));
+  if (deriv.oi != null) linhas.push(el("div", {class: "r"}, el("span", {class: "k"}, "Open Interest "), el("b", {}, usd(deriv.oi)),
+    el("span", {class: "k"}, "  1h "), el("b", {class: cor(deriv.oiVar.h1)}, pc(deriv.oiVar.h1)),
+    el("span", {class: "k"}, "  4h "), el("b", {class: cor(deriv.oiVar.h4)}, pc(deriv.oiVar.h4)),
+    el("span", {class: "k"}, "  24h "), el("b", {class: cor(deriv.oiVar.h24)}, pc(deriv.oiVar.h24))));
+  const lq = [["1h", 36e5], ["4h", 144e5], ["24h", 864e5]].map(([n, ms]) => { const [lo, sh] = totaisLiq(cfg.simbolo, ms); return [n, lo, sh]; });
+  linhas.push(el("div", {class: "r"}, el("span", {class: "k"}, "Liquidações reais"), ...lq.flatMap(([n, lo, sh]) => [el("span", {class: "k"}, "  " + n + " "), el("b", {class: "l"}, "L " + usd(lo)), el("span", {class: "k"}, " / "), el("b", {class: "s"}, "S " + usd(sh))])));
+  const desde = (liqs[cfg.simbolo] || [])[0];
+  if (!desde || Date.now() - desde.t < 864e5) linhas.push(el("div", {class: "r k", style: "font-size:10px"}, "liquidações contadas desde que o site ficou aberto" + (desde ? " (" + new Date(desde.t).toLocaleString("pt-BR", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}) + ")" : "")));
+  box.replaceChildren(...linhas);
+  box.classList.toggle("min", !!cfg.derivMin);
+  box.title = cfg.derivMin ? "Clique para mostrar o painel completo" : "Clique para recolher o painel";
+}
+$("deriv").addEventListener("pointerdown", e => e.stopPropagation(), true);
+$("deriv").addEventListener("click", () => { cfg.derivMin = !cfg.derivMin; salvarPrefs(); desenharDeriv(); });
+setInterval(() => { if (cfg.ind.deriv) desenharDeriv(); }, 1000);
 // ---------- MVRV (dado on-chain diário, API pública da CoinMetrics) ----------
 const MVRV_ATIVO = {BTCUSDT: "btc", ETHUSDT: "eth"};
 const mvrvCache = {};   // ativo -> {dias: [t...], val: [...], quando, erro}
@@ -820,10 +1029,11 @@ function ajustarPaineis(){
   for (const p of lista) p.div.style.flexBasis = h + "px";
 }
 window.addEventListener("resize", ajustarPaineis);
-let spotLigado = null;
+let spotLigado = null, derivLigado = null;
 function aplicarIndicadores(){
   if (!chart) return;
   if (spotLigado !== cfg.ind.spot) { spotLigado = cfg.ind.spot; conectarSpot(); }
+  if (derivLigado !== cfg.ind.deriv) { derivLigado = cfg.ind.deriv; iniciarDeriv(); }
   const faixaAntes = chart.timeScale().getVisibleLogicalRange();   // painel novo nasce com outra janela; mantém a atual
   carregarMVRV();
   sVol.applyOptions({visible: cfg.ind.vol});
@@ -915,6 +1125,7 @@ function desenharCanvas(){
     desenharVPVR(); }
   if (cfg.ind.pocs) desenharPOCs(W, H);
   desenharLinhaSpot(W, H);
+  if (cfg.ind.liqs) desenharLiqs(W, H);
   if (cfg.ind.baleias) desenharBaleias(W, H);
   function desenharVPVR(){
     const r = ts.getVisibleLogicalRange();
@@ -979,6 +1190,19 @@ function atualizarDicaLiq(){
   const dica = $("dicaLiq");
   if (!mouseMapa || !velas.length) { dica.style.display = "none"; return; }
   const {x, y} = mouseMapa, W = principal.clientWidth - chart.priceScale("right").width();
+  if (cfg.ind.liqs) {   // cursor sobre uma liquidação real
+    let perto = null;
+    for (const q of posLiqs()) if (Math.abs(q.px - x) + Math.abs(q.y - y) <= q.r + 2 && (!perto || q.x.u > perto.x.u)) perto = q;
+    if (perto) {
+      const b = perto.x;
+      dica.replaceChildren(el("div", {class: "dl-p"}, "Liquidação real · " + new Date(b.t).toLocaleTimeString("pt-BR")),
+        el("div", {}, el("span", {class: "v"}, b.l ? "Long liquidado " : "Short liquidado "), el("b", {class: b.l ? "l" : "s"}, usd(b.u)), el("span", {class: "v"}, " em " + pr(b.p))));
+      dica.style.display = "block";
+      dica.style.left = Math.max(4, x + 14 + dica.offsetWidth > W ? x - 14 - dica.offsetWidth : x + 14) + "px";
+      dica.style.top = Math.max(4, y - dica.offsetHeight - 10) + "px";
+      return;
+    }
+  }
   if (cfg.ind.baleias) {   // cursor sobre uma bolha de baleia
     let perto = null;
     for (const q of posBaleias()) if (Math.hypot(q.x - x, q.y - y) <= q.r + 2 && (!perto || q.b.u > perto.b.u)) perto = q;
@@ -1142,7 +1366,7 @@ function conectarWS(){
   const antigo = ws; ws = null;
   if (antigo) antigo.close();
   const sym = cfg.simbolo.toLowerCase();
-  const streams = SIMBOLOS.map(s => s.toLowerCase() + "@miniTicker").concat(sym + "@kline_" + intervaloBinance(cfg.tf), sym + "@aggTrade");
+  const streams = SIMBOLOS.map(s => s.toLowerCase() + "@miniTicker").concat(SIMBOLOS.map(s => s.toLowerCase() + "@forceOrder"), sym + "@kline_" + intervaloBinance(cfg.tf), sym + "@aggTrade", sym + "@markPrice@1s");
   const sock = new WebSocket(WS + streams.join("/"));
   ws = sock;
   sock.onclose = () => { if (ws === sock) { ws = null; $("ponto").classList.remove("on"); setTimeout(conectarWS, 5000); } };
@@ -1151,7 +1375,9 @@ function conectarWS(){
     const d = JSON.parse(ev.data).data;
     if (!d) return;
     ultimoDado = Date.now(); $("ponto").classList.add("on");
-    if (d.e === "aggTrade" && d.s === cfg.simbolo) { aplicarPreco(+d.p, +d.T); ouvirTrade(d); }
+    if (d.e === "aggTrade" && d.s === cfg.simbolo) { aplicarPreco(+d.p, +d.T); ouvirTrade(d); checarAlertas(+d.p); }
+    else if (d.e === "forceOrder" && d.o) { const o = d.o, pz = +o.ap || +o.p, qz = +o.z || +o.q; novaLiq(o.s, +o.T, pz, pz * qz, o.S === "SELL"); }
+    else if (d.e === "markPriceUpdate" && d.s === cfg.simbolo) { deriv.funding = +d.r; deriv.prox = +d.T; deriv.mark = +d.p; }
     else if (d.e === "24hrMiniTicker") { tickers[d.s] = {c: +d.c, o: +d.o, p: (+d.c / +d.o - 1) * 100}; desenharLista(); }
     else if (d.e === "kline" && d.s === cfg.simbolo && d.k.i === intervaloBinance(cfg.tf) && velas.length) {
       const k = d.k;
@@ -1317,7 +1543,7 @@ async function recalcular(manterZoom){
 function trocar(mud){
   Object.assign(cfg, mud); salvarPrefs();
   $("bSimb").textContent = cfg.simbolo + " ▾";
-  montarTfs(); desenharLista(); conectarWS(); conectarSpot(); carregarDesenhos(); lerBaleias(); perfis = null;
+  montarTfs(); desenharLista(); conectarWS(); conectarSpot(); carregarDesenhos(); lerBaleias(); perfis = null; precoAnt = null; iniciarDeriv();
   ocupado = false; recalcular(false);
 }
 
@@ -1381,7 +1607,7 @@ const pesosBox = $("pesos");
 LEVS.forEach((L, i) => pesosBox.append(el("label", {}, L + "×", el("input", {type: "number", min: "0", step: "1", id: "w" + i}))));
 $("bAjustes").addEventListener("click", e => {
   e.stopPropagation();
-  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto; $("mediaVol").value = cfg.mediaVol; $("mmPer").value = cfg.mmPer; $("mmTipo").value = cfg.mmTipo; $("rsiPer").value = cfg.rsiPer; $("baleiaMin").value = cfg.baleiaMin;
+  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto; $("mediaVol").value = cfg.mediaVol; $("mmPer").value = cfg.mmPer; $("mmTipo").value = cfg.mmTipo; $("rsiPer").value = cfg.rsiPer; $("baleiaMin").value = cfg.baleiaMin; $("conta").value = cfg.conta; $("riscoPct").value = cfg.riscoPct; $("alav").value = cfg.alav;
   cfg.pesos.forEach((v, i) => $("w" + i).value = v);
   abrirPop("pop", "bAjustes");
 });
@@ -1393,6 +1619,7 @@ $("aplicar").addEventListener("click", () => {
           mediaVol: Math.max(20, Math.round(+$("mediaVol").value || 610)),
           mmPer: periodosMM($("mmPer").value).join(", ") || "9, 21, 200", mmTipo: $("mmTipo").value,
           baleiaMin: Math.max(0, +$("baleiaMin").value || 0),
+          conta: Math.max(1, +$("conta").value || 1000), riscoPct: Math.min(100, Math.max(0.1, +$("riscoPct").value || 1)), alav: Math.min(125, Math.max(1, Math.round(+$("alav").value || 10))),
           rsiPer: Math.min(100, Math.max(2, Math.round(+$("rsiPer").value || 14))),
           pesos: LEVS.map((_, i) => Math.max(0, +$("w" + i).value || 0))});
 });
@@ -1435,6 +1662,8 @@ const ICONES = {
   raio: '<path d="M5 17L20 4"/><circle cx="5" cy="17" r="1.4"/><circle cx="11" cy="12" r="1.4"/>',
   raioH: '<path d="M7 11h13"/><circle cx="6" cy="11" r="1.4"/>',
   seta: '<path d="M4 18L18 4"/><path d="M10 4h8v8"/>',
+  posL: '<path d="M4 4v14h14"/><rect x="7" y="5" width="11" height="5" fill="rgba(8,153,129,.35)" stroke="none"/><rect x="7" y="10" width="11" height="4" fill="rgba(242,54,69,.35)" stroke="none"/><path d="M7 10h11"/>',
+  posS: '<path d="M4 4v14h14"/><rect x="7" y="5" width="11" height="4" fill="rgba(242,54,69,.35)" stroke="none"/><rect x="7" y="9" width="11" height="5" fill="rgba(8,153,129,.35)" stroke="none"/><path d="M7 9h11"/>',
   retangulo: '<rect x="4" y="6" width="14" height="10" rx="1"/>',
   zonaLiq: '<path d="M2 7h18M2 15h18"/><path d="M5 9.5h8M5 12.5h12" stroke-width="2.4" opacity=".55"/>',
   fib: '<path d="M3 4h16M3 8h16M3 12h16M3 18h16"/><path d="M5 18L17 4" stroke-dasharray="2 2"/>',
@@ -1464,6 +1693,8 @@ const BARRA = [
   ["raioH", "raioH", "Raio horizontal (do ponto para a direita)", "f"],
   ["seta", "seta", "Seta", "f"],
   ["retangulo", "retangulo", "Retângulo", "f"],
+  ["posL", "posL", "Posição comprada (calculadora de risco)", "f"],
+  ["posS", "posS", "Posição vendida (calculadora de risco)", "f"],
   ["zonaLiq", "zonaLiq", "Zona de liquidação (soma shorts e longs numa faixa de preço)", "f"],
   ["fib", "fib", "Retração de Fibonacci", "f"],
   ["pincel", "pincel", "Pincel", "f"],
@@ -1521,6 +1752,8 @@ const DICAS = {
   raio: "Toque no ponto inicial e num segundo ponto da direção",
   raioH: "Toque no ponto onde o raio começa",
   seta: "Toque na base e depois na ponta da seta",
+  posL: "Toque no preço de entrada (depois arraste stop e alvo)",
+  posS: "Toque no preço de entrada (depois arraste stop e alvo)",
   retangulo: "Toque em dois cantos opostos (ou arraste)",
   zonaLiq: "Toque no preço inicial e no final da zona (ou arraste)",
   fib: "Toque no topo/fundo e depois no outro extremo",
@@ -1618,6 +1851,11 @@ desCanvas.addEventListener("pointerdown", ev => {
   const pt = pontoDe(ev); if (!pt) return;
   if (ferramenta === "borracha") { apagarPerto(ev); return; }
   if (ferramenta === "horizontal" || ferramenta === "raioH") { finalizar({tipo: ferramenta, pts: [pt]}); return; }
+  if (ferramenta === "posL" || ferramenta === "posS") {
+    const L = ferramenta === "posL", tR = pt.t + 30 * TF_MS[cfg.tf] / 1000;
+    finalizar({tipo: "posicao", lado: L ? "L" : "S", pts: [pt, {t: tR, p: pt.p * (L ? 0.985 : 1.015)}, {t: tR, p: pt.p * (L ? 1.03 : 0.97)}]});
+    return;
+  }
   if (ferramenta === "texto") {
     const txt = window.prompt("Texto:");
     if (txt && txt.trim()) finalizar({tipo: "texto", pts: [pt], texto: txt.trim().slice(0, 80)});
@@ -1667,7 +1905,7 @@ function acharDesenho(px, py){
   desenhos.forEach((d, i) => {
     const P = pontosTela(g, d);
     if (P.some(q => q[1] == null)) return;
-    if (["linha", "raio", "seta", "raioH", "retangulo", "zonaLiq", "fib"].includes(d.tipo)) P.forEach((q, k) => {
+    if (["linha", "raio", "seta", "raioH", "retangulo", "zonaLiq", "fib", "posicao"].includes(d.tipo)) P.forEach((q, k) => {
       const dd = Math.hypot(px - q[0], py - q[1]) - 2;     // alças têm preferência
       if (dd < menor) { menor = dd; achado = {i, alca: k}; }
     });
@@ -1675,6 +1913,7 @@ function acharDesenho(px, py){
     if (d.tipo === "horizontal") dist = px <= W ? Math.abs(py - P[0][1]) : Infinity;
     else if (d.tipo === "zonaLiq") { const y1 = Math.min(P[0][1], P[1][1]), y2 = Math.max(P[0][1], P[1][1]); dist = px <= W ? (py >= y1 && py <= y2 ? 0 : Math.min(Math.abs(py - y1), Math.abs(py - y2))) : Infinity; }
     else if (d.tipo === "texto") { const w = 9 * d.texto.length; dist = (px >= P[0][0] - 4 && px <= P[0][0] + w && py >= P[0][1] - 18 && py <= P[0][1] + 6) ? 0 : Infinity; }
+    else if (d.tipo === "posicao") { const xa = P[0][0], xb = P[1][0], ys = [P[0][1], P[1][1], P[2][1]]; if (px >= Math.min(xa, xb) && px <= Math.max(xa, xb) && py >= Math.min(...ys) && py <= Math.max(...ys)) dist = 0; }
     else if (d.tipo === "linha" || d.tipo === "seta") dist = distSeg(px, py, ...P[0], ...P[1]);
     else if (d.tipo === "raio") dist = distSeg(px, py, ...P[0], ...pontaRaio(P[0], P[1], W, 4000));
     else if (d.tipo === "raioH") dist = px >= P[0][0] - 4 && px <= W ? Math.abs(py - P[0][1]) : Infinity;
@@ -1696,12 +1935,17 @@ function apagarPerto(ev){
   if (h) { desenhos.splice(h.i, 1); selecionado = -1; salvarDesenhos(); mostrarSel(); }
   else avisar("Nenhum desenho aqui");
 }
-const NOMES_DES = {raio: "Raio", raioH: "Raio horizontal", seta: "Seta", linha: "Linha de tendência", horizontal: "Linha horizontal", retangulo: "Retângulo", zonaLiq: "Zona de liquidação", fib: "Fibonacci", pincel: "Pincel", texto: "Texto"};
+const NOMES_DES = {posicao: "Posição", raio: "Raio", raioH: "Raio horizontal", seta: "Seta", linha: "Linha de tendência", horizontal: "Linha horizontal", retangulo: "Retângulo", zonaLiq: "Zona de liquidação", fib: "Fibonacci", pincel: "Pincel", texto: "Texto"};
 function mostrarSel(){
   if (selecionado >= desenhos.length) selecionado = -1;
   const bar = $("selbar");
   bar.classList.toggle("on", selecionado >= 0);
-  if (selecionado >= 0) $("selNome").textContent = NOMES_DES[desenhos[selecionado].tipo] || "Desenho";
+  if (selecionado >= 0) {
+    const d = desenhos[selecionado];
+    $("selNome").textContent = NOMES_DES[d.tipo] || "Desenho";
+    $("selAlerta").style.display = ALERTAVEIS.includes(d.tipo) ? "" : "none";
+    $("selAlerta").textContent = d.alerta ? "🔕 Tirar alerta" : "🔔 Alerta";
+  }
   desVersao++;
 }
 function apagarSelecionado(){
@@ -1736,7 +1980,10 @@ window.addEventListener("pointermove", ev => {
   }
   const pt = pontoDe(ev, arrasto.alca < 0); if (!pt || !arrasto.inicio) return;
   const {d, alca, orig, inicio} = arrasto;
-  if (alca >= 0) d.pts[alca] = pt;
+  if (alca >= 0 && d.tipo === "posicao") {
+    if (alca === 0) { const dp = pt.p - d.pts[0].p; d.pts[0] = {t: Math.min(pt.t, d.pts[1].t), p: pt.p}; if (!ev.shiftKey) { d.pts[1].p += dp; d.pts[2].p += dp; } }
+    else { d.pts[alca].p = pt.p; d.pts[1].t = d.pts[2].t = Math.max(pt.t, d.pts[0].t + TF_MS[cfg.tf] / 1000); }
+  } else if (alca >= 0) d.pts[alca] = pt;
   else {
     const dt = d.tipo === "horizontal" ? 0 : pt.t - inicio.t, dp = pt.p - inicio.p;
     d.pts = orig.map(q => ({t: q.t + dt, p: q.p + dp}));
@@ -1800,10 +2047,13 @@ function pontaRaio(a, b, W, longe){
 function desenharUm(c, g, d, W){
   const P = d.pts.map(q => [xDe(g, q.t), serie.priceToCoordinate(q.p)]);
   if (P.some(q => q[1] == null)) return;
+  if (d.alerta) { c.font = "12px sans-serif"; c.fillText("🔔", (d.tipo === "horizontal" ? 8 : P[0][0] + 6), P[0][1] - 6); }
   c.strokeStyle = COR_DES; c.fillStyle = COR_DES; c.lineWidth = 1.4; c.setLineDash([]);
   if (d.tipo === "linha") {
     c.beginPath(); c.moveTo(...P[0]); c.lineTo(...P[1]); c.stroke();
     for (const q of P) { c.beginPath(); c.arc(q[0], q[1], 2.2, 0, 7); c.fill(); }
+  } else if (d.tipo === "posicao") {
+    desenharPosicao(c, d, P, W);
   } else if (d.tipo === "raio") {
     c.beginPath(); c.moveTo(...P[0]); c.lineTo(...pontaRaio(P[0], P[1], W, 4000)); c.stroke();
     for (const q of P) { c.beginPath(); c.arc(q[0], q[1], 2.2, 0, 7); c.fill(); }
