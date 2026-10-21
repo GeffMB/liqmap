@@ -336,6 +336,7 @@ const INDICADORES = [
   {id: "vwap",  nome: "VWAP diária",            desc: "preço médio ponderado pelo volume",  padrao: true},
   {id: "vpvr",  nome: "Perfil de volume (VPVR)", desc: "volume por faixa de preço + POC e área de valor (VAH/VAL)", padrao: true},
   {id: "pocs",  nome: "POCs nuas (diárias e semanais)", desc: "POCs de dias/semanas que o preço ainda não revisitou", padrao: false},
+  {id: "eventos", nome: "Eventos econômicos (EUA)", desc: "Fed, inflação, empregos… marcados no eixo do tempo", padrao: true},
   {id: "deriv", nome: "Painel de derivativos",  desc: "funding, long/short dos grandes, variação do OI e liquidações reais", padrao: false},
   {id: "liqs",  nome: "Liquidações reais (ao vivo)", desc: "losangos onde posições foram liquidadas (azul long, laranja short)", padrao: true},
   {id: "baleias", nome: "Bolhas de baleias",    desc: "negócios grandes ao vivo (verde compra, vermelho venda)", padrao: false},
@@ -880,6 +881,56 @@ function desenharDeriv(){
 $("deriv").addEventListener("pointerdown", e => e.stopPropagation(), true);
 $("deriv").addEventListener("click", () => { cfg.derivMin = !cfg.derivMin; salvarPrefs(); desenharDeriv(); });
 setInterval(() => { if (cfg.ind.deriv) desenharDeriv(); }, 1000);
+// ---------- eventos econômicos (EUA) no eixo do tempo, como na TradingView ----------
+// eventos.json é gerado pelo GitHub Actions (ForexFactory + calendário oficial do Fed e do BLS)
+let eventos = [];
+async function carregarEventos(){
+  try {
+    const r = await fetch("eventos.json?v=" + Math.floor(Date.now() / 6e5), {cache: "no-store"});
+    if (r.ok) { eventos = (await r.json()).eventos || []; assinatura = ""; }
+  } catch (e) {}
+}
+carregarEventos(); setInterval(carregarEventos, 30 * 60e3);
+function gruposEventos(){
+  const g = geo(); if (!g || !eventos.length) return [];
+  const tf = TF_MS[cfg.tf] / 1000, mapa = new Map();
+  for (const e of eventos) {
+    const i = Math.floor(idxDeT(e.t / 1000) + 1e-6);
+    if (!mapa.has(i)) mapa.set(i, []);
+    mapa.get(i).push(e);
+  }
+  return [...mapa.entries()].map(([i, lista]) => ({x: g.x0 + i * g.passo, lista, alto: lista.some(e => e.impacto === "High")}));
+}
+function bandeiraEUA(c, x, y, r, borda){
+  c.save(); c.beginPath(); c.arc(x, y, r, 0, 7); c.clip();
+  c.fillStyle = "#fff"; c.fillRect(x - r, y - r, 2 * r, 2 * r);
+  c.fillStyle = "#d32f2f"; for (let k = 0; k < 7; k += 2) c.fillRect(x - r, y - r + k * (2 * r / 7), 2 * r, 2 * r / 7);
+  c.fillStyle = "#1e3a8a"; c.fillRect(x - r, y - r, r * 1.05, r * 0.95);
+  c.restore();
+  c.beginPath(); c.arc(x, y, r, 0, 7); c.lineWidth = 1.6; c.strokeStyle = borda; c.stroke();
+}
+function desenharEventos(W, H){
+  const y = H - 13;
+  for (const gr of gruposEventos()) {
+    if (gr.x < -10 || gr.x > W + 10) continue;
+    bandeiraEUA(ctx, gr.x, y, 7.5, gr.alto ? "#2962ff" : "#9598a1");
+    if (gr.lista.length > 1) { ctx.fillStyle = "#131722"; ctx.font = "bold 9px sans-serif"; ctx.textAlign = "center"; ctx.fillText(gr.lista.length, gr.x + 9, y - 6); ctx.textAlign = "left"; }
+  }
+}
+function dicaEventos(x, y, H){
+  if (!cfg.ind.eventos || Math.abs(y - (H - 13)) > 11) return null;
+  let perto = null;
+  for (const gr of gruposEventos()) if (Math.abs(gr.x - x) <= 10) perto = gr;
+  if (!perto) return null;
+  const agora = Date.now(), fmtFalta = ms => { const h = Math.floor(ms / 36e5); return h >= 48 ? "em " + Math.round(h / 24) + " dias" : h >= 1 ? "em " + h + " h " + Math.floor(ms / 6e4) % 60 + " min" : "em " + Math.max(1, Math.floor(ms / 6e4)) + " min"; };
+  const linhas = perto.lista.slice(0, 8).map(e => {
+    const d = new Date(e.t), quando = d.toLocaleDateString("pt-BR", {day: "2-digit", month: "2-digit"}) + " " + d.toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"});
+    const det = [e.atual ? "Atual " + e.atual : "", e.previsao ? "Previsão " + e.previsao : "", e.anterior ? "Anterior " + e.anterior : ""].filter(Boolean).join(" · ");
+    return el("div", {style: "margin:3px 0"}, el("b", {class: e.impacto === "High" ? "down" : ""}, (e.impacto === "High" ? "●●● " : "●● ") + e.titulo),
+      el("div", {class: "dl-p"}, quando + (e.t > agora ? " · " + fmtFalta(e.t - agora) : "") + (det ? " · " + det : "")));
+  });
+  return [el("div", {class: "dl-p"}, "🇺🇸 Eventos econômicos dos EUA (horário local)"), ...linhas];
+}
 // ---------- MVRV (dado on-chain diário, API pública da CoinMetrics) ----------
 const MVRV_ATIVO = {BTCUSDT: "btc", ETHUSDT: "eth"};
 const mvrvCache = {};   // ativo -> {dias: [t...], val: [...], quando, erro}
@@ -1178,6 +1229,7 @@ function desenharCanvas(){
   if (cfg.ind.pocs) desenharPOCs(W, H);
   desenharLinhaSpot(W, H);
   if (cfg.ind.liqs) desenharLiqs(W, H);
+  if (cfg.ind.eventos) desenharEventos(W, H);
   if (cfg.ind.baleias) desenharBaleias(W, H);
   function desenharVPVR(){
     const r = ts.getVisibleLogicalRange();
@@ -1242,6 +1294,16 @@ function atualizarDicaLiq(){
   const dica = $("dicaLiq");
   if (!mouseMapa || !velas.length) { dica.style.display = "none"; return; }
   const {x, y} = mouseMapa, W = principal.clientWidth - chart.priceScale("right").width();
+  {   // cursor sobre um evento econômico
+    const H = principal.clientHeight - (chart.timeScale().options().visible ? chart.timeScale().height() : 0);
+    const conteudo = dicaEventos(x, y, H);
+    if (conteudo) {
+      dica.replaceChildren(...conteudo); dica.style.display = "block";
+      dica.style.left = Math.max(4, Math.min(x - dica.offsetWidth / 2, W - dica.offsetWidth - 4)) + "px";
+      dica.style.top = Math.max(4, y - dica.offsetHeight - 14) + "px";
+      return;
+    }
+  }
   if (cfg.ind.liqs) {   // cursor sobre uma liquidação real
     let perto = null;
     for (const q of posLiqs()) if (Math.abs(q.px - x) + Math.abs(q.y - y) <= q.r + 2 && (!perto || q.x.u > perto.x.u)) perto = q;
