@@ -58,7 +58,7 @@ def ms(dt):
 
 
 def chave(e):
-    return e["titulo"] + "|" + datetime.fromtimestamp(e["t"] / 1000, timezone.utc).strftime("%Y-%m-%d")
+    return e.get("orig", e["titulo"]) + "|" + datetime.fromtimestamp(e["t"] / 1000, timezone.utc).strftime("%Y-%m-%d")
 
 
 def main():
@@ -66,6 +66,8 @@ def main():
         antigos = json.load(open(ARQ, encoding="utf-8")).get("eventos", [])
     except Exception:
         antigos = []
+    for e in antigos:
+        e["titulo"] = TRADUCAO.get(e.get("orig", ""), e["titulo"])
     eventos = {chave(e): e for e in antigos}
 
     # calendário oficial (horário de Nova York convertido para UTC)
