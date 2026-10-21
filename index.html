@@ -899,7 +899,12 @@ function gruposEventos(){
     if (!mapa.has(i)) mapa.set(i, []);
     mapa.get(i).push(e);
   }
-  return [...mapa.entries()].map(([i, lista]) => ({x: g.x0 + i * g.passo, lista, alto: lista.some(e => e.impacto === "High")}));
+  const grs = [...mapa.entries()].sort((a, b) => a[0] - b[0]).map(([i, lista]) => ({x: g.x0 + i * g.passo, lista, alto: lista.some(e => e.impacto === "High")}));
+  // o próximo evento que ainda está fora da tela (à direita) fica "preso" na borda, como lembrete
+  const W = principal.clientWidth - chart.priceScale("right").width(), agora = Date.now();
+  const prox = grs.find(gr => gr.x > W - 8 && gr.lista.some(e => e.t > agora));
+  if (prox) grs.push(Object.assign({}, prox, {x: W - 12, fixo: true}));
+  return grs;
 }
 function bandeiraEUA(c, x, y, r, borda){
   c.save(); c.beginPath(); c.arc(x, y, r, 0, 7); c.clip();
@@ -913,6 +918,7 @@ function desenharEventos(W, H){
   const y = H - 13;
   for (const gr of gruposEventos()) {
     if (gr.x < -10 || gr.x > W + 10) continue;
+    if (gr.fixo) { ctx.fillStyle = "#787b86"; ctx.font = "bold 12px sans-serif"; ctx.fillText("›", gr.x + 9, y + 4); }
     bandeiraEUA(ctx, gr.x, y, 7.5, gr.alto ? "#2962ff" : "#9598a1");
     if (gr.lista.length > 1) { ctx.fillStyle = "#131722"; ctx.font = "bold 9px sans-serif"; ctx.textAlign = "center"; ctx.fillText(gr.lista.length, gr.x + 9, y - 6); ctx.textAlign = "left"; }
   }
@@ -920,7 +926,7 @@ function desenharEventos(W, H){
 function dicaEventos(x, y, H){
   if (!cfg.ind.eventos || Math.abs(y - (H - 13)) > 11) return null;
   let perto = null;
-  for (const gr of gruposEventos()) if (Math.abs(gr.x - x) <= 10) perto = gr;
+  for (const gr of gruposEventos()) if (Math.abs(gr.x - x) <= 10) perto = gr;   // o "preso" na borda vem por último e tem prioridade
   if (!perto) return null;
   const agora = Date.now(), fmtFalta = ms => { const h = Math.floor(ms / 36e5); return h >= 48 ? "em " + Math.round(h / 24) + " dias" : h >= 1 ? "em " + h + " h " + Math.floor(ms / 6e4) % 60 + " min" : "em " + Math.max(1, Math.floor(ms / 6e4)) + " min"; };
   const linhas = perto.lista.slice(0, 8).map(e => {
@@ -929,7 +935,7 @@ function dicaEventos(x, y, H){
     return el("div", {style: "margin:3px 0"}, el("b", {class: e.impacto === "High" ? "down" : ""}, (e.impacto === "High" ? "●●● " : "●● ") + e.titulo),
       el("div", {class: "dl-p"}, quando + (e.t > agora ? " · " + fmtFalta(e.t - agora) : "") + (det ? " · " + det : "")));
   });
-  return [el("div", {class: "dl-p"}, "🇺🇸 Eventos econômicos dos EUA (horário local)"), ...linhas];
+  return [el("div", {class: "dl-p"}, (perto.fixo ? "Próximos eventos dos EUA" : "🇺🇸 Eventos econômicos dos EUA") + " (horário local)"), ...linhas];
 }
 // ---------- MVRV (dado on-chain diário, API pública da CoinMetrics) ----------
 const MVRV_ATIVO = {BTCUSDT: "btc", ETHUSDT: "eth"};
