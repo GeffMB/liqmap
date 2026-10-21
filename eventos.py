@@ -33,7 +33,17 @@ TRADUCAO = {
     "Core PCE Price Index m/m": "Inflação PCE núcleo", "Retail Sales m/m": "Vendas no varejo",
     "Unemployment Claims": "Pedidos de seguro-desemprego", "ISM Manufacturing PMI": "PMI industrial ISM",
     "ISM Services PMI": "PMI de serviços ISM", "JOLTS Job Openings": "Vagas de emprego JOLTS",
-    "Prelim UoM Consumer Sentiment": "Confiança do consumidor (Michigan)", "CB Consumer Confidence": "Confiança do consumidor (CB)",
+    "Prelim UoM Consumer Sentiment": "Confiança do consumidor (Michigan)",
+    "Revised UoM Consumer Sentiment": "Confiança do consumidor Michigan (revisada)",
+    "Prelim UoM Inflation Expectations": "Expectativa de inflação Michigan", "Revised UoM Inflation Expectations": "Expectativa de inflação Michigan (revisada)",
+    "Flash Manufacturing PMI": "PMI industrial (prévia)", "Flash Services PMI": "PMI de serviços (prévia)",
+    "Final Manufacturing PMI": "PMI industrial (final)", "Final Services PMI": "PMI de serviços (final)",
+    "ADP Non-Farm Employment Change": "Empregos ADP", "Durable Goods Orders m/m": "Pedidos de bens duráveis",
+    "Core Durable Goods Orders m/m": "Bens duráveis (núcleo)", "Existing Home Sales": "Vendas de casas usadas",
+    "New Home Sales": "Vendas de casas novas", "Pending Home Sales m/m": "Vendas pendentes de casas",
+    "Empire State Manufacturing Index": "Índice industrial Empire State", "Philly Fed Manufacturing Index": "Índice industrial Philly Fed",
+    "Fed Chair Powell Speaks": "Discurso do presidente do Fed", "Prelim GDP q/q": "PIB (preliminar)", "Final GDP q/q": "PIB (final)",
+    "PCE Price Index m/m": "Inflação PCE", "Core Retail Sales m/m": "Vendas no varejo (núcleo)", "Trade Balance": "Balança comercial", "CB Consumer Confidence": "Confiança do consumidor (CB)",
 }
 
 
