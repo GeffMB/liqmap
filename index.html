@@ -1990,7 +1990,16 @@ desCanvas.addEventListener("pointerdown", ev => {
     desCanvas.setPointerCapture(ev.pointerId); desVersao++;
   }
 });
+// com uma ferramenta ativa o canvas de desenho fica por cima do gráfico e "rouba" o mouse; por isso
+// a cruz do cursor (com o preço na escala e a data no eixo) é posicionada aqui manualmente
+function cruzNoPonto(pt){
+  if (!pt || !velas.length) return;
+  const i = Math.max(0, Math.min(velas.length - 1, Math.round(idxDeT(pt.t))));
+  try { chart.setCrosshairPosition(pt.p, velas[i].time, serie); } catch (e) {}
+}
+desCanvas.addEventListener("pointerleave", () => { try { chart.clearCrosshairPosition(); } catch (e) {} });
 desCanvas.addEventListener("pointermove", ev => {
+  cruzNoPonto(pontoDe(ev));
   if (!rascunho) return;
   const pt = pontoDe(ev); if (!pt) return;
   if (rascunho.tipo === "pincel") { if (arrastando) { rascunho.pts.push(pt); desVersao++; } return; }
