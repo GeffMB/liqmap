@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fluxo de dinheiro — LiqMap</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg?v=2">
+<style>
+:root{
+  --bg:#ffffff;--panel:#ffffff;--panel2:#f0f3fa;--line:#e0e3eb;--hover:#f0f3fa;
+  --txt:#131722;--sub:#787b86;--up:#089981;--down:#f23645;--accent:#2962ff;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.45 -apple-system,BlinkMacSystemFont,"Trebuchet MS",Roboto,Ubuntu,"Segoe UI",sans-serif}
+.top{display:flex;align-items:center;gap:2px;height:44px;padding:0 8px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5;overflow-x:auto;scrollbar-width:none}
+.marca{font-weight:700;letter-spacing:.2px;padding:0 10px 0 4px;white-space:nowrap;color:var(--txt);text-decoration:none}
+.marca span{color:var(--accent)}
+.marca .logo{width:20px;height:20px;vertical-align:-4px;margin-right:6px;border-radius:5px}
+.sep{width:1px;height:24px;background:var(--line);margin:0 6px;flex:0 0 auto}
+.btn{background:transparent;border:0;border-radius:4px;padding:6px 8px;cursor:pointer;white-space:nowrap;text-decoration:none;color:var(--txt);font:inherit}
+.btn:hover{background:var(--hover)}
+.btn.ativo{color:var(--accent);font-weight:600}
+.status{color:var(--sub);font-size:12px;white-space:nowrap}
+.conteudo{max-width:1300px;margin:0 auto;padding:18px 16px 40px}
+h1{font-size:20px;margin:0 0 4px}
+h2{font-size:15px;margin:26px 0 10px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+h2 small{font-weight:400;color:var(--sub);font-size:12px}
+.sub{color:var(--sub);font-size:12.5px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-top:16px}
+.card{border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.card .k{color:var(--sub);font-size:12px}
+.card .v{font-size:22px;font-weight:600;margin:2px 0 6px;font-variant-numeric:tabular-nums}
+.card .linha{display:flex;justify-content:space-between;font-size:12.5px;font-variant-numeric:tabular-nums;padding:2px 0}
+.card .linha span:first-child{color:var(--sub)}
+.tabela{border:1px solid var(--line);border-radius:10px;overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;min-width:620px}
+th{font-weight:500;color:var(--sub);text-align:right;padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap;cursor:pointer;user-select:none}
+th:first-child,td:first-child{text-align:left}
+th.ord::after{content:" ▼";font-size:9px}
+th.ord.asc::after{content:" ▲"}
+td{padding:11px 14px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap;font-size:13.5px}
+tr:last-child td{border-bottom:0}
+tr:hover td{background:#fafbfd}
+td.nome{display:flex;align-items:center;gap:10px;font-weight:500}
+td.nome img{width:22px;height:22px;border-radius:50%}
+td.nome .n{color:var(--sub);font-weight:400;width:18px;text-align:right}
+td.nome small{color:var(--sub);font-weight:400}
+.up{color:var(--up)}.down{color:var(--down)}.k{color:var(--sub)}
+.grafico{border:1px solid var(--line);border-radius:10px;padding:10px;position:relative;height:240px}
+.grafico canvas{width:100%;height:100%;display:block}
+.abas{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.abas button{border:0;background:transparent;padding:5px 12px;cursor:pointer;font:inherit;color:var(--sub)}
+.abas button.on{background:var(--accent);color:#fff}
+.nota{color:var(--sub);font-size:12px;line-height:1.6;margin-top:10px}
+.dica{position:absolute;pointer-events:none;background:#fff;border:1px solid #d1d4dc;border-radius:6px;padding:5px 8px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.12);display:none;white-space:nowrap}
+@media (max-width:760px){ .top .status{display:none} h1{font-size:17px} .conteudo{padding:12px 8px 30px} }
+</style>
+</head>
+<body>
+<div class="top">
+  <a class="marca" href="./"><img src="logo.svg?v=2" alt="" class="logo">Liq<span>Map</span></a>
+  <div class="sep"></div>
+  <a class="btn" href="./">Gráfico</a>
+  <a class="btn" href="retornos.html">Retornos</a>
+  <a class="btn" href="livro.html">Livro de ofertas</a>
+  <a class="btn ativo" href="fluxos.html">Fluxos</a>
+  <span style="flex:1"></span>
+  <span class="status" id="status">Carregando…</span>
+</div>
+
+<div class="conteudo">
+  <h1>Fluxo de dinheiro no mercado cripto</h1>
+  <div class="sub">Quanto está entrando ou saindo das corretoras (CEX), dos ETFs dos EUA (BlackRock, Fidelity, Grayscale…) e das stablecoins.</div>
+
+  <div class="cards" id="cards"></div>
+
+  <h2>ETFs dos EUA — fluxo diário <small id="etfInfo"></small>
+    <span class="abas" id="abaEtf"><button data-v="etfBtc" class="on">Bitcoin</button><button data-v="etfEth">Ethereum</button></span></h2>
+  <div class="grafico" id="grafEtf"><canvas id="cvEtf"></canvas><div class="dica" id="dicaEtf"></div></div>
+  <div class="tabela" style="margin-top:12px"><table id="tabEtf"></table></div>
+
+  <h2>Corretoras (CEX) — reservas e fluxo líquido <small>prova de reservas pública · variação da quantidade de moedas × preço atual</small></h2>
+  <div class="tabela"><table id="tabCex"></table></div>
+
+  <p class="nota">
+    <b>Como ler:</b> <span class="up">verde</span> = entrou dinheiro/moedas, <span class="down">vermelho</span> = saiu.
+    <b>ETFs</b> com entrada forte = demanda institucional comprando BTC/ETH à vista (costuma ser altista).
+    <b>Stablecoins</b> crescendo = mais dólar digital disponível para comprar cripto (liquidez entrando).
+    <b>Corretoras</b>: entrada pode ser moeda chegando para vender (pressão de venda) ou stablecoin chegando para comprar; saída costuma ser moeda indo para custódia própria (menos oferta à venda).
+    Os números das corretoras vêm das carteiras que elas mesmas publicam (DefiLlama) e não incluem tudo o que elas têm.
+    Fontes: DefiLlama (corretoras e stablecoins), Farside Investors (ETFs, em US$). Atualiza a cada ~2 horas; ETFs fecham o dia após o pregão dos EUA.
+  </p>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const usd = (x, sinal) => { if (x == null || !isFinite(x)) return "—"; const a = Math.abs(x), s = x < 0 ? "−" : sinal && x > 0 ? "+" : ""; return s + "$" + (a >= 1e9 ? (a / 1e9).toFixed(2).replace(".", ",") + " bi" : a >= 1e6 ? (a / 1e6).toFixed(1).replace(".", ",") + " mi" : a >= 1e3 ? (a / 1e3).toFixed(0) + " mil" : a.toFixed(0)); };
+const cls = x => x == null ? "" : x >= 0 ? "up" : "down";
+const EMISSOR = {
+  IBIT: "BlackRock", FBTC: "Fidelity", BITB: "Bitwise", ARKB: "Ark / 21Shares", BTCO: "Invesco Galaxy", EZBC: "Franklin", BRRR: "CoinShares",
+  HODL: "VanEck", BTCW: "WisdomTree", GBTC: "Grayscale", BTC: "Grayscale Mini", MSBT: "Morgan Stanley",
+  ETHA: "BlackRock", FETH: "Fidelity", ETHW: "Bitwise", CETH: "21Shares", ETHV: "VanEck", QETH: "Invesco Galaxy", EZET: "Franklin", ETHE: "Grayscale", ETH: "Grayscale Mini"
+};
+let D = null, abaEtf = "etfBtc";
+
+async function carregar(){
+  try {
+    const r = await fetch("fluxos.json?v=" + Math.floor(Date.now() / 6e5), {cache: "no-store"});
+    if (!r.ok) throw new Error(r.status);
+    D = await r.json();
+    $("status").textContent = "Dados de " + new Date(D.atualizado * 1000).toLocaleString("pt-BR", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"});
+    desenharTudo();
+  } catch (e) { $("status").textContent = "Dados ainda não disponíveis (a primeira coleta leva alguns minutos)"; }
+}
+
+// somas de ETF: último dia, 7 e 30 dias úteis (valores da Farside em US$ milhões)
+function resumoEtf(e){
+  if (!e || !e.dias || !e.dias.length) return null;
+  const dias = e.dias.filter(d => d.total != null);
+  const soma = n => dias.slice(-n).reduce((a, d) => a + d.total, 0) * 1e6;
+  const ult = dias[dias.length - 1];
+  return {ult: ult.total * 1e6, data: ult.data, s7: soma(5), s30: soma(21), dias};
+}
+function resumoStables(s){
+  if (!s || !s.serie || s.serie.length < 31) return null;
+  const v = s.serie, u = v[v.length - 1][1], a = n => v[v.length - 1 - n][1];
+  return {total: u, d1: u - a(1), d7: u - a(7), d30: u - a(30)};
+}
+function card(titulo, valorPrincipal, linhas, rodape){
+  const c = document.createElement("div"); c.className = "card";
+  c.innerHTML = `<div class="k"></div><div class="v"></div>`;
+  c.querySelector(".k").textContent = titulo;
+  c.querySelector(".v").replaceChildren(...valorPrincipal);
+  for (const [k, v] of linhas) { const l = document.createElement("div"); l.className = "linha"; l.innerHTML = `<span></span><b class="${cls(v)}"></b>`; l.firstChild.textContent = k; l.lastChild.textContent = usd(v, true); c.append(l); }
+  if (rodape) { const r = document.createElement("div"); r.className = "k"; r.style.marginTop = "6px"; r.textContent = rodape; c.append(r); }
+  return c;
+}
+const span = (t, c) => Object.assign(document.createElement("span"), {textContent: t, className: c || ""});
+
+function desenharTudo(){
+  const box = $("cards"); box.replaceChildren();
+  const st = resumoStables(D.stables);
+  if (st) box.append(card("Stablecoins (oferta total)", [span(usd(st.total))], [["24 horas", st.d1], ["7 dias", st.d7], ["30 dias", st.d30]], "Dólar digital disponível para comprar cripto"));
+  for (const [id, nome] of [["etfBtc", "ETFs de Bitcoin (EUA)"], ["etfEth", "ETFs de Ethereum (EUA)"]]) {
+    const r = resumoEtf(D[id]);
+    if (r) box.append(card(nome, [span(usd(r.ult, true), cls(r.ult))], [["Último dia (" + r.data.split("-").reverse().slice(0, 2).join("/") + ")", r.ult], ["Últimos 5 pregões", r.s7], ["Últimos 21 pregões", r.s30]], "Entrada líquida dos fundos à vista"));
+  }
+  if (D.cex && D.cex.length) {
+    const tot = k => D.cex.reduce((a, x) => a + (x[k] || 0), 0);
+    box.append(card("Corretoras (" + D.cex.length + " maiores)", [span(usd(D.cex.reduce((a, x) => a + x.ativos, 0)))], [["Fluxo 24h", tot("d1")], ["Fluxo 7 dias", tot("d7")], ["Fluxo 30 dias", tot("d30")]], "Reservas publicadas e fluxo líquido"));
+  }
+  desenharCex(); desenharEtf();
+}
+
+// ---------- tabela de corretoras (ordenável) ----------
+let ordCex = {col: "ativos", asc: false};
+function desenharCex(){
+  const t = $("tabCex"); t.replaceChildren();
+  if (!D.cex || !D.cex.length) { t.innerHTML = "<tr><td>Sem dados de corretoras nesta coleta.</td></tr>"; return; }
+  const cols = [["nome", "Corretora"], ["ativos", "Reservas"], ["d1", "Fluxo 24h"], ["d7", "Fluxo 7d"], ["d30", "Fluxo 30d"]];
+  const cab = document.createElement("tr");
+  for (const [k, n] of cols) {
+    const th = document.createElement("th"); th.textContent = n;
+    if (k === ordCex.col) th.className = "ord" + (ordCex.asc ? " asc" : "");
+    th.addEventListener("click", () => { ordCex = {col: k, asc: ordCex.col === k ? !ordCex.asc : false}; desenharCex(); });
+    cab.append(th);
+  }
+  t.append(cab);
+  const lista = [...D.cex].sort((a, b) => { const va = a[ordCex.col], vb = b[ordCex.col]; const r = typeof va === "string" ? va.localeCompare(vb) : (va ?? -Infinity) - (vb ?? -Infinity); return ordCex.asc ? r : -r; });
+  lista.forEach((x, i) => {
+    const tr = document.createElement("tr");
+    const tdN = document.createElement("td"); tdN.className = "nome";
+    tdN.append(span(String(i + 1), "n"));
+    if (x.logo) { const im = document.createElement("img"); im.src = x.logo; im.alt = ""; im.loading = "lazy"; im.onerror = () => im.remove(); tdN.append(im); }
+    const nm = span(x.nome); tdN.append(nm);
+    if (x.composicao) tdN.title = "Maiores reservas: " + x.composicao.map(([s, v]) => s + " " + usd(v)).join(", ");
+    tr.append(tdN);
+    for (const k of ["ativos", "d1", "d7", "d30"]) { const td = document.createElement("td"); td.textContent = usd(x[k], k !== "ativos"); if (k !== "ativos") td.className = cls(x[k]); tr.append(td); }
+    t.append(tr);
+  });
+}
+
+// ---------- ETFs: gráfico de barras diário + tabela por fundo ----------
+function desenharEtf(){
+  const e = D[abaEtf], r = resumoEtf(e), t = $("tabEtf");
+  t.replaceChildren();
+  if (!r) { $("etfInfo").textContent = (D.status && D.status[abaEtf]) ? "fonte indisponível nesta coleta" : ""; desenharBarras([]); return; }
+  $("etfInfo").textContent = "último pregão: " + r.data.split("-").reverse().join("/");
+  desenharBarras(r.dias.slice(-60));
+  const dias = r.dias, soma = (f, n) => dias.slice(-n).reduce((a, d) => a + (d.fundos[f] || 0), 0) * 1e6;
+  const desde = dias[0].data.split("-").reverse().join("/");
+  const linhas = e.fundos.map(f => ({f, ult: (dias[dias.length - 1].fundos[f] || 0) * 1e6, s5: soma(f, 5), s21: soma(f, 21), tot: soma(f, dias.length)}))
+    .filter(l => l.tot || l.s21 || l.ult).sort((a, b) => b.tot - a.tot);
+  t.innerHTML = `<tr><th>Fundo</th><th>Último pregão</th><th>5 pregões</th><th>21 pregões</th><th>Acumulado desde ${desde}</th></tr>`;
+  for (const l of linhas) {
+    const tr = document.createElement("tr");
+    const tdN = document.createElement("td"); tdN.className = "nome"; tdN.append(span(l.f), span(EMISSOR[l.f] || "", "k"));
+    tr.append(tdN);
+    for (const k of ["ult", "s5", "s21", "tot"]) { const td = document.createElement("td"); td.textContent = usd(l[k], true); td.className = cls(l[k]); tr.append(td); }
+    t.append(tr);
+  }
+}
+let barras = [];
+function desenharBarras(dias){
+  barras = dias;
+  const cv = $("cvEtf"), box = $("grafEtf"), dpr = window.devicePixelRatio || 1;
+  const W = box.clientWidth - 20, H = box.clientHeight - 20;
+  cv.width = W * dpr; cv.height = H * dpr; cv.style.width = W + "px"; cv.style.height = H + "px";
+  const c = cv.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, W, H);
+  if (!dias.length) { c.fillStyle = "#787b86"; c.fillText("Sem dados de ETF nesta coleta", 10, 20); return; }
+  const esq = 54, base = H - 18, mx = Math.max(...dias.map(d => Math.abs(d.total || 0))) || 1, meio = (base + 4) / 2;
+  const y0 = meio, esc = (meio - 6) / mx, larg = (W - esq) / dias.length;
+  c.font = "10.5px sans-serif"; c.fillStyle = "#787b86"; c.textAlign = "right";
+  for (const v of [mx, mx / 2, 0, -mx / 2, -mx]) { const y = y0 - v * esc; c.fillText(usd(v * 1e6, true), esq - 6, y + 3); c.strokeStyle = v === 0 ? "#c3c6ce" : "#f0f1f4"; c.beginPath(); c.moveTo(esq, y); c.lineTo(W, y); c.stroke(); }
+  dias.forEach((d, i) => {
+    const v = d.total || 0, x = esq + i * larg + larg * 0.15, h = v * esc;
+    c.fillStyle = v >= 0 ? "#089981" : "#f23645"; c.fillRect(x, h >= 0 ? y0 - h : y0, larg * 0.7, Math.abs(h) || 1);
+    if (i % Math.ceil(dias.length / 8) === 0) { c.fillStyle = "#787b86"; c.textAlign = "center"; c.fillText(d.data.slice(8) + "/" + d.data.slice(5, 7), x + larg * 0.35, H - 2); }
+  });
+  desenharBarras.geo = {esq, larg};
+}
+$("grafEtf").addEventListener("pointermove", ev => {
+  const g = desenharBarras.geo, dc = $("dicaEtf"); if (!g || !barras.length) return;
+  const r = $("grafEtf").getBoundingClientRect(), x = ev.clientX - r.left - 10, i = Math.floor((x - g.esq) / g.larg);
+  if (i < 0 || i >= barras.length) { dc.style.display = "none"; return; }
+  const d = barras[i], top = Object.entries(d.fundos).filter(([, v]) => v).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 4);
+  dc.innerHTML = `<div class="k">${d.data.split("-").reverse().join("/")}</div><b class="${cls(d.total)}">Total ${usd((d.total || 0) * 1e6, true)}</b>` + top.map(([f, v]) => `<div>${f} <span class="k">${EMISSOR[f] || ""}</span>: <b class="${cls(v)}">${usd(v * 1e6, true)}</b></div>`).join("");
+  dc.style.display = "block"; dc.style.left = Math.min(x + 20, r.width - dc.offsetWidth - 8) + "px"; dc.style.top = "8px";
+});
+$("grafEtf").addEventListener("pointerleave", () => { $("dicaEtf").style.display = "none"; });
+$("abaEtf").addEventListener("click", ev => { const b = ev.target.closest("button"); if (!b) return; abaEtf = b.dataset.v; for (const x of $("abaEtf").children) x.classList.toggle("on", x === b); if (D) desenharEtf(); });
+window.addEventListener("resize", () => { if (D) desenharEtf(); });
+carregar(); setInterval(carregar, 15 * 60e3);
+</script>
+</body>
+</html>
