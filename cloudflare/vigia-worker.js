@@ -141,7 +141,7 @@ async function vigiar(env, quando, forcarStatus = false) {
       if (achou) {
         const [c, desc] = achou;
         const hora = new Date(c.t * 1000).toLocaleTimeString("pt-BR", {timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit"});
-        avisos.push(simb + " " + (c.c >= c.o ? "subiu" : "caiu") + " e tocou " + desc + " às " + hora);
+        avisos.push(simb + " " + (c.c >= c.o ? "subiu" : "caiu") + " e tocou " + desc + " às " + hora + (d.nota ? " — " + d.nota : ""));
         d.alerta = false; d.disparadoVigia = Date.now();
         disparados[ch] = agora; mudou = true;
       }

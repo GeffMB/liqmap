@@ -192,7 +192,7 @@ button,select,input{font:inherit;color:inherit}
       <div id="chart"></div>
       <canvas id="des"></canvas>
       <div class="aviso" id="aviso"></div>
-      <div class="selbar" id="selbar"><span id="selNome"></span><button id="selAlerta" title="Avisar quando o preço cruzar este desenho">🔔 Alerta</button><button id="selApagar" title="Apagar desenho (Delete)">🗑 Apagar</button><button id="selFechar" title="Tirar seleção (Esc)">✕</button></div>
+      <div class="selbar" id="selbar"><span id="selNome"></span><button id="selNota" title="Escrever o motivo deste desenho">✏️ Nota</button><button id="selAlerta" title="Avisar quando o preço cruzar este desenho">🔔 Alerta</button><button id="selApagar" title="Apagar desenho (Delete)">🗑 Apagar</button><button id="selFechar" title="Tirar seleção (Esc)">✕</button></div>
       <div class="legenda" id="legenda"></div>
       <div class="deriv" id="deriv"></div>
       <div class="alertas" id="alertas"></div>
@@ -714,7 +714,7 @@ function checarAlertas(preco){
     for (const [nv, desc] of niveisAlerta(d)) {
       if ((ant < nv && preco >= nv) || (ant > nv && preco <= nv)) {
         d.alerta = false; mudou = true;
-        dispararAlerta(cfg.simbolo + " " + (preco > ant ? "subiu e cruzou " : "caiu e cruzou ") + desc + " · preço " + pr(preco));
+        dispararAlerta(cfg.simbolo + " " + (preco > ant ? "subiu e cruzou " : "caiu e cruzou ") + desc + " · preço " + pr(preco) + (d.nota ? " — " + d.nota : ""));
         break;
       }
     }
@@ -772,6 +772,14 @@ function dispararAlerta(txt){
   try { if ("Notification" in window && Notification.permission === "granted") new Notification("LiqMap — alerta", {body: txt, icon: "logo.svg", tag: "liqmap-" + Date.now()}); } catch (e) {}
   const t0 = document.title; let n = 0; const pisca = setInterval(() => { document.title = n++ % 2 ? t0 : "🔔 ALERTA " + cfg.simbolo; if (n > 10) clearInterval(pisca); }, 700);
 }
+$("selNota").addEventListener("click", () => {
+  if (selecionado < 0) return;
+  const d = desenhos[selecionado];
+  const txt = window.prompt("Motivo / anotação deste desenho (deixe vazio para apagar):", d.nota || "");
+  if (txt === null) return;
+  if (txt.trim()) d.nota = txt.trim().slice(0, 120); else delete d.nota;
+  salvarDesenhos(); mostrarSel(); desVersao++;
+});
 $("selAlerta").addEventListener("click", () => {
   if (selecionado < 0) return;
   const d = desenhos[selecionado]; d.alerta = !d.alerta;
@@ -2072,6 +2080,7 @@ function mostrarSel(){
   if (selecionado >= 0) {
     const d = desenhos[selecionado];
     $("selNome").textContent = NOMES_DES[d.tipo] || "Desenho";
+    $("selNota").textContent = d.nota ? "✏️ Editar nota" : "✏️ Nota";
     $("selAlerta").style.display = ALERTAVEIS.includes(d.tipo) ? "" : "none";
     $("selAlerta").textContent = d.alerta ? "🔕 Tirar alerta" : "🔔 Alerta";
   }
@@ -2173,10 +2182,28 @@ function pontaRaio(a, b, W, longe){
   const dx = b[0] - a[0], dy = b[1] - a[1], n = Math.hypot(dx, dy) || 1;
   return [a[0] + dx / n * longe, a[1] + dy / n * longe];
 }
+// anotação escrita pelo usuário (o "motivo" do desenho), numa etiqueta junto da linha
+function desenharNota(c, d, P, W){
+  c.save();
+  c.font = "600 11.5px -apple-system,Segoe UI,Roboto,sans-serif";
+  const txt = d.nota.length > 60 ? d.nota.slice(0, 58) + "…" : d.nota, tw = c.measureText(txt).width;
+  let x, y;
+  if (d.tipo === "horizontal") { x = (d.alerta ? 26 : 8); y = P[0][1] - 18; }
+  else if (d.tipo === "raioH") { x = P[0][0] + 8; y = P[0][1] - 18; }
+  else if (d.tipo === "zonaLiq") { x = 8; y = Math.min(P[0][1], P[1][1]) - 18; }
+  else if (d.tipo === "retangulo" || d.tipo === "posicao") { x = Math.min(...P.map(q => q[0])) + 4; y = Math.min(...P.map(q => q[1])) - 18; }
+  else { x = P[0][0] + 8; y = P[0][1] - 20; }
+  x = Math.max(2, Math.min(x, W - tw - 14)); y = Math.max(2, y);
+  c.fillStyle = "rgba(255,255,255,0.92)"; c.strokeStyle = COR_DES; c.lineWidth = 1;
+  c.beginPath(); if (c.roundRect) c.roundRect(x, y, tw + 12, 16, 4); else c.rect(x, y, tw + 12, 16); c.fill(); c.stroke();
+  c.fillStyle = COR_DES; c.fillText(txt, x + 6, y + 12);
+  c.restore();
+}
 function desenharUm(c, g, d, W){
   const P = d.pts.map(q => [xDe(g, q.t), serie.priceToCoordinate(q.p)]);
   if (P.some(q => q[1] == null)) return;
   if (d.alerta) { c.font = "12px sans-serif"; c.fillText("🔔", (d.tipo === "horizontal" ? 8 : P[0][0] + 6), P[0][1] - 6); }
+  if (d.nota) desenharNota(c, d, P, W);
   c.strokeStyle = COR_DES; c.fillStyle = COR_DES; c.lineWidth = 1.4; c.setLineDash([]);
   if (d.tipo === "linha") {
     c.beginPath(); c.moveTo(...P[0]); c.lineTo(...P[1]); c.stroke();

@@ -167,7 +167,7 @@ def main():
                 c, nv, desc = achou
                 subiu = c["c"] >= c["o"]
                 hora = time.strftime("%H:%M", time.gmtime(c["t"] - 3 * 3600))
-                avisos.append(f"{simb} {'subiu' if subiu else 'caiu'} e tocou {desc} às {hora} (Brasília)")
+                avisos.append(f"{simb} {'subiu' if subiu else 'caiu'} e tocou {desc} às {hora} (Brasília)" + (f" — {d['nota']}" if d.get("nota") else ""))
                 d["alerta"] = False
                 d["disparadoVigia"] = int(agora * 1000)
                 disparados[ch] = agora
