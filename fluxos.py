@@ -138,8 +138,8 @@ def etf(url):
             continue
         data = f"{m.group(3)}-{MESES[m.group(2)]:02d}-{int(m.group(1)):02d}"
         vals = {cab[i]: num(linha[i]) for i in range(1, min(len(cab), len(linha))) if cab[i]}
-        if all(v is None for v in vals.values()):
-            continue
+        if all(v is None for k, v in vals.items() if k != "Total"):
+            continue   # dia ainda sem números dos fundos (pregão em andamento)
         dias.append({"data": data, "fundos": {k: v for k, v in vals.items() if k != "Total" and v is not None},
                      "total": vals.get("Total")})
     if not dias:

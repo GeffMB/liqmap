@@ -100,7 +100,7 @@ const cls = x => x == null ? "" : x >= 0 ? "up" : "down";
 const EMISSOR = {
   IBIT: "BlackRock", FBTC: "Fidelity", BITB: "Bitwise", ARKB: "Ark / 21Shares", BTCO: "Invesco Galaxy", EZBC: "Franklin", BRRR: "CoinShares",
   HODL: "VanEck", BTCW: "WisdomTree", GBTC: "Grayscale", BTC: "Grayscale Mini", MSBT: "Morgan Stanley",
-  ETHA: "BlackRock", FETH: "Fidelity", ETHW: "Bitwise", CETH: "21Shares", ETHV: "VanEck", QETH: "Invesco Galaxy", EZET: "Franklin", ETHE: "Grayscale", ETH: "Grayscale Mini"
+  ETHA: "BlackRock", TETH: "21Shares", MSSE: "Morgan Stanley", FETH: "Fidelity", ETHW: "Bitwise", CETH: "21Shares", ETHV: "VanEck", QETH: "Invesco Galaxy", EZET: "Franklin", ETHE: "Grayscale", ETH: "Grayscale Mini"
 };
 let D = null, abaEtf = "etfBtc";
 
@@ -117,7 +117,7 @@ async function carregar(){
 // somas de ETF: último dia, 7 e 30 dias úteis (valores da Farside em US$ milhões)
 function resumoEtf(e){
   if (!e || !e.dias || !e.dias.length) return null;
-  const dias = e.dias.filter(d => d.total != null);
+  const dias = e.dias.filter(d => d.total != null && Object.keys(d.fundos || {}).length);
   const soma = n => dias.slice(-n).reduce((a, d) => a + d.total, 0) * 1e6;
   const ult = dias[dias.length - 1];
   return {ult: ult.total * 1e6, data: ult.data, s7: soma(5), s30: soma(21), dias};
