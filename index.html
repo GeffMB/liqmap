@@ -353,7 +353,7 @@ const INDICADORES = [
 
 // ---------- preferências (só neste navegador) ----------
 function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap2") || "{}"); } catch(e){ return {}; } }
-function salvarPrefs(){ try { localStorage.setItem("liqmap2", JSON.stringify(cfg)); } catch(e){} if (typeof agendarSync === "function") agendarSync(); }
+function salvarPrefs(){ try { localStorage.setItem("liqmap2", JSON.stringify(cfg)); } catch(e){} if (typeof agendarSync === "function") agendarSync(4000, "liqmap2"); }
 const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, baleiaMin: 0, conta: 1000, riscoPct: 1, alav: 10, lado: false, mmPer: "9, 21, 200", mmTipo: "e", rsiPer: 14, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
 if (!SIMBOLOS.includes(cfg.simbolo)) cfg.simbolo = "BTCUSDT";
 if (cfg.derivMin === undefined) cfg.derivMin = matchMedia("(max-width: 760px)").matches;   // celular: painel de derivativos começa recolhido
@@ -614,7 +614,7 @@ function novaBaleia(t, p, usdv, compra){
   if (baleias.length > 3000) baleias.splice(0, baleias.length - 3000);
   assinatura = "";
   clearTimeout(baleiaSalvar);
-  baleiaSalvar = setTimeout(() => { try { localStorage.setItem("liqmap-baleias-" + cfg.simbolo, JSON.stringify(baleias)); } catch (e) {} agendarSync(60000); }, 2000);
+  baleiaSalvar = setTimeout(() => { try { localStorage.setItem("liqmap-baleias-" + cfg.simbolo, JSON.stringify(baleias)); } catch (e) {} agendarSync(60000, "liqmap-baleias-" + cfg.simbolo); }, 2000);
 }
 // uma ordem a mercado grande "varre" vários preços e chega em vários aggTrades com o mesmo horário e lado;
 // junta esses pedaços numa ordem só antes de comparar com o mínimo
@@ -800,7 +800,7 @@ function novaLiq(sm, t, p, u, long){
   liqs[sm].push({t, p, u, l: long ? 1 : 0});
   if (liqs[sm].length > 4000) liqs[sm].splice(0, liqs[sm].length - 4000);
   clearTimeout(liqSalvar[sm]);
-  liqSalvar[sm] = setTimeout(() => { try { localStorage.setItem("liqmap-liqs-" + sm, JSON.stringify(liqs[sm])); } catch (e) {} agendarSync(60000); }, 3000);
+  liqSalvar[sm] = setTimeout(() => { try { localStorage.setItem("liqmap-liqs-" + sm, JSON.stringify(liqs[sm])); } catch (e) {} agendarSync(60000, "liqmap-liqs-" + sm); }, 3000);
   if (sm === cfg.simbolo && cfg.ind.liqs) assinatura = "";
 }
 function totaisLiq(sm, ms){
@@ -1921,8 +1921,15 @@ function carregarDesenhos(){
   if ($("f_cursor")) atualizarBarra();
 }
 function salvarDesenhos(){
-  try { localStorage.setItem("liqmap-des-" + cfg.simbolo, JSON.stringify(desenhos)); } catch(e) {}
-  agendarSync();
+  // cada desenho tem um id e a hora da última edição (usados para juntar mudanças vindas de outro aparelho)
+  const ch = "liqmap-des-" + cfg.simbolo, antes = new Map();
+  try { for (const d of JSON.parse(localStorage.getItem(ch) || "[]")) if (d && d.id) antes.set(d.id, JSON.stringify(Object.assign({}, d, {mod: 0}))); } catch (e) {}
+  for (const d of desenhos) {
+    if (!d.id) d.id = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    if (antes.get(d.id) !== JSON.stringify(Object.assign({}, d, {mod: 0}))) d.mod = Date.now();
+  }
+  try { localStorage.setItem(ch, JSON.stringify(desenhos)); } catch(e) {}
+  agendarSync(4000, ch);
   desVersao++; atualizarBarra();
 }
 
@@ -2290,26 +2297,48 @@ function desenharDesenhos(){
 }
 
 // ---------- sincronização entre aparelhos (Gist privado do GitHub do próprio usuário) ----------
-// Guarda todas as chaves "liqmap..." do navegador num arquivo JSON de um Gist secreto. O token fica só
-// no localStorage deste aparelho e nunca é sincronizado. Vale a versão salva por último (aparelho a aparelho).
-const SYNC_ARQ = "liqmap-sync.json";
-let syncTimer = 0, syncEnviando = false, syncPronto = false;   // pronto = já comparou com a nuvem ao abrir
+// Guarda as chaves "liqmap..." do navegador num arquivo JSON de um Gist secreto. O token fica só neste
+// aparelho. A cada sincronização faz uma junção em 3 vias (o que este aparelho tem × o que está na nuvem ×
+// o que foi combinado na última vez): só o lado que mudou é levado; se os dois mudaram, os desenhos são
+// juntados um a um (pelo id) e os ajustes ficam com a edição mais recente. Assim nada de um aparelho
+// apaga o que o outro fez.
+const SYNC_ARQ = "liqmap-sync.json", CH_BASE = "liqmapSyncBase", CH_MOD = "liqmapSyncMod";
+const NAO_SYNC = new Set(["liqmapSyncCfg", "liqmapSyncTs", CH_BASE, CH_MOD]);
+let syncTimer = 0, sincronizando = false, syncDeNovo = false, preferirNuvem = false;
 function syncCfg(){ try { return JSON.parse(localStorage.getItem("liqmapSyncCfg") || "null"); } catch (e) { return null; } }
+function lerJ(k, pad){ try { const v = JSON.parse(localStorage.getItem(k) || "null"); return v == null ? pad : v; } catch (e) { return pad; } }
+function gravar(k, v){ try { localStorage.setItem(k, typeof v === "string" ? v : JSON.stringify(v)); } catch (e) {} }
 function gh(caminho, op = {}){
   const c = syncCfg();
   return fetch("https://api.github.com" + caminho, Object.assign({}, op, {headers: {"Authorization": "Bearer " + (op.token || c.token), "Accept": "application/vnd.github+json", "Content-Type": "application/json"}}))
     .then(async r => { if (!r.ok) throw new Error(r.status === 401 ? "token inválido ou vencido" : r.status === 403 ? "token sem permissão de gist" : "GitHub respondeu " + r.status); return r.json(); });
 }
-function pacoteLocal(){
-  const dados = {};
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (!k || !k.startsWith("liqmap") || k === "liqmapSyncCfg" || k === "liqmapSyncTs") continue;
-    let v = localStorage.getItem(k);
-    if (k.startsWith("liqmap-baleias-") || k.startsWith("liqmap-liqs-")) { try { v = JSON.stringify(JSON.parse(v).slice(-300)); } catch (e) {} }   // histórico enxuto: arquivo leve para o vigia
-    dados[k] = v;
+const ehHistorico = k => k.startsWith("liqmap-baleias-") || k.startsWith("liqmap-liqs-");
+function valorLocal(k){
+  let v = localStorage.getItem(k);
+  if (v != null && ehHistorico(k)) { try { v = JSON.stringify(JSON.parse(v).slice(-300)); } catch (e) {} }   // histórico enxuto: arquivo leve para o vigia
+  return v;
+}
+function chavesLocais(){ const out = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith("liqmap") && !NAO_SYNC.has(k)) out.push(k); } return out; }
+function pacoteLocal(){ const dados = {}; for (const k of chavesLocais()) dados[k] = valorLocal(k); return {versao: 2, atualizado: Date.now(), dados, mod: lerJ(CH_MOD, {})}; }
+function hashTxt(t){ let h = 2166136261; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); }
+// desenhos antigos não tinham id: usa um id fixo tirado do próprio conteúdo (igual nos dois aparelhos)
+function comIds(lista){ return (Array.isArray(lista) ? lista : []).map(d => d && d.id ? d : Object.assign({}, d, {id: "h" + hashTxt(JSON.stringify(d))})); }
+const lerLista = t => { try { return comIds(JSON.parse(t || "[]")); } catch (e) { return []; } };
+function juntarDesenhos(lTxt, rTxt, bTxt){
+  const L = lerLista(lTxt), R = lerLista(rTxt), B = lerLista(bTxt);
+  const mL = new Map(L.map(d => [d.id, d])), mR = new Map(R.map(d => [d.id, d])), mB = new Map(B.map(d => [d.id, d]));
+  const js = x => x ? JSON.stringify(Object.assign({}, x, {mod: 0})) : "";
+  const ordem = [...L.map(d => d.id), ...R.map(d => d.id).filter(id => !mL.has(id))];
+  const out = [];
+  for (const id of ordem) {
+    const l = mL.get(id), r = mR.get(id), b = mB.get(id), lc = js(l) !== js(b), rc = js(r) !== js(b);
+    let v;
+    if (!rc) v = l; else if (!lc) v = r;
+    else v = l && r ? ((r.mod || 0) > (l.mod || 0) ? r : l) : (l || r);   // os dois mexeram: fica a edição mais recente (editar vence apagar)
+    if (v) out.push(v);
   }
-  return {versao: 1, atualizado: +(localStorage.getItem("liqmapSyncTs") || 0), dados};
+  return JSON.stringify(out);
 }
 function mostrarSync(msg){
   const c = syncCfg();
@@ -2317,22 +2346,13 @@ function mostrarSync(msg){
   if (msg != null) $("syncStatus").textContent = msg;
   else if (c) $("syncStatus").textContent = c.ultimo ? "Sincronizado às " + new Date(c.ultimo).toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}) : "Conectado";
 }
-// mudanca=false (histórico de baleias) envia junto, mas não conta como "edição mais nova" deste aparelho
-function agendarSync(espera = 4000, mudanca = espera < 60000){
-  if (mudanca && syncPronto) try { localStorage.setItem("liqmapSyncTs", String(Date.now())); } catch (e) {}
-  if (!syncCfg()) return;
-  clearTimeout(syncTimer); syncTimer = setTimeout(enviarSync, espera);
-}
-async function enviarSync(){
-  const c = syncCfg(); if (!c || syncEnviando) return;
-  syncEnviando = true;
+// chamado sempre que algo "liqmap..." é salvo neste aparelho
+function agendarSync(espera = 4000, chave){
   try {
-    const pac = pacoteLocal();
-    if (!pac.atualizado) { pac.atualizado = Date.now(); localStorage.setItem("liqmapSyncTs", String(pac.atualizado)); }
-    await gh("/gists/" + c.gist, {method: "PATCH", body: JSON.stringify({files: {[SYNC_ARQ]: {content: JSON.stringify(pac)}}})});
-    c.ultimo = Date.now(); localStorage.setItem("liqmapSyncCfg", JSON.stringify(c)); mostrarSync();
-  } catch (e) { mostrarSync("Erro ao sincronizar: " + e.message); }
-  finally { syncEnviando = false; }
+    if (chave) { const m = lerJ("liqmapSyncMod", {}); m[chave] = Date.now(); gravar("liqmapSyncMod", m); }
+    if (!syncCfg()) return;
+    clearTimeout(syncTimer); syncTimer = setTimeout(sincronizar, espera);
+  } catch (e) {}   // chamado antes de a seção de sincronização carregar: só marca a hora da edição
 }
 async function lerRemoto(c){
   const g = await gh("/gists/" + c.gist);
@@ -2343,23 +2363,59 @@ async function lerRemoto(c){
   const txt = f.truncated ? await (await fetch(f.raw_url)).text() : f.content;
   try { return JSON.parse(txt); } catch (e) { return null; }
 }
-// ao abrir (ou voltar para a aba): se a nuvem tem algo mais novo que este aparelho, aplica e recarrega
-async function puxarSync(forcar){
-  const c = syncCfg(); if (!c) { syncPronto = true; return; }
+async function sincronizar(){
+  const c = syncCfg(); if (!c) return;
+  if (sincronizando) { syncDeNovo = true; return; }
+  sincronizando = true; clearTimeout(syncTimer);
   try {
-    const rem = await lerRemoto(c);
-    const local = +(localStorage.getItem("liqmapSyncTs") || 0);
-    if (rem && (forcar || rem.atualizado > local + 1000)) {
-      for (const k of Object.keys(localStorage)) if (k.startsWith("liqmap") && k !== "liqmapSyncCfg" && !(k in rem.dados)) localStorage.removeItem(k);
-      for (const [k, v] of Object.entries(rem.dados)) localStorage.setItem(k, v);
-      localStorage.setItem("liqmapSyncTs", String(rem.atualizado));
-      c.ultimo = Date.now(); localStorage.setItem("liqmapSyncCfg", JSON.stringify(c));
-      location.reload(); return;
+    const rem = (await lerRemoto(c)) || {};
+    const R = rem.dados || {}, Rmod = rem.mod || {}, B = lerJ(CH_BASE, {}), Lmod = lerJ(CH_MOD, {});
+    const final = {}, finalMod = {}, mudouLocal = [];
+    let mudouNuvem = false;
+    for (const k of new Set([...chavesLocais(), ...Object.keys(R), ...Object.keys(B)])) {
+      if (NAO_SYNC.has(k)) continue;
+      const l = valorLocal(k), r = k in R ? R[k] : null, b = k in B ? B[k] : null;
+      const lc = l !== b, rc = r !== b;
+      let v, m;
+      if (!rc) { v = l; m = Lmod[k] || Rmod[k] || 0; }
+      else if (!lc) { v = r; m = Rmod[k] || 0; }
+      else if (k.startsWith("liqmap-des-")) { v = juntarDesenhos(l, r, b); m = Math.max(Lmod[k] || 0, Rmod[k] || 0); }
+      else if (ehHistorico(k)) {   // históricos (baleias, liquidações): junta os dois lados sem repetir
+        let a = []; try { a = JSON.parse(l || "[]").concat(JSON.parse(r || "[]")); } catch (e) {}
+        const vistos = new Set(); a = a.filter(x => { const h = x.t + "|" + x.p + "|" + x.u; if (vistos.has(h)) return false; vistos.add(h); return true; }).sort((x, y) => x.t - y.t).slice(-300);
+        v = JSON.stringify(a); m = Math.max(Lmod[k] || 0, Rmod[k] || 0);
+      } else {
+        const nuvem = preferirNuvem ? r != null : (Rmod[k] || 0) > (Lmod[k] || 0);
+        v = nuvem ? r : l; m = nuvem ? Rmod[k] || 0 : Lmod[k] || 0;
+      }
+      if (v == null) { if (localStorage.getItem(k) != null) mudouLocal.push(k); if (r != null) mudouNuvem = true; continue; }
+      final[k] = v; finalMod[k] = m;
+      if (v !== l) mudouLocal.push(k);
+      if (v !== r) mudouNuvem = true;
     }
-    if (!rem || local > rem.atualizado + 1000) await enviarSync();   // este aparelho está mais novo
-    else { c.ultimo = Date.now(); localStorage.setItem("liqmapSyncCfg", JSON.stringify(c)); mostrarSync(); }
+    if (mudouNuvem) {
+      const pac = Object.assign({}, rem, {versao: 2, atualizado: Date.now(), dados: final, mod: finalMod});
+      await gh("/gists/" + c.gist, {method: "PATCH", body: JSON.stringify({files: {[SYNC_ARQ]: {content: JSON.stringify(pac)}}})});
+    }
+    for (const k of mudouLocal) { if (k in final) gravar(k, final[k]); else localStorage.removeItem(k); }
+    gravar(CH_BASE, final); gravar(CH_MOD, finalMod);
+    preferirNuvem = false;
+    c.ultimo = Date.now(); gravar("liqmapSyncCfg", c); mostrarSync();
+    aplicarRecebidos(mudouLocal);
   } catch (e) { mostrarSync("Erro ao sincronizar: " + e.message); }
-  finally { syncPronto = true; }
+  finally {
+    sincronizando = false;
+    if (syncDeNovo) { syncDeNovo = false; setTimeout(sincronizar, 500); }
+  }
+}
+// mostra na hora o que chegou de outro aparelho (sem recarregar a página, a não ser nos ajustes gerais)
+function aplicarRecebidos(chaves){
+  if (!chaves.length) return;
+  if (chaves.includes("liqmap2")) { location.reload(); return; }
+  if (chaves.includes("liqmap-des-" + cfg.simbolo) && !arrasto && !rascunho) { const sel = selecionado; carregarDesenhos(); if (sel >= 0 && sel < desenhos.length) { selecionado = sel; mostrarSel(); } }
+  if (chaves.includes("liqmap-baleias-" + cfg.simbolo)) lerBaleias();
+  if (chaves.some(k => k.startsWith("liqmap-liqs-"))) lerLiqs();
+  assinatura = ""; desVersao++;
 }
 $("syncLigar").addEventListener("click", async () => {
   const token = $("syncToken").value.trim(); if (!token) return;
@@ -2374,18 +2430,20 @@ $("syncLigar").addEventListener("click", async () => {
     }
     const novo = !gist;
     if (novo) gist = (await gh("/gists", {token, method: "POST", body: JSON.stringify({description: "LiqMap — sincronização (desenhos e ajustes)", public: false, files: {[SYNC_ARQ]: {content: JSON.stringify(pacoteLocal())}}})})).id;
-    localStorage.setItem("liqmapSyncCfg", JSON.stringify({token, gist}));
+    gravar("liqmapSyncCfg", {token, gist});
     $("syncToken").value = "";
-    if (novo) { syncPronto = true; agendarSync(0); await enviarSync(); } else await puxarSync(true);   // aparelho novo: a nuvem vale
+    localStorage.removeItem(CH_BASE);
+    preferirNuvem = !novo;   // aparelho entrando num Gist que já existe: ajustes vêm da nuvem; desenhos são juntados
+    await sincronizar();
     mostrarSync();
   } catch (e) { alert("Não foi possível conectar: " + e.message); }
   finally { $("syncLigar").disabled = false; $("syncLigar").textContent = "Conectar"; }
 });
-$("syncAgora").addEventListener("click", () => puxarSync());
-$("syncDesligar").addEventListener("click", () => { localStorage.removeItem("liqmapSyncCfg"); mostrarSync(); });
-document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") puxarSync(); else if (syncTimer) { clearTimeout(syncTimer); enviarSync(); } });
-mostrarSync(); puxarSync();
-setInterval(() => { if (document.visibilityState === "visible" && !arrasto && !rascunho) puxarSync(); }, 3 * 60e3);   // pega alertas desligados pelo vigia e mudanças de outros aparelhos
+$("syncAgora").addEventListener("click", () => sincronizar());
+$("syncDesligar").addEventListener("click", () => { localStorage.removeItem("liqmapSyncCfg"); localStorage.removeItem(CH_BASE); mostrarSync(); });
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") sincronizar(); else if (syncTimer) sincronizar(); });
+mostrarSync(); sincronizar();
+setInterval(() => { if (document.visibilityState === "visible" && !arrasto && !rascunho) sincronizar(); }, 2 * 60e3);   // traz mudanças de outros aparelhos e alertas desligados pelo vigia
 
 // ---------- foto do gráfico (mapa + candles + desenhos) ----------
 $("bFoto").addEventListener("click", () => {
