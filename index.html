@@ -237,6 +237,7 @@ button,select,input{font:inherit;color:inherit}
   <h4>Ajustes do modelo</h4>
   <label>Candles <select id="barras"><option>300</option><option>500</option><option selected>1000</option><option>1500</option></select></label>
   <label>Filtro de ruído <input id="filtro" type="number" min="0" step="0.1" value="1.0"></label>
+  <label>Mapa de liquidação mostra <select id="mapaNivel" style="width:150px"><option value="forte">Só zonas fortes</option><option value="medio">Médias e fortes</option><option value="tudo">Tudo (completo)</option></select></label>
   <label>Média do volume (candles) <input id="mediaVol" type="number" min="20" step="1" value="610"></label>
   <label>Médias móveis (períodos) <input id="mmPer" type="text" value="9, 21, 200" style="width:110px"></label>
   <label>Tipo das médias <select id="mmTipo" style="width:150px"><option value="e">Exponencial (MME)</option><option value="s">Simples (MMS)</option></select></label>
@@ -354,7 +355,7 @@ const INDICADORES = [
 // ---------- preferências (só neste navegador) ----------
 function lerPrefs(){ try { return JSON.parse(localStorage.getItem("liqmap2") || "{}"); } catch(e){ return {}; } }
 function salvarPrefs(){ try { localStorage.setItem("liqmap2", JSON.stringify(cfg)); } catch(e){} if (typeof agendarSync === "function") agendarSync(4000, "liqmap2"); }
-const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, baleiaMin: 0, conta: 1000, riscoPct: 1, alav: 10, lado: false, mmPer: "9, 21, 200", mmTipo: "e", rsiPer: 14, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
+const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, mapaNivel: "forte", baleiaMin: 0, conta: 1000, riscoPct: 1, alav: 10, lado: false, mmPer: "9, 21, 200", mmTipo: "e", rsiPer: 14, pesos: PESOS_PADRAO.slice(), heat: true}, lerPrefs());
 if (!SIMBOLOS.includes(cfg.simbolo)) cfg.simbolo = "BTCUSDT";
 if (cfg.derivMin === undefined) cfg.derivMin = matchMedia("(max-width: 760px)").matches;   // celular: painel de derivativos começa recolhido
 if (!TFS.includes(cfg.tf)) cfg.tf = "15m";
@@ -1224,10 +1225,11 @@ function desenharCanvas(){
   if (x0 == null || x1 == null) return;
   const passo = x1 - x0, ult = velas.length - 1;
 
-  // 1) mapa de liquidações
+  // 1) mapa de liquidações (por padrão só as zonas fortes, para não poluir o gráfico)
+  const limiteMapa = {forte: Math.round(NIVEIS * 0.5), medio: Math.round(NIVEIS * 0.3), tudo: 4}[cfg.mapaNivel] || 4;
   if (mapa && cfg.heat) {
     for (const [b, i0, i1, q] of mapa.runs) {
-      if (q < 4) continue;
+      if (q < limiteMapa) continue;
       const yTop = serie.priceToCoordinate(mapa.pmin + (b + 1) * mapa.w), yBot = serie.priceToCoordinate(mapa.pmin + b * mapa.w);
       if (yTop == null || yBot == null || yBot < 0 || yTop > H) continue;
       const xa = x0 + (idxDeT(mapa.tb[i0]) - 0.5) * passo;
@@ -1736,12 +1738,13 @@ const pesosBox = $("pesos");
 LEVS.forEach((L, i) => pesosBox.append(el("label", {}, L + "×", el("input", {type: "number", min: "0", step: "1", id: "w" + i}))));
 $("bAjustes").addEventListener("click", e => {
   e.stopPropagation();
-  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto; $("mediaVol").value = cfg.mediaVol; $("mmPer").value = cfg.mmPer; $("mmTipo").value = cfg.mmTipo; $("rsiPer").value = cfg.rsiPer; $("baleiaMin").value = cfg.baleiaMin; $("conta").value = cfg.conta; $("riscoPct").value = cfg.riscoPct; $("alav").value = cfg.alav;
+  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto; $("mediaVol").value = cfg.mediaVol; $("mapaNivel").value = cfg.mapaNivel; $("mmPer").value = cfg.mmPer; $("mmTipo").value = cfg.mmTipo; $("rsiPer").value = cfg.rsiPer; $("baleiaMin").value = cfg.baleiaMin; $("conta").value = cfg.conta; $("riscoPct").value = cfg.riscoPct; $("alav").value = cfg.alav;
   cfg.pesos.forEach((v, i) => $("w" + i).value = v);
   abrirPop("pop", "bAjustes");
 });
 for (const id of ["pop", "popInd", "popTf", "popSimb"]) $(id).addEventListener("click", e => e.stopPropagation());
 document.addEventListener("click", () => document.querySelectorAll(".pop").forEach(p => p.classList.remove("aberto")));
+$("mapaNivel").addEventListener("change", () => { cfg.mapaNivel = $("mapaNivel").value; salvarPrefs(); assinatura = ""; });
 $("aplicar").addEventListener("click", () => {
   $("pop").classList.remove("aberto");
   trocar({barras: +$("barras").value, filtro: Math.max(0, +$("filtro").value || 0), auto: +$("auto").value,
