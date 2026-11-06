@@ -340,8 +340,8 @@ const INDICADORES = [
   {id: "pocs",  nome: "POCs nuas (diárias e semanais)", desc: "POCs de dias/semanas que o preço ainda não revisitou", padrao: false},
   {id: "eventos", nome: "Eventos econômicos (EUA)", desc: "Fed, inflação, empregos… marcados no eixo do tempo", padrao: true},
   {id: "deriv", nome: "Painel de derivativos",  desc: "funding, long/short dos grandes, variação do OI e liquidações reais", padrao: false},
-  {id: "liqs",  nome: "Liquidações reais (ao vivo)", desc: "losangos onde posições foram liquidadas (azul long, laranja short)", padrao: true},
-  {id: "baleias", nome: "Bolhas de baleias",    desc: "negócios grandes ao vivo (verde compra, vermelho venda)", padrao: false},
+  {id: "liqs",  nome: "Liquidações reais (ao vivo)", desc: "losangos onde posições foram liquidadas (anil long, laranja short)", padrao: true},
+  {id: "baleias", nome: "Bolhas de baleias",    desc: "negócios grandes ao vivo (ciano compra, magenta venda)", padrao: false},
   {id: "delta", nome: "Delta de volume",        desc: "compras − vendas agressivas",        padrao: false},
   {id: "cvd",   nome: "CVD",                    desc: "delta acumulado",                    padrao: true},
   {id: "oi",    nome: "Open Interest",          desc: "contratos em aberto (USD)",          padrao: false},
@@ -638,23 +638,40 @@ if (DEMO) setInterval(() => {   // teste: simula negócios grandes
   const k = velas[velas.length - 1], m = minBaleia();
   ouvirTrade({p: k.close * (1 + (Math.random() - 0.5) * 0.002), q: m * (0.5 + Math.random() * 3) / k.close, T: Date.now() - Math.random() * TF_MS[cfg.tf] * 0.5, m: Math.random() < 0.5});
 }, 700);
-function posBaleias(){
+// junta os itens do mesmo candle, do mesmo lado e em preços próximos (0,25%) num só marcador:
+// evita dezenas de círculos empilhados escondendo os candles
+function agruparMarcadores(lista, lado){
   const g = geo(); if (!g) return [];
-  const min = minBaleia(), out = [];
-  for (const b of baleias) {
-    if (b.u < min) continue;
-    const x = g.x0 + (idxDeT(b.t / 1000) - 0.5) * g.passo, y = serie.priceToCoordinate(b.p);
+  const grupos = new Map();
+  for (const it of lista) {
+    const i = Math.floor(idxDeT(it.t / 1000) + 1e-6), faixa = Math.round(Math.log(it.p) / 0.0025);
+    const k = i + "|" + lado(it) + "|" + faixa;
+    const gr = grupos.get(k);
+    if (gr) { gr.pu += it.p * it.u; gr.u += it.u; gr.n++; gr.t = Math.max(gr.t, it.t); }
+    else grupos.set(k, {i, t: it.t, pu: it.p * it.u, u: it.u, n: 1, lado: lado(it)});
+  }
+  const out = [];
+  for (const gr of grupos.values()) {
+    const p = gr.pu / gr.u, y = serie.priceToCoordinate(p);
     if (y == null) continue;
-    out.push({b, x, y, r: Math.min(22, 3 + 4 * Math.sqrt(b.u / min))});
+    out.push({x: g.x0 + gr.i * g.passo, y, p, u: gr.u, n: gr.n, t: gr.t, lado: gr.lado});
   }
   return out;
 }
+function posBaleias(){
+  const min = minBaleia();
+  return agruparMarcadores(baleias.filter(b => b.u >= min), b => b.c ? 1 : 0)
+    .map(m => ({b: {t: m.t, p: m.p, u: m.u, c: m.lado, n: m.n}, x: m.x, y: m.y, r: Math.min(14, 4 + 2.6 * Math.sqrt(m.u / min))}));
+}
+// só o contorno (com um véu bem leve): o candle continua visível por dentro do círculo
 function desenharBaleias(W, H){
   for (const {b, x, y, r} of posBaleias()) {
     if (x < -r || x > W + r || y < -r || y > H + r) continue;
+    const cor = b.c ? "0,172,193" : "216,27,96";   // compra = ciano, venda = magenta (diferentes das cores dos candles)
     ctx.beginPath(); ctx.arc(x, y, r, 0, 7);
-    ctx.fillStyle = b.c ? "rgba(8,153,129,0.35)" : "rgba(242,54,69,0.35)"; ctx.fill();
-    ctx.lineWidth = 1; ctx.strokeStyle = b.c ? "rgba(8,153,129,0.9)" : "rgba(242,54,69,0.9)"; ctx.stroke();
+    ctx.fillStyle = `rgba(${cor},0.07)`; ctx.fill();
+    ctx.lineWidth = 1.6; ctx.strokeStyle = `rgba(${cor},0.9)`; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 1.6, 0, 7); ctx.fillStyle = `rgba(${cor},0.95)`; ctx.fill();
   }
 }
 // ---------- calculadora de posição (ferramenta Posição comprada/vendida) ----------
@@ -810,21 +827,16 @@ function totaisLiq(sm, ms){
   return [lo, sh];
 }
 function posLiqs(){
-  const g = geo(); if (!g) return [];
-  const out = [];
-  for (const x of liqs[cfg.simbolo] || []) {
-    const px = g.x0 + (idxDeT(x.t / 1000) - 0.5) * g.passo, y = serie.priceToCoordinate(x.p);
-    if (y == null) continue;
-    out.push({x: x, px, y, r: Math.min(16, 3 + 2.5 * Math.sqrt(x.u / 2e4))});
-  }
-  return out;
+  return agruparMarcadores(liqs[cfg.simbolo] || [], x => x.l)
+    .map(m => ({x: {t: m.t, p: m.p, u: m.u, l: m.lado, n: m.n}, px: m.x, y: m.y, r: Math.min(12, 4 + 2 * Math.sqrt(m.u / 2e4))}));
 }
 function desenharLiqs(W, H){
   for (const {x, px, y, r} of posLiqs()) {
     if (px < -r || px > W + r || y < -r || y > H + r) continue;
+    const cor = x.l ? "57,73,171" : "251,140,0";   // long liquidado = anil, short liquidado = laranja
     ctx.beginPath(); ctx.moveTo(px, y - r); ctx.lineTo(px + r, y); ctx.lineTo(px, y + r); ctx.lineTo(px - r, y); ctx.closePath();
-    ctx.fillStyle = x.l ? "rgba(41,98,255,0.45)" : "rgba(245,124,0,0.5)"; ctx.fill();
-    ctx.lineWidth = 1; ctx.strokeStyle = x.l ? "#1565c0" : "#e65100"; ctx.stroke();
+    ctx.fillStyle = `rgba(${cor},0.08)`; ctx.fill();
+    ctx.lineWidth = 1.6; ctx.strokeStyle = `rgba(${cor},0.95)`; ctx.stroke();
   }
 }
 if (DEMO) setInterval(() => {   // teste: simula liquidações
@@ -1326,7 +1338,7 @@ function atualizarDicaLiq(){
     for (const q of posLiqs()) if (Math.abs(q.px - x) + Math.abs(q.y - y) <= q.r + 2 && (!perto || q.x.u > perto.x.u)) perto = q;
     if (perto) {
       const b = perto.x;
-      dica.replaceChildren(el("div", {class: "dl-p"}, "Liquidação real · " + new Date(b.t).toLocaleTimeString("pt-BR")),
+      dica.replaceChildren(el("div", {class: "dl-p"}, "Liquidação real · " + new Date(b.t).toLocaleTimeString("pt-BR") + (b.n > 1 ? " · " + b.n + " somadas" : "")),
         el("div", {}, el("span", {class: "v"}, b.l ? "Long liquidado " : "Short liquidado "), el("b", {class: b.l ? "l" : "s"}, usd(b.u)), el("span", {class: "v"}, " em " + pr(b.p))));
       dica.style.display = "block";
       dica.style.left = Math.max(4, x + 14 + dica.offsetWidth > W ? x - 14 - dica.offsetWidth : x + 14) + "px";
@@ -1339,7 +1351,7 @@ function atualizarDicaLiq(){
     for (const q of posBaleias()) if (Math.hypot(q.x - x, q.y - y) <= q.r + 2 && (!perto || q.b.u > perto.b.u)) perto = q;
     if (perto) {
       const b = perto.b, h = new Date(b.t).toLocaleTimeString("pt-BR");
-      dica.replaceChildren(el("div", {class: "dl-p"}, "Baleia · " + h),
+      dica.replaceChildren(el("div", {class: "dl-p"}, "Baleia · " + h + (b.n > 1 ? " · " + b.n + " negócios somados" : "")),
         el("div", {}, el("span", {class: "v"}, b.c ? "Compra agressiva " : "Venda agressiva "), el("b", {class: b.c ? "up" : "down"}, usd(b.u)), el("span", {class: "v"}, " em " + pr(b.p))));
       dica.style.display = "block";
       dica.style.left = Math.max(4, x + 14 + dica.offsetWidth > W ? x - 14 - dica.offsetWidth : x + 14) + "px";
