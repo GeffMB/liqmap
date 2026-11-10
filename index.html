@@ -1684,6 +1684,12 @@ async function recalcular(manterZoom){
   }
 }
 function trocar(mud){
+  // trocou de ativo ou de tempo gráfico: a escala de preço volta para automática. Se ela tinha sido
+  // arrastada à mão (escala fixa), o novo ativo ficava fora da tela (ex.: BTC a 73 mil numa escala de ETH)
+  if ((mud.simbolo && mud.simbolo !== cfg.simbolo) || (mud.tf && mud.tf !== cfg.tf)) {
+    try { chart.priceScale("right").applyOptions({autoScale: true}); } catch (e) {}
+    for (const p of Object.values(paineis)) try { p.chart.priceScale("right").applyOptions({autoScale: true}); } catch (e) {}
+  }
   Object.assign(cfg, mud); salvarPrefs();
   $("bSimb").textContent = cfg.simbolo + " ▾";
   montarTfs(); desenharLista(); conectarWS(); conectarSpot(); carregarDesenhos(); lerBaleias(); perfis = null; precoAnt = null; iniciarDeriv();
