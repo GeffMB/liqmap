@@ -142,13 +142,13 @@ section[hidden]{display:none}
 
   <section id="sec-fluxo" hidden>
     <div class="agora" id="flResumo"><div class="carreg">carregando…</div></div>
-    <h3>Saldo de agressão por hora (7 dias)</h3>
+    <h3>Saldo de agressão a cada 4 horas (30 dias)</h3>
     <div class="graf"><canvas id="cvFlF"></canvas><span class="rot"><b>Futuros</b> · <span style="color:#089981">■ entrada</span> <span style="color:#f23645">■ saída</span> · <span style="color:#9598a1">— preço</span></span></div>
     <div class="graf"><canvas id="cvFlS"></canvas><span class="rot"><b>Spot</b> · <span style="color:#089981">■ entrada</span> <span style="color:#f23645">■ saída</span> · <span style="color:#9598a1">— preço</span></span></div>
     <h3>Por período</h3>
     <div class="rolar"><table id="flTab"></table></div>
     <p class="nota">Saldo de agressão = volume comprado a mercado − volume vendido a mercado (Binance futuros e Binance spot). Negativo = quem tem pressa está vendendo.
-    <b>Saída alinhada</b>: futuros e spot vendendo juntos (pressão vendedora real). <b>Entrada alinhada</b>: os dois comprando. <b>Spot absorvendo</b>: futuros vendem, mas o spot compra (alguém acumulando de verdade). <b>Futuros absorvendo</b>: o spot vende e os futuros compram (alta apoiada só em alavancagem). A variação compara com o período anterior de mesmo tamanho.</p>
+    <b>Saída alinhada</b>: futuros e spot vendendo juntos (pressão vendedora real). <b>Entrada alinhada</b>: os dois comprando. <b>Spot absorvendo</b>: futuros vendem, mas o spot compra (alguém acumulando de verdade). <b>Futuros puxando</b>: os futuros compram e o spot vende (movimento apoiado só em alavancagem, mais frágil). A variação compara com o período anterior de mesmo tamanho.</p>
   </section>
 
   <section id="sec-hl" hidden>
@@ -745,11 +745,11 @@ function desenharLinhas(cv, pts, fmtA, barras){
 }
 
 // ---------- aba fluxo ----------
-const PER_FL = [["5m", 5, "1m"], ["15m", 15, "1m"], ["30m", 30, "1m"], ["1h", 60, "1m"], ["4h", 240, "1m"], ["12h", 720, "1m"], ["24h", 96, "15m"], ["3D", 72, "1h"], ["7D", 7, "1d"], ["30D", 30, "1d"]];
+const PER_FL = [["5m", 5, "1m"], ["15m", 15, "1m"], ["30m", 30, "1m"], ["1h", 60, "1m"], ["4h", 240, "1m"], ["12h", 720, "1m"], ["24h", 96, "15m"], ["3D", 72, "1h"], ["7D", 7, "1d"], ["30D", 30, "1d"], ["3M", 90, "1d"], ["6M", 180, "1d"], ["1A", 365, "1d"]];
 async function fluxo(s){
   return emCache("fl" + s, 25000, async () => {
     const pedir = (base, iv, lim) => jx(base + "?" + qs({symbol: s, interval: iv, limit: lim}));
-    const LIM = {"1m": 1500, "15m": 193, "1h": 169, "1d": 61};
+    const LIM = {"1m": 1500, "15m": 193, "1h": 145, "4h": 180, "1d": 731};
     const ivs = Object.keys(LIM);
     const [fut, spot] = await Promise.all([FAPI + "/fapi/v1/klines", SPOT + "/api/v3/klines"].map(b => Promise.all(ivs.map(iv => talvez(pedir(b, iv, LIM[iv]))))));
     const conv = a => (a || []).map(k => ({t: +k[0], c: +k[4], n: 2 * +k[10] - +k[7]}));
@@ -760,7 +760,7 @@ async function fluxo(s){
       const f = saldo(F[iv], nn, 0), fa = saldo(F[iv], nn, nn), sp = saldo(S[iv], nn, 0), sa = saldo(S[iv], nn, nn);
       return {nome, f, sp, df: f != null && fa ? (f - fa) / Math.abs(fa) * 100 : null, ds: sp != null && sa ? (sp - sa) / Math.abs(sa) * 100 : null};
     });
-    return {linhas, horasF: F["1h"].slice(-168), horasS: S["1h"].slice(-168)};
+    return {linhas, horasF: F["4h"], horasS: S["4h"]};
   });
 }
 function direcao(f, sp){
@@ -768,7 +768,7 @@ function direcao(f, sp){
   if (f < 0 && sp < 0) return ["Saída alinhada", "c-sb"];
   if (f > 0 && sp > 0) return ["Entrada alinhada", "c-lb"];
   if (f < 0 && sp > 0) return ["Spot absorvendo", "c-sc"];
-  return ["Futuros absorvendo", "c-alta"];
+  return ["Futuros puxando", "c-alta"];
 }
 const pctFl = x => x == null ? "—" : x < -999 ? "<−999%" : x > 999 ? ">+999%" : pct(x, 1);
 async function montarFluxo(){
