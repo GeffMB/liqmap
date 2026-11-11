@@ -54,7 +54,28 @@ tr.sel td{background:#eef3ff}
 .legenda{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;margin-top:8px}
 .legenda div{border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:12px;color:#434651}
 .legenda b{display:block;margin-bottom:3px}
-@media (max-width:760px){ .marca .txt,.top .status{display:none} }
+.subabas{display:flex;gap:2px;border-bottom:1px solid var(--line);margin:16px 0 4px;overflow-x:auto;scrollbar-width:none}
+.subaba{padding:8px 12px;border:0;border-bottom:2px solid transparent;background:none;cursor:pointer;font:inherit;color:var(--sub);white-space:nowrap}
+.subaba.ativo{color:var(--txt);border-bottom-color:var(--accent);font-weight:600}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.card{border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.card .t{color:var(--sub);font-size:12px}
+.card .v{font-size:18px;font-weight:600;margin-top:2px;font-variant-numeric:tabular-nums}
+.card .s{font-size:11.5px;color:var(--sub);margin-top:2px}
+.card .lin{display:flex;justify-content:space-between;font-size:12.5px;margin-top:6px;font-variant-numeric:tabular-nums}
+.graf{position:relative;height:300px;border:1px solid var(--line);border-radius:8px;margin-bottom:8px}
+.graf canvas{position:absolute;inset:0;width:100%;height:100%}
+.graf .rot{position:absolute;left:10px;top:6px;font-size:12px;color:var(--sub);pointer-events:none}
+.treemap{position:relative;height:360px;border-radius:8px;overflow:hidden;margin-bottom:10px}
+.treemap div{position:absolute;border:2px solid #fff;border-radius:6px;color:#fff;padding:8px;overflow:hidden;font-variant-numeric:tabular-nums;line-height:1.3}
+.treemap b{display:block;font-size:15px}
+.per{display:inline-flex;gap:2px;margin-left:10px;vertical-align:middle}
+.per button{border:1px solid var(--line);background:var(--bg);border-radius:4px;padding:2px 8px;cursor:pointer;font:inherit;font-size:12px;color:var(--txt)}
+.per button.ativo{background:var(--accent);border-color:var(--accent);color:#fff}
+.carreg{color:var(--sub);padding:14px 0}
+.erro{color:var(--down);font-size:12px}
+section[hidden]{display:none}
+@media (max-width:760px){ .marca .txt,.top .status{display:none} .treemap{height:300px} .graf{height:240px} }
 </style>
 </head>
 <body>
@@ -74,6 +95,8 @@ tr.sel td{background:#eef3ff}
   <div class="abas" id="abas"></div>
   <div class="agora" id="agora"></div>
 
+  <div class="subabas" id="subabas"></div>
+  <section id="sec-periodo">
   <h3 id="titDet">Por período</h3>
   <div class="rolar"><table id="tabDet"></table></div>
 
@@ -94,6 +117,48 @@ tr.sel td{background:#eef3ff}
     “Agressão” é a parte do volume em que o comprador foi o agressor (ordem a mercado).
     Liquidações: a Binance não fornece o histórico, então o LiqMap registra as liquidações enquanto o gráfico ou esta página estão abertos (e a Binance envia no máximo uma por segundo por moeda). Os valores ficam abaixo do total real e servem como proporção entre longs e shorts.
   </p>
+  </section>
+
+  <section id="sec-chave" hidden>
+    <h3>Visão geral</h3>
+    <div class="cards" id="chCards"><div class="carreg">carregando…</div></div>
+    <h3>Long/Short por corretora</h3>
+    <div class="rolar"><table id="chLS"></table></div>
+    <h3>Liquidações (Binance + OKX + Gate)</h3>
+    <div class="cards" id="chLiq"><div class="carreg">carregando…</div></div>
+    <p class="nota">Long/Short acima de 1 (verde) = mais compradores que vendedores. <b>Taker</b>: volume comprado ÷ vendido a mercado nas últimas 24h. <b>Contas</b>: contas compradas ÷ vendidas. <b>Top traders</b>: só as maiores contas da corretora (por número de contas ou pelo tamanho das posições).
+    OKX e Hyperliquid não liberam essas proporções para sites, por isso não aparecem. Liquidações: OKX e Gate vêm do histórico da própria corretora; Binance vem do registro do LiqMap (só enquanto o site está aberto). Volume futuros ÷ spot e basis: Binance, OKX e Bybit.</p>
+  </section>
+
+  <section id="sec-oi" hidden>
+    <h3>Open interest somado (Binance + Bybit + Gate), 30 dias</h3>
+    <div class="graf"><canvas id="cvOI"></canvas><span class="rot"><b style="color:#2962ff">— Open interest</b> &nbsp; <b style="color:#9598a1">— Preço</b></span></div>
+    <p class="nota" id="oiResumo" style="margin-top:4px"></p>
+    <h3>Por corretora <span class="per" id="oiPer"></span></h3>
+    <div class="treemap" id="treemap"></div>
+    <div class="rolar"><table id="oiTab"></table></div>
+    <p class="nota">Variação calculada pela quantidade de moedas em contratos (a alta ou queda do preço não conta). Binance, Bybit e Gate têm histórico próprio; para OKX, Bitget, Hyperliquid e Deribit a variação vem do registro do LiqMap e aparece depois que a página fica aberta por aquele período (marcada com ≈). Binance soma os contratos USDT, USDC e com margem em moeda. O CME não tem dados gratuitos e fica de fora.</p>
+  </section>
+
+  <section id="sec-fluxo" hidden>
+    <div class="agora" id="flResumo"><div class="carreg">carregando…</div></div>
+    <h3>Saldo de agressão por hora (7 dias)</h3>
+    <div class="graf"><canvas id="cvFlF"></canvas><span class="rot"><b>Futuros</b> · <span style="color:#089981">■ entrada</span> <span style="color:#f23645">■ saída</span> · <span style="color:#9598a1">— preço</span></span></div>
+    <div class="graf"><canvas id="cvFlS"></canvas><span class="rot"><b>Spot</b> · <span style="color:#089981">■ entrada</span> <span style="color:#f23645">■ saída</span> · <span style="color:#9598a1">— preço</span></span></div>
+    <h3>Por período</h3>
+    <div class="rolar"><table id="flTab"></table></div>
+    <p class="nota">Saldo de agressão = volume comprado a mercado − volume vendido a mercado (Binance futuros e Binance spot). Negativo = quem tem pressa está vendendo.
+    <b>Saída alinhada</b>: futuros e spot vendendo juntos (pressão vendedora real). <b>Entrada alinhada</b>: os dois comprando. <b>Spot absorvendo</b>: futuros vendem, mas o spot compra (alguém acumulando de verdade). <b>Futuros absorvendo</b>: o spot vende e os futuros compram (alta apoiada só em alavancagem). A variação compara com o período anterior de mesmo tamanho.</p>
+  </section>
+
+  <section id="sec-hl" hidden>
+    <h3>Hyperliquid agora</h3>
+    <div class="cards" id="hlCards"><div class="carreg">carregando…</div></div>
+    <h3>Baleias ao vivo <select id="hlMin" style="margin-left:8px;font:inherit;padding:2px 6px;border:1px solid var(--line);border-radius:4px"><option value="100000">≥ $100K</option><option value="500000">≥ $500K</option><option value="1000000">≥ $1M</option><option value="5000000">≥ $5M</option></select></h3>
+    <div class="rolar"><table id="hlTab"></table></div>
+    <p class="nota">Ordens a mercado grandes na Hyperliquid (todas as execuções de uma mesma ordem somadas). Como a Hyperliquid é on-chain, dá para ver o endereço e se a ordem <b>abriu</b> ou <b>fechou</b> posição (consultado no histórico público do endereço). A lista é montada enquanto o LiqMap está aberto e guarda as últimas 24h.
+    O mapa de liquidação da Hyperliquid que a CoinGlass mostra depende de varrer as posições de todos os endereços, o que não dá para fazer de dentro de um site.</p>
+  </section>
 </main>
 <script>
 "use strict";
@@ -258,6 +323,7 @@ function resumo(d){
 }
 function montar(){
   montarAbas();
+  if (typeof montarExtra === "function") montarExtra();
   const d = dados[pref.simbolo];
   if (!d) { $("agora").textContent = "carregando…"; return; }
   const rot = t => el("span", {class: "rot"}, t);
@@ -318,6 +384,7 @@ async function atualizar(){
     $("status").className = "status err"; $("status").textContent = "Binance sem resposta: " + e.message;
   }
   ocupado = false;
+  if (typeof atualizarExtra === "function") atualizarExtra();
 }
 
 // ---------- dados de teste (?demo=1) ----------
@@ -346,6 +413,472 @@ montar();
 atualizar();
 setInterval(atualizar, 30000);
 ouvirLiqs();
+</script>
+<script>
+"use strict";
+// ================= abas extras: dados-chave, open interest, fluxo, Hyperliquid =================
+const SUBABAS = [["periodo", "Por período"], ["chave", "Dados-chave"], ["oi", "Open interest"], ["fluxo", "Fluxo futuros × spot"], ["hl", "Hyperliquid"]];
+if (!SUBABAS.some(a => a[0] === pref.sub)) pref.sub = "periodo";
+const MAPA = {
+  BTCUSDT: {base: "BTC", okx: "BTC-USDT", gate: "BTC_USDT", hl: "BTC", deribit: "BTC", dapi: "BTCUSD_PERP", ct: 100, usdc: "BTCUSDC"},
+  ETHUSDT: {base: "ETH", okx: "ETH-USDT", gate: "ETH_USDT", hl: "ETH", deribit: "ETH", dapi: "ETHUSD_PERP", ct: 10, usdc: "ETHUSDC"},
+  SOLUSDT: {base: "SOL", okx: "SOL-USDT", gate: "SOL_USDT", hl: "SOL", dapi: "SOLUSD_PERP", ct: 10, usdc: "SOLUSDC"},
+  XRPUSDT: {base: "XRP", okx: "XRP-USDT", gate: "XRP_USDT", hl: "XRP", dapi: "XRPUSD_PERP", ct: 10, usdc: "XRPUSDC"},
+  QNTUSDT: {base: "QNT", okx: "QNT-USDT", gate: "QNT_USDT"}
+};
+const CORES_EX = {Binance: "#f0b90b", Bybit: "#f7a600", OKX: "#5b6170", Gate: "#2354e6", Bitget: "#00c2c2", Hyperliquid: "#3ac7a0", Deribit: "#1b9e77"};
+const HORA = 36e5;
+
+async function jx(url, corpo){
+  if (DEMO) throw new Error("indisponível no modo de teste");
+  const r = await fetch(url, corpo ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(corpo)} : undefined);
+  if (!r.ok) throw new Error(new URL(url).host + " " + r.status);
+  return r.json();
+}
+const talvez = p => p.catch(e => { console.warn(e); return null; });
+const FAPI = "https://fapi.binance.com", SPOT = "https://data-api.binance.vision", OKX = "https://www.okx.com", BYBIT = "https://api.bybit.com", GATE = "https://api.gateio.ws/api/v4", BITGET = "https://api.bitget.com";
+const hlInfo = corpo => jx("https://api.hyperliquid.xyz/info", corpo);
+const qs = o => new URLSearchParams(o).toString();
+const razao = x => x == null || !isFinite(x) ? el("span", {class: "k"}, "—") : el("span", {class: x >= 1 ? "up" : "down"}, x.toFixed(4).replace(".", ","));
+const horaTxt = t => new Date(t).toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit", second: "2-digit"});
+const desde = t => { const m = Math.round((Date.now() - t) / 6e4); return m < 1 ? "agora" : m < 60 ? "há " + m + " min" : "há " + Math.floor(m / 60) + "h" + String(m % 60).padStart(2, "0"); };
+const meuCache = {};
+// guarda a promessa (não só o resultado), para chamadas simultâneas não repetirem os pedidos
+function emCache(chave, ms, f){
+  const c = meuCache[chave]; if (c && Date.now() - c.t < ms) return c.v;
+  const v = f(); meuCache[chave] = {t: Date.now(), v};
+  v.catch(() => { if (meuCache[chave] && meuCache[chave].v === v) delete meuCache[chave]; });
+  return v;
+}
+
+// variação (%) em quantidade de moedas, procurando o ponto da série mais próximo de "horas" atrás
+function variacao(serie, qAgora, horas){
+  if (!serie || !serie.length || !qAgora) return null;
+  const alvo = Date.now() - horas * HORA;
+  let ref = null;
+  for (const x of serie) if (x.t <= alvo + 10 * 6e4) ref = x;
+  if (!ref || Date.now() - ref.t > (horas + 1.5) * HORA) return null;
+  return (qAgora / ref.q - 1) * 100;
+}
+
+// ---------- open interest por corretora ----------
+function lerFotos(s){ try { return JSON.parse(localStorage.getItem("liqmap-oi-fotos-" + s) || "[]"); } catch (e) { return []; } }
+function guardarFoto(s, preco, lista){
+  const f = lerFotos(s).filter(x => Date.now() - x.t < 26 * HORA);
+  if (f.length && Date.now() - f[f.length - 1].t < 5 * 6e4) return f;
+  const ex = {}; for (const c of lista) ex[c.nome] = c.usd;
+  f.push({t: Date.now(), p: preco, ex});
+  try { localStorage.setItem("liqmap-oi-fotos-" + s, JSON.stringify(f)); } catch (e) {}
+  return f;
+}
+async function oiCorretoras(s){
+  return emCache("oi" + s, 25000, async () => {
+    const m = MAPA[s];
+    const [bOi, bPrem, bHist, bUsdc, bDapi, yT, yH, oO, gS, tOi, tT, hCtx, dB] = await Promise.all([
+      talvez(jx(FAPI + "/fapi/v1/openInterest?symbol=" + s)),
+      talvez(jx(FAPI + "/fapi/v1/premiumIndex?symbol=" + s)),
+      talvez(jx(FAPI + "/futures/data/openInterestHist?" + qs({symbol: s, period: "1h", limit: 26}))),
+      m.usdc ? talvez(jx(FAPI + "/fapi/v1/openInterest?symbol=" + m.usdc)) : null,
+      m.dapi ? talvez(jx("https://dapi.binance.com/dapi/v1/openInterest?symbol=" + m.dapi)) : null,
+      talvez(jx(BYBIT + "/v5/market/tickers?category=linear&symbol=" + s)),
+      talvez(jx(BYBIT + "/v5/market/open-interest?" + qs({category: "linear", symbol: s, intervalTime: "1h", limit: 26}))),
+      talvez(jx(OKX + "/api/v5/public/open-interest?instType=SWAP&instId=" + m.okx + "-SWAP")),
+      talvez(jx(GATE + "/futures/usdt/contract_stats?" + qs({contract: m.gate, interval: "1h", limit: 26}))),
+      talvez(jx(BITGET + "/api/v2/mix/market/open-interest?symbol=" + s + "&productType=USDT-FUTURES")),
+      talvez(jx(BITGET + "/api/v2/mix/market/ticker?symbol=" + s + "&productType=USDT-FUTURES")),
+      m.hl ? talvez(hlInfo({type: "metaAndAssetCtxs"})) : null,
+      m.deribit ? talvez(jx("https://www.deribit.com/api/v2/public/get_book_summary_by_currency?currency=" + m.deribit + "&kind=future")) : null
+    ]);
+    const lista = [];
+    const preco = bPrem ? +bPrem.markPrice : (dados[s] ? dados[s].preco : 0);
+    if (bOi && preco) {
+      const q = +bOi.openInterest;
+      const usd = q * preco + (bUsdc ? +bUsdc.openInterest * preco : 0) + (bDapi ? +bDapi.openInterest * m.ct : 0);
+      const serie = bHist ? bHist.map(x => ({t: +x.timestamp, q: +x.sumOpenInterest})) : null;
+      lista.push({nome: "Binance", usd, var: h => variacao(serie, q, h)});
+    }
+    const yt = yT && yT.result && yT.result.list[0];
+    if (yt) {
+      const serie = yH && yH.result ? yH.result.list.map(x => ({t: +x.timestamp, q: +x.openInterest})).sort((a, b) => a.t - b.t) : null;
+      lista.push({nome: "Bybit", usd: +yt.openInterestValue, var: h => variacao(serie, +yt.openInterest, h), funding: +yt.fundingRate * 100});
+    }
+    if (oO && oO.data && oO.data[0]) lista.push({nome: "OKX", usd: +oO.data[0].oiUsd});
+    if (gS && gS.length) {
+      const serie = gS.map(x => ({t: x.time * 1000, q: +x.open_interest})).sort((a, b) => a.t - b.t);
+      const ult = serie[serie.length - 1];
+      lista.push({nome: "Gate", usd: +gS.sort((a, b) => a.time - b.time)[gS.length - 1].open_interest_usd, var: h => variacao(serie, ult.q, h)});
+    }
+    const tt = tT && tT.data && tT.data[0];
+    if (tOi && tOi.data && tt) lista.push({nome: "Bitget", usd: +tOi.data.openInterestList[0].size * +tt.lastPr});
+    if (hCtx) { const i = hCtx[0].universe.findIndex(u => u.name === m.hl); if (i >= 0) { const c = hCtx[1][i]; lista.push({nome: "Hyperliquid", usd: +c.openInterest * +c.markPx}); } }
+    if (dB && dB.result) { const usd = dB.result.reduce((a, x) => a + (+x.open_interest || 0), 0); if (usd) lista.push({nome: "Deribit", usd}); }
+    // corretoras sem histórico: usa as fotos guardadas pelo próprio LiqMap (em moedas = US$ ÷ preço)
+    const fotos = guardarFoto(s, preco, lista);
+    for (const c of lista) if (!c.var) {
+      c.aprox = true;
+      c.var = h => { const serie = fotos.filter(f => f.ex[c.nome]).map(f => ({t: f.t, q: f.ex[c.nome] / f.p})); return variacao(serie, c.usd / preco, h); };
+    }
+    lista.sort((a, b) => b.usd - a.usd);
+    return {preco, lista, total: lista.reduce((a, c) => a + c.usd, 0)};
+  });
+}
+
+// ---------- dados-chave ----------
+async function mercado(s){
+  return emCache("mk" + s, 25000, async () => {
+    const m = MAPA[s];
+    const [bT, bP, bS, yT, yS, oT, oS, oF, gT, tT, hCtx] = await Promise.all([
+      talvez(jx(FAPI + "/fapi/v1/ticker/24hr?symbol=" + s)),
+      talvez(jx(FAPI + "/fapi/v1/premiumIndex?symbol=" + s)),
+      talvez(jx(SPOT + "/api/v3/ticker/24hr?symbol=" + s)),
+      talvez(jx(BYBIT + "/v5/market/tickers?category=linear&symbol=" + s)),
+      talvez(jx(BYBIT + "/v5/market/tickers?category=spot&symbol=" + s)),
+      talvez(jx(OKX + "/api/v5/market/ticker?instId=" + m.okx + "-SWAP")),
+      talvez(jx(OKX + "/api/v5/market/ticker?instId=" + m.okx)),
+      talvez(jx(OKX + "/api/v5/public/funding-rate?instId=" + m.okx + "-SWAP")),
+      talvez(jx(GATE + "/futures/usdt/tickers?contract=" + m.gate)),
+      talvez(jx(BITGET + "/api/v2/mix/market/ticker?symbol=" + s + "&productType=USDT-FUTURES")),
+      m.hl ? talvez(hlInfo({type: "metaAndAssetCtxs"})) : null
+    ]);
+    const r = {fut: {}, spot: {}, fund: {}};
+    if (bT) r.fut.Binance = +bT.quoteVolume;
+    if (bS) r.spot.Binance = +bS.quoteVolume;
+    if (bP) { r.fund.Binance = +bP.lastFundingRate * 100; r.basis = (+bP.markPrice / +bP.indexPrice - 1) * 100; }
+    const yt = yT && yT.result && yT.result.list[0], ys = yS && yS.result && yS.result.list[0];
+    if (yt) { r.fut.Bybit = +yt.turnover24h; r.fund.Bybit = +yt.fundingRate * 100; }
+    if (ys) r.spot.Bybit = +ys.turnover24h;
+    const ot = oT && oT.data && oT.data[0], os = oS && oS.data && oS.data[0];
+    if (ot) r.fut.OKX = +ot.volCcy24h * +ot.last;
+    if (os) r.spot.OKX = +os.volCcy24h;
+    if (oF && oF.data && oF.data[0]) r.fund.OKX = +oF.data[0].fundingRate * 100;
+    const gt = gT && gT[0]; if (gt) { r.fut.Gate = +gt.volume_24h_quote; r.fund.Gate = +gt.funding_rate * 100; }
+    const tt = tT && tT.data && tT.data[0]; if (tt) { r.fut.Bitget = +tt.quoteVolume; if (tt.fundingRate != null) r.fund.Bitget = +tt.fundingRate * 100; }
+    if (hCtx) { const i = hCtx[0].universe.findIndex(u => u.name === m.hl); if (i >= 0) { const c = hCtx[1][i]; r.fut.Hyperliquid = +c.dayNtlVlm; r.fund.Hyperliquid = +c.funding * 100 * 8; r.hl = c; } }
+    return r;
+  });
+}
+async function ratiosLS(s){
+  return emCache("ls" + s, 60000, async () => {
+    const m = MAPA[s];
+    const ult = a => a && a.length ? a[a.length - 1] : null;
+    const [bTk, bAc, bTa, bTp, yAc, gS, tTk, tAc] = await Promise.all([
+      talvez(jx(FAPI + "/futures/data/takerlongshortRatio?" + qs({symbol: s, period: "1h", limit: 24}))),
+      talvez(jx(FAPI + "/futures/data/globalLongShortAccountRatio?" + qs({symbol: s, period: "5m", limit: 1}))),
+      talvez(jx(FAPI + "/futures/data/topLongShortAccountRatio?" + qs({symbol: s, period: "5m", limit: 1}))),
+      talvez(jx(FAPI + "/futures/data/topLongShortPositionRatio?" + qs({symbol: s, period: "5m", limit: 1}))),
+      talvez(jx(BYBIT + "/v5/market/account-ratio?" + qs({category: "linear", symbol: s, period: "5min", limit: 1}))),
+      talvez(jx(GATE + "/futures/usdt/contract_stats?" + qs({contract: m.gate, interval: "1h", limit: 24}))),
+      talvez(jx(BITGET + "/api/v2/mix/market/taker-buy-sell?" + qs({symbol: s, period: "1h"}))),
+      talvez(jx(BITGET + "/api/v2/mix/market/account-long-short?" + qs({symbol: s, period: "5m"})))
+    ]);
+    const soma = (a, fb, fs) => { if (!a || !a.length) return null; let b = 0, v = 0; for (const x of a) { b += fb(x); v += fs(x); } return v ? b / v : null; };
+    const yac = yAc && yAc.result && yAc.result.list[0];
+    const gU = gS && gS.length ? gS.sort((a, b) => a.time - b.time)[gS.length - 1] : null;
+    const tTk24 = tTk && tTk.data ? tTk.data.slice(-24) : null;
+    return {
+      Binance: {taker: soma(bTk, x => +x.buyVol, x => +x.sellVol), contas: ult(bAc) && +ult(bAc).longShortRatio, topContas: ult(bTa) && +ult(bTa).longShortRatio, topPos: ult(bTp) && +ult(bTp).longShortRatio},
+      Bybit: {taker: null, contas: yac ? +yac.buyRatio / +yac.sellRatio : null, topContas: null, topPos: null},
+      Gate: {taker: soma(gS, x => +x.long_taker_size, x => +x.short_taker_size), contas: gU && gU.lsr_account, topContas: gU && gU.top_lsr_account, topPos: gU && gU.top_lsr_size},
+      Bitget: {taker: soma(tTk24, x => +x.buyVolume, x => +x.sellVolume), contas: tAc && tAc.data && tAc.data.length ? +tAc.data[tAc.data.length - 1].longShortAccountRatio : null, topContas: null, topPos: null}
+    };
+  });
+}
+const ctValOkx = {};
+async function liqsCorretoras(s){
+  return emCache("lq" + s, 60000, async () => {
+    const m = MAPA[s], agora = Date.now(), JAN = [1, 4, 12, 24];
+    const res = JAN.map(h => ({h, lo: 0, sh: 0, ex: {Binance: [0, 0], OKX: [0, 0], Gate: [0, 0]}}));
+    const somar = (nome, t, usd, long) => { for (const r of res) if (t >= agora - r.h * HORA) { if (long) r.lo += usd; else r.sh += usd; r.ex[nome][long ? 0 : 1] += usd; } };
+    for (const x of liqs[s] || []) somar("Binance", x.t, x.u, x.l);
+    const [gS, ok] = await Promise.all([
+      talvez(jx(GATE + "/futures/usdt/contract_stats?" + qs({contract: m.gate, interval: "5m", limit: 288}))),
+      (async () => {
+        if (ctValOkx[s] == null) { const i = await talvez(jx(OKX + "/api/v5/public/instruments?instType=SWAP&instId=" + m.okx + "-SWAP")); ctValOkx[s] = i && i.data && i.data[0] ? +i.data[0].ctVal : 0; }
+        let depois = "", lista = [];
+        for (let pg = 0; pg < 8; pg++) {
+          const j = await talvez(jx(OKX + "/api/v5/public/liquidation-orders?" + qs(Object.assign({instType: "SWAP", uly: m.okx, state: "filled", limit: 100}, depois ? {after: depois} : {}))));
+          const d = j && j.data && j.data[0] ? j.data[0].details : [];
+          if (!d.length) break;
+          lista = lista.concat(d);
+          depois = d[d.length - 1].ts;
+          if (agora - +depois > 24 * HORA || d.length < 100) break;
+        }
+        return lista;
+      })()
+    ]);
+    if (gS) for (const x of gS) { const t = x.time * 1000 + 5 * 6e4; if (x.long_liq_usd) somar("Gate", t, +x.long_liq_usd, 1); if (x.short_liq_usd) somar("Gate", t, +x.short_liq_usd, 0); }
+    if (ok) for (const x of ok) somar("OKX", +x.ts, +x.sz * ctValOkx[s] * +x.bkPx, x.posSide === "long");
+    return res;
+  });
+}
+async function montarChave(){
+  const s = pref.simbolo;
+  const [oi, mk] = await Promise.all([oiCorretoras(s), mercado(s)]);
+  if (s !== pref.simbolo) return;
+  const v24 = pesoVar(oi.lista, 24);
+  const fut3 = ["Binance", "OKX", "Bybit"].reduce((a, n) => a + (mk.fut[n] || 0), 0), spot3 = ["Binance", "OKX", "Bybit"].reduce((a, n) => a + (mk.spot[n] || 0), 0);
+  const futTot = Object.values(mk.fut).reduce((a, b) => a + b, 0);
+  // funding médio ponderado pelo open interest de cada corretora
+  let fp = 0, pw = 0; for (const c of oi.lista) if (mk.fund[c.nome] != null && isFinite(mk.fund[c.nome])) { fp += mk.fund[c.nome] * c.usd; pw += c.usd; }
+  const fm = pw ? fp / pw : null;
+  const card = (t, v, s2, cl) => el("div", {class: "card"}, el("div", {class: "t"}, t), el("div", {class: "v " + (cl || "")}, v), s2 ? el("div", {class: "s"}, s2) : null);
+  $("chCards").replaceChildren(
+    card("Basis do perpétuo (Binance)", mk.basis == null ? "—" : pct(mk.basis, 3), "preço do futuro vs índice spot", cls(mk.basis || 0)),
+    card("Open interest (" + oi.lista.length + " corretoras)", usd(oi.total), v24 == null ? null : el("span", {class: cls(v24)}, pct(v24) + " em 24h")),
+    card("Volume futuros 24h", usd(futTot), Object.keys(mk.fut).length + " corretoras"),
+    card("Funding médio (8h)", fm == null ? "—" : fund(fm), fm == null ? null : "anualizado " + pct(fm * 3 * 365, 1).replace("+", ""), cls(fm || 0)),
+    card("Volume futuros ÷ spot", spot3 ? (fut3 / spot3).toFixed(1).replace(".", ",") + "×" : "—", "Binance + OKX + Bybit, 24h"));
+  montarLS(s); montarLiqs(s);
+}
+async function montarLS(s){
+  const r = await ratiosLS(s); if (s !== pref.simbolo) return;
+  const ex = Object.keys(r);
+  const linhas = [["Taker compra ÷ venda (24h)", "taker"], ["Contas", "contas"], ["Top traders (contas)", "topContas"], ["Top traders (posições)", "topPos"]];
+  $("chLS").replaceChildren(el("tr", {}, el("th", {}, MAPA[s].base + " Long/Short"), ...ex.map(n => el("th", {}, n))),
+    ...linhas.map(([t, k]) => el("tr", {}, el("td", {}, el("b", {}, t)), ...ex.map(n => el("td", {}, razao(r[n][k]))))));
+}
+async function montarLiqs(s){
+  const r = await liqsCorretoras(s); if (s !== pref.simbolo) return;
+  $("chLiq").replaceChildren(...r.map(x => { const t = x.lo + x.sh;
+    return el("div", {class: "card"},
+      el("div", {class: "lin", style: "margin-top:0"}, el("span", {class: "t"}, MAPA[s].base + " " + x.h + "h"), el("b", {style: "font-size:16px"}, usd(t))),
+      el("div", {class: "s"}, t ? "Longs " + Math.round(x.lo / t * 100) + "%" : "nenhuma"),
+      el("div", {class: "lin"}, el("span", {}, "Longs"), el("b", {class: "down"}, usd(x.lo))),
+      el("div", {class: "lin"}, el("span", {}, "Shorts"), el("b", {class: "up"}, usd(x.sh))),
+      barraLiq(x.lo, x.sh),
+      el("div", {class: "s", style: "margin-top:6px"}, Object.entries(x.ex).map(([n, v]) => n + " " + usd(v[0] + v[1])).join(" · "))); }));
+}
+function pesoVar(lista, h){ let a = 0, p = 0; for (const c of lista) { const v = c.var(h); if (v != null) { a += v * c.usd; p += c.usd; } } return p ? a / p : null; }
+
+// ---------- aba open interest ----------
+async function serieOI30(s){
+  return emCache("oi30" + s, 300000, async () => {
+    const m = MAPA[s];
+    const [b, y, g, k] = await Promise.all([
+      talvez(jx(FAPI + "/futures/data/openInterestHist?" + qs({symbol: s, period: "4h", limit: 180}))),
+      talvez(jx(BYBIT + "/v5/market/open-interest?" + qs({category: "linear", symbol: s, intervalTime: "4h", limit: 180}))),
+      talvez(jx(GATE + "/futures/usdt/contract_stats?" + qs({contract: m.gate, interval: "4h", limit: 180}))),
+      talvez(jx(FAPI + "/fapi/v1/klines?" + qs({symbol: s, interval: "4h", limit: 180})))
+    ]);
+    const preco = new Map((k || []).map(x => [+x[0], +x[4]]));
+    const B = 4 * HORA, bal = t => Math.floor(t / B) * B;
+    const mapa = new Map(), add = (t, v, n) => { const c = mapa.get(t) || {}; c[n] = v; mapa.set(t, c); };
+    for (const x of b || []) add(bal(+x.timestamp), +x.sumOpenInterestValue, "b");
+    for (const x of (y && y.result ? y.result.list : [])) { const t = bal(+x.timestamp), p = preco.get(t); if (p) add(t, +x.openInterest * p, "y"); }
+    for (const x of g || []) add(bal(x.time * 1000), +x.open_interest_usd, "g");
+    const n = Math.max(...[...mapa.values()].map(c => Object.keys(c).length));
+    return [...mapa.entries()].filter(([, c]) => Object.keys(c).length === n).sort((a, b) => a[0] - b[0])
+      .map(([t, c]) => ({t, v: Object.values(c).reduce((a, x) => a + x, 0), p: preco.get(t)}));
+  });
+}
+let perOI = 24;
+async function montarOI(){
+  const s = pref.simbolo;
+  $("oiPer").replaceChildren(...[1, 4, 12, 24].map(h => el("button", {class: h === perOI ? "ativo" : "", onclick: () => { perOI = h; montarOI(); }}, h + "h")));
+  const [oi, serie] = await Promise.all([oiCorretoras(s), serieOI30(s)]);
+  if (s !== pref.simbolo) return;
+  desenharLinhas($("cvOI"), serie.map(x => ({t: x.t, a: x.v, b: x.p})), usd);
+  if (serie.length > 1) {
+    const a = serie[0], z = serie[serie.length - 1], pico = serie.reduce((m, x) => x.v > m.v ? x : m);
+    $("oiResumo").replaceChildren("No período, o open interest somado ", el("b", {class: cls(z.v - a.v)}, (z.v >= a.v ? "subiu " : "caiu ") + pct(Math.abs(z.v / a.v - 1) * 100).replace("+", "")),
+      " (" + usd(a.v) + " → " + usd(z.v) + "), com pico de " + usd(pico.v) + " em " + new Date(pico.t).toLocaleDateString("pt-BR") + ".");
+  }
+  treemap($("treemap"), oi.lista.map(c => ({nome: c.nome, v: c.usd, var: c.var(perOI), aprox: c.aprox})), oi.total);
+  const H = [1, 4, 12, 24];
+  $("oiTab").replaceChildren(el("tr", {}, el("th", {}, "Corretora"), el("th", {}, "Open interest"), el("th", {}, "Participação"), ...H.map(h => el("th", {}, h + "h"))),
+    ...oi.lista.map(c => el("tr", {}, el("td", {}, el("b", {style: "color:" + (CORES_EX[c.nome] || "#000")}, "■ "), c.nome), el("td", {}, usd(c.usd)), el("td", {}, (c.usd / oi.total * 100).toFixed(1).replace(".", ",") + "%"),
+      ...H.map(h => { const v = c.var(h); return el("td", {class: v == null ? "k" : cls(v)}, v == null ? "—" : (c.aprox ? "≈" : "") + pct(v)); }))),
+    el("tr", {}, el("td", {}, el("b", {}, "Total")), el("td", {}, el("b", {}, usd(oi.total))), el("td", {}, "100%"), ...H.map(h => { const v = pesoVar(oi.lista, h); return el("td", {class: v == null ? "k" : cls(v)}, v == null ? "—" : el("b", {}, pct(v))); })));
+}
+// treemap "squarified"
+function treemap(box, itens, total){
+  const W = box.clientWidth, Hh = box.clientHeight;
+  const ord = itens.filter(i => i.v > 0).sort((a, b) => b.v - a.v);
+  const out = [];
+  let x = 0, y = 0, w = W, h = Hh, resto = ord.slice(), soma = total;
+  while (resto.length) {
+    const vert = w >= h, lado = vert ? h : w;
+    let linha = [], melhor = Infinity;
+    for (const it of resto) {
+      const l2 = linha.concat(it), s2 = l2.reduce((a, b) => a + b.v, 0), area = s2 / soma * w * h, esp = area / lado;
+      const pior = Math.max(...l2.map(i => { const a2 = i.v / soma * w * h, c = a2 / esp; return Math.max(c / esp, esp / c); }));
+      if (pior > melhor) break;
+      melhor = pior; linha = l2;
+    }
+    const sl = linha.reduce((a, b) => a + b.v, 0), esp = sl / soma * (vert ? w : h);
+    let off = 0;
+    for (const it of linha) { const tam = it.v / sl * lado; out.push(vert ? {it, x, y: y + off, w: esp, h: tam} : {it, x: x + off, y, w: tam, h: esp}); off += tam; }
+    if (vert) { x += esp; w -= esp; } else { y += esp; h -= esp; }
+    soma -= sl; resto = resto.slice(linha.length);
+  }
+  box.replaceChildren(...out.map(r => { const v = r.it.var;
+    const cor = v == null ? "#9598a1" : v >= 0 ? (v > 1 ? "#089981" : "#2fb393") : (v < -1 ? "#e2323f" : "#ef6a74");
+    const grande = r.w > 120 && r.h > 70;
+    return el("div", {style: `left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px;background:${cor}`, title: r.it.nome + " " + usd(r.it.v) + (v == null ? "" : " · " + pct(v))},
+      el("b", {style: grande ? "font-size:" + Math.min(26, 12 + r.w / 25) + "px" : ""}, r.it.nome), r.w > 60 && r.h > 40 ? el("span", {}, usd(r.it.v)) : null,
+      r.w > 60 && r.h > 55 ? el("div", {style: "position:static;border:0;padding:0;font-size:11.5px;opacity:.9"}, (v == null ? "sem histórico ainda" : perOI + "h " + (r.it.aprox ? "≈" : "") + pct(v))) : null); }));
+}
+// gráfico de linhas com dois eixos (a = azul à esquerda, b = cinza à direita) ou barras (bar = true)
+function desenharLinhas(cv, pts, fmtA, barras){
+  const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  cv.width = r.width * dpr; cv.height = r.height * dpr;
+  const c = cv.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, r.width, r.height);
+  if (pts.length < 2) { c.fillStyle = "#787b86"; c.font = "13px sans-serif"; c.fillText("sem dados", 20, 40); return; }
+  const L = 70, R = 70, T = 28, B = 24, W = r.width - L - R, H = r.height - T - B;
+  const xs = i => L + i / (pts.length - 1) * W;
+  const fx = (k) => { let lo = Infinity, hi = -Infinity; for (const p of pts) if (p[k] != null) { lo = Math.min(lo, p[k]); hi = Math.max(hi, p[k]); } if (barras && k === "a") { const m = Math.max(Math.abs(lo), Math.abs(hi)); lo = -m; hi = m; } if (hi === lo) hi = lo + 1; return [lo, hi]; };
+  const [aLo, aHi] = fx("a"), [bLo, bHi] = fx("b");
+  const ya = v => T + (1 - (v - aLo) / (aHi - aLo)) * H, yb = v => T + (1 - (v - bLo) / (bHi - bLo)) * H;
+  c.font = "11px sans-serif"; c.fillStyle = "#787b86"; c.strokeStyle = "#eef0f4"; c.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) { const y = T + i / 4 * H; c.beginPath(); c.moveTo(L, y); c.lineTo(L + W, y); c.stroke();
+    c.textAlign = "right"; c.fillText(fmtA(aHi - i / 4 * (aHi - aLo)), L - 6, y + 4);
+    c.textAlign = "left"; c.fillText(pr(bHi - i / 4 * (bHi - bLo)).replace("$", ""), L + W + 6, y + 4); }
+  c.textAlign = "center"; let ultDia = "";
+  pts.forEach((p, i) => { const d = new Date(p.t).toLocaleDateString("pt-BR", {day: "2-digit", month: "2-digit"}); if (d !== ultDia && i % Math.ceil(pts.length / 8) === 0) { c.fillText(d, xs(i), T + H + 16); ultDia = d; } });
+  if (barras) {
+    const bw = Math.max(1, W / pts.length * 0.7);
+    for (let i = 0; i < pts.length; i++) { const v = pts[i].a; c.fillStyle = v >= 0 ? "#089981" : "#f23645"; const y0 = ya(0), y1 = ya(v); c.fillRect(xs(i) - bw / 2, Math.min(y0, y1), bw, Math.abs(y1 - y0)); }
+  }
+  const linha = (k, y, cor, lw) => { c.strokeStyle = cor; c.lineWidth = lw; c.beginPath(); let ini = false; pts.forEach((p, i) => { if (p[k] == null) return; if (!ini) { c.moveTo(xs(i), y(p[k])); ini = true; } else c.lineTo(xs(i), y(p[k])); }); c.stroke(); };
+  linha("b", yb, "#9598a1", 1.2);
+  if (!barras) linha("a", ya, "#2962ff", 1.8);
+}
+
+// ---------- aba fluxo ----------
+const PER_FL = [["5m", 5, "1m"], ["15m", 15, "1m"], ["30m", 30, "1m"], ["1h", 60, "1m"], ["4h", 240, "1m"], ["12h", 720, "1m"], ["24h", 96, "15m"], ["3D", 72, "1h"], ["7D", 7, "1d"], ["30D", 30, "1d"]];
+async function fluxo(s){
+  return emCache("fl" + s, 25000, async () => {
+    const pedir = (base, iv, lim) => jx(base + "?" + qs({symbol: s, interval: iv, limit: lim}));
+    const LIM = {"1m": 1500, "15m": 193, "1h": 169, "1d": 61};
+    const ivs = Object.keys(LIM);
+    const [fut, spot] = await Promise.all([FAPI + "/fapi/v1/klines", SPOT + "/api/v3/klines"].map(b => Promise.all(ivs.map(iv => talvez(pedir(b, iv, LIM[iv]))))));
+    const conv = a => (a || []).map(k => ({t: +k[0], c: +k[4], n: 2 * +k[10] - +k[7]}));
+    const F = {}, S = {}; ivs.forEach((iv, i) => { F[iv] = conv(fut[i]); S[iv] = conv(spot[i]); });
+    const saldo = (v, n, desl) => { let a = 0; const L = v.length - 1 - desl; if (L - n + 1 < 0) return null; for (let i = L - n + 1; i <= L; i++) a += v[i].n; return a; };
+    const linhas = PER_FL.map(([nome, n, iv]) => {
+      const nn = iv === "1m" ? n : n;
+      const f = saldo(F[iv], nn, 0), fa = saldo(F[iv], nn, nn), sp = saldo(S[iv], nn, 0), sa = saldo(S[iv], nn, nn);
+      return {nome, f, sp, df: f != null && fa ? (f - fa) / Math.abs(fa) * 100 : null, ds: sp != null && sa ? (sp - sa) / Math.abs(sa) * 100 : null};
+    });
+    return {linhas, horasF: F["1h"].slice(-168), horasS: S["1h"].slice(-168)};
+  });
+}
+function direcao(f, sp){
+  if (f == null || sp == null) return ["—", "c-n"];
+  if (f < 0 && sp < 0) return ["Saída alinhada", "c-sb"];
+  if (f > 0 && sp > 0) return ["Entrada alinhada", "c-lb"];
+  if (f < 0 && sp > 0) return ["Spot absorvendo", "c-sc"];
+  return ["Futuros absorvendo", "c-alta"];
+}
+const pctFl = x => x == null ? "—" : x < -999 ? "<−999%" : x > 999 ? ">+999%" : pct(x, 1);
+async function montarFluxo(){
+  const s = pref.simbolo;
+  const r = await fluxo(s); if (s !== pref.simbolo) return;
+  desenharLinhas($("cvFlF"), r.horasF.map(x => ({t: x.t, a: x.n, b: x.c})), x => usd(x), true);
+  desenharLinhas($("cvFlS"), r.horasS.map(x => ({t: x.t, a: x.n, b: x.c})), x => usd(x), true);
+  $("flTab").replaceChildren(el("tr", {}, ...["Período", "Futuros (saldo)", "Variação", "Spot (saldo)", "Variação", "Direção"].map((t, i) => el("th", {class: i === 5 ? "st" : ""}, t))),
+    ...r.linhas.map(l => { const d = direcao(l.f, l.sp); return el("tr", {}, el("td", {}, el("b", {}, l.nome)),
+      el("td", {class: cls(l.f || 0)}, l.f == null ? "—" : usd(l.f, true)), el("td", {class: cls(l.df || 0)}, pctFl(l.df)),
+      el("td", {class: cls(l.sp || 0)}, l.sp == null ? "—" : usd(l.sp, true)), el("td", {class: cls(l.ds || 0)}, pctFl(l.ds)),
+      el("td", {class: "st"}, el("span", {class: "chip " + d[1]}, d[0]))); }));
+  const l24 = r.linhas.find(l => l.nome === "24h"), l7 = r.linhas.find(l => l.nome === "7D");
+  const txt = l => { const d = direcao(l.f, l.sp)[0]; return "futuros " + usd(l.f, true) + ", spot " + usd(l.sp, true) + " → " + d.toLowerCase(); };
+  $("flResumo").replaceChildren(el("div", {class: "linha"}, el("b", {style: "font-size:15px"}, MAPA[s].base + " — fluxo de agressão (Binance)")),
+    el("div", {class: "resumo"}, l24 && l24.f != null ? "Últimas 24h: " + txt(l24) + "." : "", " ", l7 && l7.f != null ? "Últimos 7 dias: " + txt(l7) + "." : ""));
+}
+
+// ---------- Hyperliquid ----------
+let baleiasHL = [];
+try { baleiasHL = JSON.parse(localStorage.getItem("liqmap-hl-baleias") || "[]").filter(b => Date.now() - b.t < 24 * HORA); } catch (e) {}
+const ordensHL = new Map();   // hash -> ordem em montagem
+const filaDir = [];
+let hlMin = +(pref.hlMin || 500000);
+$("hlMin").value = String(hlMin);
+$("hlMin").addEventListener("change", () => { hlMin = +$("hlMin").value; pref.hlMin = hlMin; salvar(); montarHL(); });
+function ouvirHL(){
+  if (DEMO) return;
+  const ws = new WebSocket("wss://api.hyperliquid.xyz/ws");
+  ws.onopen = () => { for (const c of ["BTC", "ETH", "SOL", "XRP"]) ws.send(JSON.stringify({method: "subscribe", subscription: {type: "trades", coin: c}})); };
+  ws.onmessage = ev => { let j; try { j = JSON.parse(ev.data); } catch (e) { return; } if (j.channel !== "trades") return;
+    for (const f of j.data) {
+      const taker = f.side === "B" ? f.users[0] : f.users[1];
+      const k = f.hash + taker;
+      const o = ordensHL.get(k) || {coin: f.coin, lado: f.side, user: taker, hash: f.hash, t: f.time, usd: 0, sz: 0, px: 0};
+      o.usd += +f.px * +f.sz; o.sz += +f.sz; o.px = o.usd / o.sz; ordensHL.set(k, o);
+      clearTimeout(o.timer); o.timer = setTimeout(() => fecharOrdem(k), 1500);
+    } };
+  ws.onclose = () => setTimeout(ouvirHL, 5000);
+  setInterval(() => { try { ws.send(JSON.stringify({method: "ping"})); } catch (e) {} }, 50000);
+}
+function fecharOrdem(k){
+  const o = ordensHL.get(k); ordensHL.delete(k);
+  if (!o || o.usd < 100000) return;
+  delete o.timer;
+  baleiasHL.unshift(o); baleiasHL = baleiasHL.filter(b => Date.now() - b.t < 24 * HORA).slice(0, 400);
+  filaDir.push(o); processarFila();
+  salvarHL(); if (pref.sub === "hl") montarHL();
+}
+let salvarHLt = 0;
+function salvarHL(){ clearTimeout(salvarHLt); salvarHLt = setTimeout(() => { try { localStorage.setItem("liqmap-hl-baleias", JSON.stringify(baleiasHL)); } catch (e) {} }, 2000); }
+let filaAtiva = false;
+async function processarFila(){
+  if (filaAtiva) return; filaAtiva = true;
+  while (filaDir.length) {
+    const o = filaDir.shift();
+    try {
+      const fills = await hlInfo({type: "userFillsByTime", user: o.user, startTime: o.t - 60000, endTime: o.t + 60000});
+      const meus = fills.filter(x => x.hash === o.hash);
+      if (meus.length) { o.dir = meus[0].dir; o.liq = meus.some(x => x.liquidation); }
+      salvarHL(); if (pref.sub === "hl") montarHL();
+    } catch (e) {}
+    await new Promise(r => setTimeout(r, 1300));
+  }
+  filaAtiva = false;
+}
+const DIR_PT = {"Open Long": ["Abriu long", "c-lb"], "Close Long": ["Fechou long", "c-lu"], "Open Short": ["Abriu short", "c-sb"], "Close Short": ["Fechou short", "c-sc"], "Long > Short": ["Virou de long p/ short", "c-sb"], "Short > Long": ["Virou de short p/ long", "c-lb"]};
+async function montarHL(){
+  const s = pref.simbolo, m = MAPA[s];
+  if (!m.hl) { $("hlCards").replaceChildren(el("div", {class: "carreg"}, m.base + " não é negociado na Hyperliquid.")); $("hlTab").replaceChildren(); return; }
+  const lista = baleiasHL.filter(b => b.coin === m.hl && b.usd >= hlMin);
+  $("hlTab").replaceChildren(el("tr", {}, ...["Hora", "Ação", "Endereço", "Preço", "Valor"].map((t, i) => el("th", {class: i === 1 ? "st" : ""}, t))),
+    ...(lista.length ? lista.slice(0, 120).map(b => { const d = DIR_PT[b.dir] || [b.lado === "B" ? "Compra a mercado" : "Venda a mercado", "c-n"];
+      return el("tr", {}, el("td", {}, horaTxt(b.t), el("small", {class: "k"}, desde(b.t))),
+        el("td", {class: "st"}, el("span", {class: "chip " + d[1]}, d[0] + (b.liq ? " (liquidado)" : "")), b.dir ? null : el("small", {class: "k"}, "consultando…")),
+        el("td", {}, el("a", {href: "https://app.hyperliquid.xyz/explorer/address/" + b.user, target: "_blank", rel: "noopener", style: "color:var(--accent);text-decoration:none"}, b.user.slice(0, 6) + "…" + b.user.slice(-4))),
+        el("td", {}, pr(b.px)), el("td", {}, el("b", {class: b.lado === "B" ? "up" : "down"}, usd(b.usd)))); })
+      : [el("tr", {}, el("td", {colspan: "5", class: "k", style: "text-align:center;padding:18px"}, "Nenhuma ordem desse tamanho desde que o LiqMap foi aberto. A lista vai se preenchendo sozinha."))]));
+  try {
+    const mk = await mercado(s); if (s !== pref.simbolo || !mk.hl) return;
+    const c = mk.hl, card = (t, v, s2, cl) => el("div", {class: "card"}, el("div", {class: "t"}, t), el("div", {class: "v " + (cl || "")}, v), s2 ? el("div", {class: "s"}, s2) : null);
+    const fh = +c.funding * 100;
+    $("hlCards").replaceChildren(
+      card("Preço (mark)", pr(+c.markPx), "variação 24h " + pct((+c.markPx / +c.prevDayPx - 1) * 100), cls(+c.markPx - +c.prevDayPx)),
+      card("Open interest", usd(+c.openInterest * +c.markPx), (+c.openInterest).toLocaleString("pt-BR", {maximumFractionDigits: 0}) + " " + m.hl),
+      card("Volume 24h", usd(+c.dayNtlVlm)),
+      card("Funding (por hora)", fund(fh), "equivale a " + fund(fh * 8) + " por 8h", cls(fh)),
+      card("Prêmio sobre o oráculo", pct(+c.premium * 100, 3), "preço da Hyperliquid vs índice", cls(+c.premium)));
+  } catch (e) { $("hlCards").replaceChildren(el("div", {class: "erro"}, "Hyperliquid sem resposta.")); }
+}
+
+// ---------- controle das abas ----------
+async function rodar(f){ try { await f(); } catch (e) { console.warn(e); const sec = document.querySelector("section:not([hidden])"); if (sec && !sec.querySelector(".erro")) sec.prepend(el("div", {class: "erro"}, "Falha ao carregar: " + e.message)); } }
+function montarExtra(){
+  if (!$("subabas")) return;
+  $("subabas").replaceChildren(...SUBABAS.map(([id, t]) => el("button", {class: "subaba" + (id === pref.sub ? " ativo" : ""), onclick: () => { pref.sub = id; salvar(); montar(); }}, t)));
+  for (const [id] of SUBABAS) $("sec-" + id).hidden = id !== pref.sub;
+  const chave = pref.sub + pref.simbolo;
+  if (chave !== ultimaVista) { ultimaVista = chave; document.querySelectorAll("section .erro").forEach(e => e.remove()); atualizarExtra(); }
+}
+let ultimaVista = "";
+function atualizarExtra(){
+  if (pref.sub === "chave") rodar(montarChave);
+  else if (pref.sub === "oi") rodar(montarOI);
+  else if (pref.sub === "fluxo") rodar(montarFluxo);
+  else if (pref.sub === "hl") rodar(montarHL);
+}
+ouvirHL();
+addEventListener("resize", () => { if (pref.sub === "oi" || pref.sub === "fluxo") atualizarExtra(); });
+montar();
 </script>
 </body>
 </html>
