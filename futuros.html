@@ -176,9 +176,9 @@ async function carregarSimbolo(s, premios){
           lsTop: lsT[0] ? +lsT[0].longAccount * 100 : null};
 }
 
-// limiar de "parado" cresce com o tamanho do período (5 min: 0,02%; 1h: ~0,07%; 24h: ~0,34%)
+// limiar de "parado" cresce com o tamanho do período (5 min: 0,025%; 1h: ~0,09%; 24h: ~0,42%), calibrado com a CoinGlass
 function classificar(l){
-  const lim = 0.02 * Math.sqrt(l.min / 5);
+  const lim = 0.025 * Math.sqrt(l.min / 5);
   const p = l.dp > lim * 1.5 ? 1 : l.dp < -lim * 1.5 ? -1 : 0;
   const o = l.dOiPct > lim ? 1 : l.dOiPct < -lim ? -1 : 0;
   if (p > 0 && o > 0) return ["Compradores entrando", "c-lb", "Long build-up"];
