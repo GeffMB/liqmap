@@ -271,7 +271,7 @@ function montar(){
       item(rot("Alavancagem"), chipAlav(d.pctl)),
       item(rot("Open interest"), el("b", {}, usd(d.oiUsd))),
       item(rot("Funding"), d.funding == null ? "—" : el("b", {class: cls(d.funding)}, fund(d.funding)),
-           d.fundAnt == null ? null : el("span", {class: "k"}, " (anterior " + d.fundAnt.toFixed(4).replace(".", ",") + "%)")),
+           d.fundAnt == null ? null : el("span", {class: "k"}, " (anterior " + fund(d.fundAnt) + ")")),
       item(rot("Contas compradas"), d.lsContas == null ? "—" : el("b", {}, Math.round(d.lsContas) + "%")),
       item(rot("Top traders comprados"), d.lsTop == null ? "—" : el("b", {}, Math.round(d.lsTop) + "%"))),
     el("div", {class: "resumo"}, resumo(d)));
