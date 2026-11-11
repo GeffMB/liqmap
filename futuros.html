@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Futuros por timeframe — LiqMap</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg?v=2">
+<style>
+:root{
+  --bg:#ffffff;--panel2:#f0f3fa;--line:#e0e3eb;--hover:#f0f3fa;
+  --txt:#131722;--sub:#787b86;--up:#089981;--down:#f23645;--accent:#2962ff;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.4 -apple-system,BlinkMacSystemFont,"Trebuchet MS",Roboto,Ubuntu,"Segoe UI",sans-serif}
+.top{display:flex;align-items:center;gap:2px;height:44px;padding:0 8px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none;position:sticky;top:0;background:var(--bg);z-index:5}
+.marca{font-weight:700;padding:0 10px 0 4px;white-space:nowrap;color:var(--txt);text-decoration:none}
+.marca span{color:var(--accent)}
+.marca .logo{width:20px;height:20px;vertical-align:-4px;margin-right:6px;border-radius:5px}
+.sep{width:1px;height:24px;background:var(--line);margin:0 6px;flex:0 0 auto}
+.btn{background:transparent;border:0;border-radius:4px;padding:6px 8px;cursor:pointer;white-space:nowrap;text-decoration:none;color:var(--txt);font:inherit}
+.btn:hover{background:var(--hover)}
+.btn.ativo{color:var(--accent);font-weight:600}
+.status{color:var(--sub);font-size:12px;white-space:nowrap}
+.status.err{color:var(--down)}
+main{max-width:1180px;margin:0 auto;padding:14px 16px 40px}
+h2{font-size:16px;margin:4px 0 10px}
+h3{font-size:13.5px;margin:22px 0 8px}
+.abas{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px}
+.aba{padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);cursor:pointer;font:inherit;color:var(--txt)}
+.aba.ativo{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+.agora{border:1px solid var(--line);border-radius:8px;padding:12px 14px;background:#fafbfd}
+.agora .linha{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center}
+.agora .rot{color:var(--sub);font-size:12px;margin-right:4px}
+.agora .resumo{margin-top:8px;color:#434651;line-height:1.55}
+.chip{display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600;white-space:nowrap}
+.c-lb{background:#d8f3ec;color:#05705e}.c-sc{background:#e8f6f2;color:#2e8a77}
+.c-sb{background:#fde2e4;color:#c21f30}.c-lu{background:#fdf0f1;color:#c9505d}
+.c-n{background:#eef0f4;color:#5d606b}
+.c-crowd{background:#fde2e4;color:#c21f30}.c-alta{background:#fff1d6;color:#a86400}.c-norm{background:#e8f6f2;color:#2e8a77}
+.rolar{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:12.5px}
+th{color:var(--sub);font-weight:500;text-align:right;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap;background:#fafbfd}
+td{text-align:right;padding:8px 10px;border-top:1px solid #eef0f4;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+td.st,th.st{text-align:left}
+td small{display:block;font-size:11px}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--hover)}
+tr.sel td{background:#eef3ff}
+.up{color:var(--up)}.down{color:var(--down)}.k{color:var(--sub)}
+.barra{display:flex;height:5px;border-radius:3px;overflow:hidden;background:#eef0f4;margin-top:4px;min-width:90px}
+.barra i{display:block;height:100%}
+.nota{color:var(--sub);font-size:11.5px;line-height:1.6;margin-top:14px}
+.legenda{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;margin-top:8px}
+.legenda div{border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:12px;color:#434651}
+.legenda b{display:block;margin-bottom:3px}
+@media (max-width:760px){ .marca .txt,.top .status{display:none} }
+</style>
+</head>
+<body>
+<div class="top">
+  <a class="marca" href="./"><img src="logo.svg?v=2" alt="" class="logo">Liq<span>Map</span></a>
+  <div class="sep"></div>
+  <a class="btn" href="./">Gráfico</a>
+  <a class="btn ativo" href="futuros.html">Futuros</a>
+  <a class="btn" href="retornos.html">Retornos</a>
+  <a class="btn" href="livro.html">Livro de ofertas</a>
+  <a class="btn" href="fluxos.html">Fluxos</a>
+  <span style="flex:1"></span>
+  <span class="status" id="status">carregando…</span>
+</div>
+<main>
+  <h2>Futuros por timeframe</h2>
+  <div class="abas" id="abas"></div>
+  <div class="agora" id="agora"></div>
+
+  <h3 id="titDet">Por período</h3>
+  <div class="rolar"><table id="tabDet"></table></div>
+
+  <h3>Resumo das moedas</h3>
+  <div class="rolar"><table id="tabRes"></table></div>
+
+  <h3>Como ler o status</h3>
+  <div class="legenda">
+    <div><b><span class="chip c-lb">Compradores entrando</span></b>Preço ↑ e open interest ↑: posições compradas novas. Alta com força.</div>
+    <div><b><span class="chip c-sb">Vendedores entrando</span></b>Preço ↓ e open interest ↑: posições vendidas novas. Queda com força.</div>
+    <div><b><span class="chip c-sc">Shorts fechando</span></b>Preço ↑ e open interest ↓: vendidos saindo, por stop ou liquidação. A alta é “forçada” e pode perder fôlego.</div>
+    <div><b><span class="chip c-lu">Longs saindo</span></b>Preço ↓ e open interest ↓: comprados saindo. É uma queda de desalavancagem, que costuma perder força quando a limpeza termina.</div>
+    <div><b><span class="chip c-n">Alta/queda sem alavancagem</span></b>O preço se move, mas o open interest fica parado: o movimento vem do mercado à vista (spot), não dos futuros.</div>
+    <div><b><span class="chip c-alta">Alavancagem</span></b>Open interest (em moedas) comparado com os últimos 30 dias. Acima de 85% fica “lotada”: risco maior de cascata de liquidações para os dois lados.</div>
+  </div>
+  <p class="nota" id="nota">
+    Fonte: Binance Futuros (contratos perpétuos USDT), atualizado a cada 30 s. Variação de open interest em US$ = variação na quantidade de contratos × preço atual, assim a mudança de preço não conta como entrada ou saída.
+    “Agressão” é a parte do volume em que o comprador foi o agressor (ordem a mercado).
+    Liquidações: a Binance não fornece o histórico, então o LiqMap registra as liquidações enquanto o gráfico ou esta página estão abertos (e a Binance envia no máximo uma por segundo por moeda). Os valores ficam abaixo do total real e servem como proporção entre longs e shorts.
+  </p>
+</main>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const DEMO = new URLSearchParams(location.search).has("demo");
+const BASE = "https://fapi.binance.com";
+const SIMBOLOS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "QNTUSDT"];
+const NOMES = {BTCUSDT: "Bitcoin", ETHUSDT: "Ethereum", SOLUSDT: "Solana", XRPUSDT: "XRP", QNTUSDT: "Quant"};
+const MIN = 6e4;
+const PERIODOS = [["5m", 5], ["15m", 15], ["30m", 30], ["1h", 60], ["4h", 240], ["12h", 720], ["24h", 1440]];
+
+let pref = {simbolo: "BTCUSDT"};
+try { Object.assign(pref, JSON.parse(localStorage.getItem("liqmap-futuros") || "{}")); } catch (e) {}
+if (!SIMBOLOS.includes(pref.simbolo)) pref.simbolo = "BTCUSDT";
+const salvar = () => { try { localStorage.setItem("liqmap-futuros", JSON.stringify(pref)); } catch (e) {} };
+
+// ---------- formatação ----------
+const casas = p => p >= 1000 ? 1 : p >= 10 ? 2 : 4;
+const pr = p => "$" + p.toLocaleString("pt-BR", {minimumFractionDigits: casas(p), maximumFractionDigits: casas(p)});
+const usd = (x, sinal) => { const a = Math.abs(x), s = sinal ? (x > 0 ? "+" : x < 0 ? "−" : "") : (x < 0 ? "−" : "");
+  return s + (a >= 1e9 ? "$" + (a / 1e9).toFixed(2) + "B" : a >= 1e6 ? "$" + (a / 1e6).toFixed(1) + "M" : a >= 1e3 ? "$" + (a / 1e3).toFixed(1) + "K" : "$" + a.toFixed(0)); };
+const pct = (x, d = 2) => (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toFixed(d).replace(".", ",") + "%";
+const cls = x => x > 0 ? "up" : x < 0 ? "down" : "k";
+const el = (tag, attrs, ...filhos) => { const e = document.createElement(tag); for (const [k, v] of Object.entries(attrs || {})) { if (k === "class") e.className = v; else if (k === "style") e.style.cssText = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v); } for (const f of filhos) if (f != null) e.append(f); return e; };
+
+// ---------- dados ----------
+async function getJSON(path, params){
+  if (DEMO) return demo(path, params);
+  const u = BASE + path + "?" + new URLSearchParams(params);
+  const r = await fetch(u);
+  if (!r.ok) throw new Error(path + " " + r.status);
+  return r.json();
+}
+
+async function carregarSimbolo(s, premios){
+  const [k1, k15, oiH, oiD, oiAgora, fund, lsC, lsT] = await Promise.all([
+    getJSON("/fapi/v1/klines", {symbol: s, interval: "1m", limit: 1500}),
+    getJSON("/fapi/v1/klines", {symbol: s, interval: "15m", limit: 193}),
+    getJSON("/futures/data/openInterestHist", {symbol: s, period: "5m", limit: 500}),
+    getJSON("/futures/data/openInterestHist", {symbol: s, period: "1d", limit: 30}),
+    getJSON("/fapi/v1/openInterest", {symbol: s}),
+    getJSON("/fapi/v1/fundingRate", {symbol: s, limit: 3}).catch(() => []),
+    getJSON("/futures/data/globalLongShortAccountRatio", {symbol: s, period: "5m", limit: 1}).catch(() => []),
+    getJSON("/futures/data/topLongShortPositionRatio", {symbol: s, period: "5m", limit: 1}).catch(() => [])
+  ]);
+  const vela = k => ({t: +k[0], c: +k[4], q: +k[7], tb: +k[10]});
+  const v1 = k1.map(vela), v15 = k15.map(vela);
+  const preco = v1[v1.length - 1].c;
+  const oiQtd = +oiAgora.openInterest;
+  const hist = oiH.map(x => ({t: +x.timestamp, q: +x.sumOpenInterest})).sort((a, b) => a.t - b.t);
+  const agora = Date.now();
+  const oiEm = t => { let r = null; for (const x of hist) { if (x.t <= t) r = x; else break; } return r || hist[0]; };
+
+  const linhas = PERIODOS.map(([nome, min]) => {
+    // preço e volume: velas de 1 min até 12h; para 24h, velas de 15 min
+    const [v, passo] = min <= 720 ? [v1, 1] : [v15, 15];
+    const n = min / passo, L = v.length - 1;
+    const ant = v[L - n] ? v[L - n].c : v[0].c;
+    let vol = 0, comp = 0, volAnt = 0;
+    for (let i = Math.max(0, L - n + 1); i <= L; i++) { vol += v[i].q; comp += v[i].tb; }
+    for (let i = Math.max(0, L - 2 * n + 1); i <= L - n; i++) volAnt += v[i].q;
+    const ref = oiEm(agora - min * MIN);
+    const dOiQ = ref ? oiQtd - ref.q : 0;
+    const liq = totaisLiq(s, min * MIN);
+    return {nome, min, dp: (preco / ant - 1) * 100, vol, dVol: volAnt ? (vol / volAnt - 1) * 100 : 0, agr: vol ? comp / vol * 100 : 50,
+            dOi: dOiQ * preco, dOiPct: ref && ref.q ? dOiQ / ref.q * 100 : 0, liqL: liq[0], liqS: liq[1]};
+  });
+  linhas.forEach(l => l.status = classificar(l));
+
+  // alavancagem: open interest em moedas comparado com os últimos 30 dias (o preço não interfere)
+  const diarios = oiD.map(x => +x.sumOpenInterest).filter(x => x > 0);
+  const pctl = diarios.length ? diarios.filter(x => x <= oiQtd).length / diarios.length * 100 : null;
+  const p = premios[s] || {};
+  return {s, preco, oiQtd, oiUsd: oiQtd * preco, linhas, pctl,
+          funding: p.lastFundingRate != null ? +p.lastFundingRate * 100 : null,
+          fundAnt: fund.length ? +fund[fund.length - 1].fundingRate * 100 : null,
+          proxFund: p.nextFundingTime ? +p.nextFundingTime : null,
+          lsContas: lsC[0] ? +lsC[0].longAccount * 100 : null,
+          lsTop: lsT[0] ? +lsT[0].longAccount * 100 : null};
+}
+
+// limiar de "parado" cresce com o tamanho do período (5 min: 0,02%; 1h: ~0,07%; 24h: ~0,34%)
+function classificar(l){
+  const lim = 0.02 * Math.sqrt(l.min / 5);
+  const p = l.dp > lim * 1.5 ? 1 : l.dp < -lim * 1.5 ? -1 : 0;
+  const o = l.dOiPct > lim ? 1 : l.dOiPct < -lim ? -1 : 0;
+  if (p > 0 && o > 0) return ["Compradores entrando", "c-lb", "Long build-up"];
+  if (p < 0 && o > 0) return ["Vendedores entrando", "c-sb", "Short build-up"];
+  if (p > 0 && o < 0) return ["Shorts fechando", "c-sc", "Short covering"];
+  if (p < 0 && o < 0) return ["Longs saindo", "c-lu", "Long unwinding"];
+  if (p > 0) return ["Alta sem alavancagem", "c-sc", "Price up, OI flat"];
+  if (p < 0) return ["Queda sem alavancagem", "c-lu", "Price down, OI flat"];
+  if (o > 0) return ["Posições acumulando", "c-n", "Price flat, OI up"];
+  if (o < 0) return ["Desalavancando", "c-n", "Price flat, OI down"];
+  return ["Neutro", "c-n", "Flat"];
+}
+const chip = st => el("span", {class: "chip " + st[1], title: st[2]}, st[0]);
+function chipAlav(p){
+  if (p == null) return el("span", {class: "k"}, "—");
+  const [t, c] = p >= 85 ? ["Lotada", "c-crowd"] : p >= 50 ? ["Elevada", "c-alta"] : ["Normal", "c-norm"];
+  return el("span", {class: "chip " + c, title: "Open interest acima de " + Math.round(p) + "% das leituras dos últimos 30 dias"}, t + " · " + Math.round(p) + "%");
+}
+
+// ---------- liquidações (mesmo armazenamento do gráfico principal) ----------
+const liqs = {};
+function lerLiqs(s){
+  try { return JSON.parse(localStorage.getItem("liqmap-liqs-" + s) || "[]").filter(x => Date.now() - x.t < 3 * 864e5); } catch (e) { return []; }
+}
+for (const s of SIMBOLOS) liqs[s] = lerLiqs(s);
+function totaisLiq(s, ms){
+  const desde = Date.now() - ms; let lo = 0, sh = 0;
+  for (const x of liqs[s] || []) if (x.t >= desde) { if (x.l) lo += x.u; else sh += x.u; }
+  return [lo, sh];
+}
+const liqSalvar = {};
+function novaLiq(s, t, p, u, long){
+  liqs[s].push({t, p, u, l: long ? 1 : 0});
+  clearTimeout(liqSalvar[s]);
+  liqSalvar[s] = setTimeout(() => {
+    // junta com o que o gráfico (se estiver aberto em outra aba) já gravou
+    const mapa = new Map();
+    for (const x of lerLiqs(s).concat(liqs[s])) mapa.set(x.t + ":" + x.p + ":" + x.l, x);
+    liqs[s] = [...mapa.values()].sort((a, b) => a.t - b.t).slice(-4000);
+    try { localStorage.setItem("liqmap-liqs-" + s, JSON.stringify(liqs[s])); } catch (e) {}
+  }, 3000);
+}
+function ouvirLiqs(){
+  if (DEMO) return;
+  const ws = new WebSocket("wss://fstream.binance.com/stream?streams=" + SIMBOLOS.map(s => s.toLowerCase() + "@forceOrder").join("/"));
+  ws.onmessage = ev => { try { const o = JSON.parse(ev.data).data.o; const pz = +o.ap || +o.p, qz = +o.z || +o.q; novaLiq(o.s, +o.T, pz, pz * qz, o.S === "SELL"); } catch (e) {} };
+  ws.onclose = () => setTimeout(ouvirLiqs, 5000);
+}
+window.addEventListener("storage", e => { if (e.key && e.key.startsWith("liqmap-liqs-")) { const s = e.key.slice(12); if (liqs[s]) liqs[s] = lerLiqs(s); } });
+
+// ---------- montagem ----------
+let dados = {};
+function barraLiq(lo, sh){
+  const t = lo + sh;
+  const b = el("div", {class: "barra", title: t ? "Longs liquidados " + usd(lo) + " · Shorts liquidados " + usd(sh) : "Nenhuma registrada"});
+  if (t) b.append(el("i", {style: "width:" + (lo / t * 100) + "%;background:#f23645"}), el("i", {style: "width:" + (sh / t * 100) + "%;background:#089981"}));
+  return b;
+}
+function montarAbas(){
+  $("abas").replaceChildren(...SIMBOLOS.map(s => el("button", {class: "aba" + (s === pref.simbolo ? " ativo" : ""), onclick: () => { pref.simbolo = s; salvar(); montar(); }}, s.replace("USDT", ""))));
+}
+function resumo(d){
+  const h1 = d.linhas[3], h24 = d.linhas[6], m15 = d.linhas[1];
+  const partes = [];
+  const [lo, sh] = [h24.liqL, h24.liqS];
+  if (lo + sh > 0) partes.push("Liquidações registradas em 24h: " + Math.round(lo / (lo + sh) * 100) + "% de comprados (" + usd(lo + sh) + ").");
+  const txt = {
+    "Long build-up": "compradores abrindo posição", "Short build-up": "vendedores abrindo posição", "Short covering": "vendidos fechando posição",
+    "Long unwinding": "comprados fechando posição", "Price up, OI flat": "alta puxada pelo spot", "Price down, OI flat": "queda puxada pelo spot",
+    "Price flat, OI up": "posições acumulando com preço parado", "Price flat, OI down": "desalavancagem com preço parado", "Flat": "mercado parado"};
+  partes.push("Curto prazo (15m–1h): " + txt[m15.status[2]] + (m15.status[2] !== h1.status[2] ? " / " + txt[h1.status[2]] : "") + ". No dia: " + txt[h24.status[2]] + ".");
+  if (d.funding != null) partes.push("Funding " + d.funding.toFixed(4).replace(".", ",") + "% por 8h (" + (d.funding > 0.03 ? "alto: comprados pagando caro" : d.funding < 0 ? "negativo: vendidos pagando" : "neutro") + ").");
+  if (d.pctl != null && d.pctl >= 85) partes.push("Alavancagem lotada: movimentos bruscos de liquidação ficam mais prováveis.");
+  if (["Short covering"].includes(h1.status[2]) && h1.dp > 0) partes.push("Repique apoiado em shorts fechando tende a ser frágil se o open interest não voltar a subir junto com o preço.");
+  if (["Long unwinding"].includes(h1.status[2]) && h1.dp < 0) partes.push("Queda por saída de comprados costuma perder força quando a limpeza termina.");
+  return partes.join(" ");
+}
+function montar(){
+  montarAbas();
+  const d = dados[pref.simbolo];
+  if (!d) { $("agora").textContent = "carregando…"; return; }
+  const rot = t => el("span", {class: "rot"}, t);
+  const item = (...f) => el("span", {}, ...f);
+  $("agora").replaceChildren(
+    el("div", {class: "linha"},
+      el("b", {style: "font-size:15px"}, d.s.replace("USDT", "") + " agora"),
+      item(rot("Preço"), el("b", {}, pr(d.preco))),
+      item(rot("1h"), chip(d.linhas[3].status)),
+      item(rot("24h"), chip(d.linhas[6].status)),
+      item(rot("Alavancagem"), chipAlav(d.pctl)),
+      item(rot("Open interest"), el("b", {}, usd(d.oiUsd))),
+      item(rot("Funding"), d.funding == null ? "—" : el("b", {class: cls(d.funding)}, d.funding.toFixed(4).replace(".", ",") + "%"),
+           d.fundAnt == null ? null : el("span", {class: "k"}, " (anterior " + d.fundAnt.toFixed(4).replace(".", ",") + "%)")),
+      item(rot("Contas compradas"), d.lsContas == null ? "—" : el("b", {}, Math.round(d.lsContas) + "%")),
+      item(rot("Top traders comprados"), d.lsTop == null ? "—" : el("b", {}, Math.round(d.lsTop) + "%"))),
+    el("div", {class: "resumo"}, resumo(d)));
+
+  $("titDet").textContent = NOMES[d.s] + " (" + d.s + ") por período";
+  const cab = el("tr", {}, ...["Período", "Preço", "Volume futuros", "Agressão compradora", "Open interest", "Liquidações*", "Status"].map((t, i) => el("th", {class: i === 6 ? "st" : ""}, t)));
+  $("tabDet").replaceChildren(cab, ...d.linhas.map(l => el("tr", {},
+    el("td", {}, el("b", {}, l.nome)),
+    el("td", {}, pr(d.preco), el("small", {class: cls(l.dp)}, pct(l.dp))),
+    el("td", {}, usd(l.vol), el("small", {class: cls(l.dVol)}, pct(l.dVol, 1) + " vs anterior")),
+    el("td", {}, el("span", {class: l.agr >= 52 ? "up" : l.agr <= 48 ? "down" : ""}, l.agr.toFixed(1).replace(".", ",") + "%"), el("small", {class: "k"}, l.agr >= 50 ? "compra a mercado" : "venda a mercado")),
+    el("td", {}, el("span", {class: cls(l.dOi)}, usd(l.dOi, true)), el("small", {class: cls(l.dOiPct)}, pct(l.dOiPct))),
+    el("td", {}, usd(l.liqL + l.liqS), barraLiq(l.liqL, l.liqS)),
+    el("td", {class: "st"}, chip(l.status)))));
+
+  const cabR = el("tr", {}, ...["Moeda", "Preço", "24h", "Status 1h", "Status 24h", "Open interest", "Alavancagem", "Funding"].map((t, i) => el("th", {class: i === 3 || i === 4 || i === 6 ? "st" : ""}, t)));
+  $("tabRes").replaceChildren(cabR, ...SIMBOLOS.filter(s => dados[s]).map(s => { const x = dados[s]; return el("tr", {class: "click" + (s === pref.simbolo ? " sel" : ""), onclick: () => { pref.simbolo = s; salvar(); montar(); scrollTo({top: 0, behavior: "smooth"}); }},
+    el("td", {}, el("b", {}, s.replace("USDT", "")), " ", el("span", {class: "k"}, NOMES[s])),
+    el("td", {}, pr(x.preco)),
+    el("td", {class: cls(x.linhas[6].dp)}, pct(x.linhas[6].dp)),
+    el("td", {class: "st"}, chip(x.linhas[3].status)),
+    el("td", {class: "st"}, chip(x.linhas[6].status)),
+    el("td", {}, usd(x.oiUsd), el("small", {class: cls(x.linhas[6].dOi)}, usd(x.linhas[6].dOi, true) + " em 24h")),
+    el("td", {class: "st"}, chipAlav(x.pctl)),
+    el("td", {class: x.funding == null ? "k" : cls(x.funding)}, x.funding == null ? "—" : x.funding.toFixed(4).replace(".", ",") + "%")); }));
+}
+
+let ocupado = false;
+async function atualizar(){
+  if (ocupado) return; ocupado = true;
+  try {
+    const prem = {};
+    for (const p of await getJSON("/fapi/v1/premiumIndex", {})) prem[p.symbol] = p;
+    // a moeda escolhida primeiro, para a tela aparecer logo
+    const ordem = [pref.simbolo, ...SIMBOLOS.filter(s => s !== pref.simbolo)];
+    let falhas = 0;
+    for (const s of ordem) {
+      try { dados[s] = await carregarSimbolo(s, prem); } catch (e) { falhas++; console.warn(s, e); }
+      montar();
+    }
+    $("status").className = "status" + (falhas ? " err" : "");
+    $("status").textContent = (falhas ? falhas + " moeda(s) sem resposta · " : "") + "atualizado às " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit", second: "2-digit"}) + (DEMO ? " · DADOS DE TESTE" : "");
+  } catch (e) {
+    $("status").className = "status err"; $("status").textContent = "Binance sem resposta: " + e.message;
+  }
+  ocupado = false;
+}
+
+// ---------- dados de teste (?demo=1) ----------
+function demo(path, params){
+  const base = {BTCUSDT: 73700, ETHUSDT: 2030, SOLUSDT: 152, XRPUSDT: 2.31, QNTUSDT: 92}[params.symbol] || 100;
+  const agora = Date.now();
+  const onda = (i, f) => Math.sin(i / f) * 0.01 + Math.sin(i / (f * 7)) * 0.02;
+  if (path === "/fapi/v1/premiumIndex") return SIMBOLOS.map(s => ({symbol: s, lastFundingRate: (Math.random() * 0.0002 - 0.00004).toFixed(6), nextFundingTime: agora + 3 * 36e5}));
+  if (path === "/fapi/v1/klines") {
+    const ms = params.interval === "1m" ? MIN : 15 * MIN, n = params.limit, t0 = Math.floor(agora / ms) * ms;
+    return Array.from({length: n}, (_, i) => { const c = base * (1 + onda(i + (ms > MIN ? 0 : 0), ms > MIN ? 8 : 90)); const q = base * 3e3 * (1 + Math.random());
+      return [t0 - (n - 1 - i) * ms, c, c, c, c, 0, 0, q, 0, 0, q * (0.4 + Math.random() * 0.2)]; });
+  }
+  if (path === "/futures/data/openInterestHist") {
+    const ms = params.period === "5m" ? 5 * MIN : 864e5, n = params.limit;
+    return Array.from({length: n}, (_, i) => ({timestamp: Math.floor(agora / ms) * ms - (n - i) * ms, sumOpenInterest: 1e5 * (1 + Math.cos(i / 9) * 0.03)}));
+  }
+  if (path === "/fapi/v1/openInterest") return {openInterest: 1e5 * 1.01};
+  if (path === "/fapi/v1/fundingRate") return [{fundingRate: "0.000082"}];
+  if (path.includes("LongShort")) return [{longAccount: (0.45 + Math.random() * 0.2).toFixed(4)}];
+  return [];
+}
+if (DEMO) for (const s of SIMBOLOS) for (let i = 0; i < 60; i++) liqs[s].push({t: Date.now() - Math.random() * 864e5, p: 1, u: Math.random() * 2e5, l: Math.random() < 0.7 ? 1 : 0});
+
+montar();
+atualizar();
+setInterval(atualizar, 30000);
+ouvirLiqs();
+</script>
+</body>
+</html>
