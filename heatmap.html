@@ -107,7 +107,11 @@ const TF_MS = {"1m": 6e4, "5m": 3e5, "15m": 9e5};
 function efetivo(){
   const L = livros[pref.simbolo], f = L && L.fotos.length ? L.fotos[0].t : Date.now();
   const jan = pref.jan === "auto" ? Math.min(24 * 36e5, Math.max(30 * 6e4, Date.now() - f + 3 * 6e4)) : +pref.jan;
-  const tf = pref.tf !== "auto" ? pref.tf : jan <= 3 * 36e5 ? "1m" : jan <= 12 * 36e5 ? "5m" : "15m";
+  let tf = pref.tf !== "auto" ? pref.tf : jan <= 3 * 36e5 ? "1m" : jan <= 12 * 36e5 ? "5m" : "15m";
+  // vela escolhida à mão: a janela automática cresce para caber pelo menos 40 velas
+  if (pref.tf !== "auto" && pref.jan === "auto") return {jan: Math.min(24 * 36e5, Math.max(jan, 40 * TF_MS[tf])), tf, ms: TF_MS[tf]};
+  // janela escolhida à mão com vela grande demais (menos de 20 velas): usa a maior vela que caiba
+  if (jan / TF_MS[tf] < 20) tf = ["15m", "5m", "1m"].find(x => jan / TF_MS[x] >= 20) || "1m";
   return {jan, tf, ms: TF_MS[tf]};
 }
 let tfCarregado = "";
