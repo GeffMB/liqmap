@@ -181,12 +181,13 @@ function ouvirNegocios(){
 
 // ---------- varredura: uma carteira a cada ~1,1 s (limite da Hyperliquid: ~60 consultas por minuto) ----------
 const filaUrgente = [];
-let rodizio = 0, verificadas = 0;
+let rodizio = 0, verificadas = 0, alterna = false;
 function proxima(){
   if (filaUrgente.length) return filaUrgente.shift();
   const agora = Date.now();
-  // carteiras com ordens grandes: a cada ~1 min
-  for (const [a, c] of carteiras) if (c.quente && agora - c.ultima > 60000) return a;
+  // carteiras com ordens grandes (sem contar formadores de mercado): a cada ~1,5 min, intercaladas com as novas
+  alterna = !alterna;
+  if (alterna) for (const [a, c] of carteiras) if (c.quente && !c.mm && agora - c.ultima > 90000) return a;
   const chaves = [...carteiras.keys()];
   if (!chaves.length) return null;
   // nunca verificadas primeiro, depois rodízio
@@ -196,14 +197,14 @@ function proxima(){
   return chaves[rodizio];
 }
 async function varrer(){
-  const a = proxima();
+  const a = proxima(), ini = Date.now();
   let espera = a ? 1100 : 5000;
   if (a) {
     try { await verificar(a); verificadas++; }
     catch (e) { console.warn(e); espera = 15000; if (!carteiras.get(a).ultima) filaUrgente.push(a); }   // limite atingido: espera e tenta de novo
   }
   atualizarStatus();
-  setTimeout(varrer, espera);
+  setTimeout(varrer, Math.max(150, espera - (Date.now() - ini)));
 }
 async function verificar(a){
   const c = carteiras.get(a);
