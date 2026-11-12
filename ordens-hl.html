@@ -98,6 +98,7 @@ body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.4 -apple-system,
   </aside>
 </div>
 <p class="nota">
+  <b>Dica:</b> deixe esta página aberta em <b>uma aba só</b>. A Hyperliquid limita as consultas por internet (cerca de 60 por minuto), então duas abas abertas — ou dois computadores na mesma rede — dividem esse limite e a varredura fica mais lenta.<br>
   Ordens grandes paradas na Hyperliquid, com o endereço de quem colocou. <b>Linha cheia</b> = ordem limite no preço dela; <b>tracejada</b> = gatilho (take profit ou stop loss) no preço de disparo; <b>apagada</b> = ordem que saiu (executada ou cancelada). A espessura mostra o tamanho. Verde = compra, vermelho = venda.
   A Hyperliquid não publica uma lista de todas as ordens: o LiqMap consulta, uma a uma, as maiores carteiras do ranking da Hyperliquid e as que fizeram negócios grandes, por isso a lista vai se completando nos primeiros minutos e cada carteira é verificada de novo a cada poucos minutos (as que têm ordens grandes, a cada minuto).
   “Formador de mercado” = carteira com dezenas de ordens pequenas e grandes dos dois lados (robôs de liquidez), que costumam poluir a visão.
@@ -181,7 +182,7 @@ function ouvirNegocios(){
 
 // ---------- varredura: uma carteira a cada ~1,1 s (limite da Hyperliquid: ~60 consultas por minuto) ----------
 const filaUrgente = [];
-let rodizio = 0, verificadas = 0, alterna = false;
+let rodizio = 0, verificadas = 0, alterna = false, pausa = 0;
 function proxima(){
   if (filaUrgente.length) return filaUrgente.shift();
   const agora = Date.now();
@@ -200,8 +201,13 @@ async function varrer(){
   const a = proxima(), ini = Date.now();
   let espera = a ? 1100 : 5000;
   if (a) {
-    try { await verificar(a); verificadas++; }
-    catch (e) { console.warn(e); espera = 15000; if (!carteiras.get(a).ultima) filaUrgente.push(a); }   // limite atingido: espera e tenta de novo
+    try { await verificar(a); verificadas++; pausa = 0; }
+    catch (e) {
+      console.warn(e);
+      const c = carteiras.get(a);
+      if (/429/.test(e.message)) { pausa = Date.now(); espera = 20000; filaUrgente.unshift(a); }   // limite de consultas: espera e tenta a mesma de novo
+      else { c.falhas = (c.falhas || 0) + 1; if (c.falhas >= 2) c.ultima = Date.now(); else filaUrgente.push(a); }   // carteira com erro: pula
+    }
   }
   atualizarStatus();
   setTimeout(varrer, Math.max(150, espera - (Date.now() - ini)));
@@ -237,7 +243,7 @@ async function verificar(a){
 function atualizarStatus(){
   const tot = carteiras.size, vistas = [...carteiras.values()].filter(c => c.ultima).length;
   const quentes = [...carteiras.values()].filter(c => c.quente).length;
-  $("varre").textContent = DEMO ? "dados de teste" : vistas < tot ? `Verificando carteiras: ${vistas} de ${tot}` : `${tot} carteiras monitoradas · ${quentes} com ordens grandes`;
+  $("varre").textContent = DEMO ? "dados de teste" : pausa ? "A Hyperliquid pediu uma pausa (limite de consultas). Retomando em instantes…" : vistas < tot ? `Verificando carteiras: ${vistas} de ${tot}` : `${tot} carteiras monitoradas · ${quentes} com ordens grandes`;
 }
 
 // ---------- ordens filtradas ----------
