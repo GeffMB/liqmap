@@ -50,6 +50,9 @@ body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.4 -apple-system,
 .pa{color:#ff8a3d}.pb{color:#3ddc84}
 .nota{color:var(--sub);font-size:11.5px;line-height:1.55;padding:0 12px 14px;flex:0 0 auto}
 @media (max-width:900px){
+  html,body{height:auto}
+  body{display:block}
+  .corpo{display:flex}
   .cards{grid-template-columns:repeat(3,minmax(0,1fr))}
   .corpo{flex-direction:column}
   .grafico{flex:0 0 62vh}
