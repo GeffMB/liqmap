@@ -149,7 +149,7 @@ class Livro {
     this.conectar();
   }
   conectar(){
-    const ws = new WebSocket("wss://fstream.binance.com/ws/" + this.s.toLowerCase() + "@depth@500ms");
+    const ws = new WebSocket("wss://fstream.binance.com/public/ws/" + this.s.toLowerCase() + "@depth@500ms");
     this.ws = ws;
     ws.onopen = () => this.sincronizar();
     ws.onmessage = ev => { let e; try { e = JSON.parse(ev.data); } catch (x) { return; }
