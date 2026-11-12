@@ -42,7 +42,7 @@ body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.4 -apple-system,
 .dica .gr div{background:#0b0e14;border-radius:6px;padding:5px 7px}
 .dica .gr span{display:block;color:#8b93a3;font-size:10.5px}
 .dica .rod{display:flex;justify-content:space-between;color:#8b93a3;font-size:11px;margin-top:6px}
-.lado{width:350px;flex:0 0 350px;background:var(--escuro);color:#d1d4dc;border-radius:8px;display:flex;flex-direction:column;overflow:hidden}
+.lado{width:420px;flex:0 0 420px;background:var(--escuro);color:#d1d4dc;border-radius:8px;display:flex;flex-direction:column;overflow:hidden}
 .lado h3{margin:0;padding:9px 12px 2px;font-size:13px;color:#fff}
 .lado .sub{padding:0 12px 6px;font-size:11px;color:#8b93a3}
 .lista{flex:1 1 auto;overflow-y:auto;font-variant-numeric:tabular-nums;font-size:11.5px}
@@ -55,14 +55,22 @@ body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.4 -apple-system,
 .lista a{color:#8fa8ff;text-decoration:none}
 .trig{font-size:9.5px;padding:0 4px;border-radius:3px;background:#2b3345;color:#c3cad8;margin-left:4px}
 .mm{font-size:9.5px;padding:0 4px;border-radius:3px;background:#3a2f12;color:#e0b84c;margin-left:3px}
+.faixa{font-size:9.5px;padding:0 4px;border-radius:3px;background:#1d2a4a;color:#8fa8ff;margin-left:3px}
+.nova{font-size:9.5px;padding:0 4px;border-radius:3px;background:#3a1d2a;color:#ff8fb1;margin-left:3px}
+.lista td.d{color:#8b93a3}
 .pv{color:#ff7a59}.pc{color:#3ddc84}
+.resumo{margin:0 12px 8px;padding:9px 12px;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;background:#f7f9fd;font-size:12.5px;line-height:1.6;flex:0 0 auto}
+.resumo b.c{color:#089981}.resumo b.v{color:#f23645}
+.resumo ul{margin:2px 0 0;padding-left:18px}
 .nota{color:var(--sub);font-size:11.5px;line-height:1.55;padding:0 12px 14px;flex:0 0 auto}
 @media (max-width:900px){
   html,body{height:auto} body{display:block}
   .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
   .corpo{flex-direction:column}
   .grafico{flex:0 0 60vh;min-height:360px}
-  .lado{width:auto;flex:0 0 420px}
+  .lado{width:auto;flex:0 0 440px}
+  .lista{overflow-x:auto}
+  .lista td,.lista th{padding:3px 5px}
   .marca .txt{display:none}
 }
 </style>
@@ -89,6 +97,7 @@ body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.4 -apple-system,
   <div class="varre"><span class="ponto"></span><span id="varre">preparando…</span></div>
 </div>
 <div class="cards" id="cards"></div>
+<div class="resumo" id="resumo"></div>
 <div class="corpo">
   <div class="grafico" id="grafico"><canvas id="cv"></canvas><div class="vazio" id="vazio"></div><div class="dica" id="dica"></div></div>
   <aside class="lado">
@@ -98,10 +107,14 @@ body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.4 -apple-system,
   </aside>
 </div>
 <p class="nota">
-  <b>Dica:</b> deixe esta página aberta em <b>uma aba só</b>. A Hyperliquid limita as consultas por internet (cerca de 60 por minuto), então duas abas abertas — ou dois computadores na mesma rede — dividem esse limite e a varredura fica mais lenta.<br>
-  Ordens grandes paradas na Hyperliquid, com o endereço de quem colocou. <b>Linha cheia</b> = ordem limite no preço dela; <b>tracejada</b> = gatilho (take profit ou stop loss) no preço de disparo; <b>apagada</b> = ordem que saiu (executada ou cancelada). A espessura mostra o tamanho. Verde = compra, vermelho = venda.
-  A Hyperliquid não publica uma lista de todas as ordens: o LiqMap consulta, uma a uma, as maiores carteiras do ranking da Hyperliquid e as que fizeram negócios grandes, por isso a lista vai se completando nos primeiros minutos e cada carteira é verificada de novo a cada poucos minutos (as que têm ordens grandes, a cada minuto).
-  “Formador de mercado” = carteira com dezenas de ordens pequenas e grandes dos dois lados (robôs de liquidez), que costumam poluir a visão.
+  <b>Como ler.</b> Cada linha é uma ordem grande parada na Hyperliquid, com a carteira de quem colocou. <b>Verde</b> = compra, <b>vermelho</b> = venda.
+  <b>Linha cheia</b> = ordem limite; <b>tracejada</b> = gatilho (take profit ou stop loss); <b>apagada</b> = ordem que saiu (executada ou cancelada). A espessura mostra o tamanho.<br>
+  <b>Etiquetas:</b> <span class="mm">MM</span> formador de mercado — robô que cota compra e venda colado no preço, com tamanhos parecidos; não indica direção (esconda com a caixinha acima).
+  <span class="faixa">FAIXA</span> a mesma carteira compra bem abaixo e vende bem acima do preço: opera a faixa, não aposta numa direção.
+  <span class="nova">NOVA</span> colocada há menos de 10 min: pode ser cancelada logo (inclusive ordens postas só para assustar). Dê mais peso às antigas.
+  <span class="trig">GATILHO</span> take profit ou stop loss.<br>
+  A Hyperliquid não publica todas as ordens: o LiqMap consulta, uma a uma, as maiores carteiras do ranking e as que fizeram negócios grandes, por isso a lista vai se completando nos primeiros minutos.
+  Deixe a página aberta em <b>uma aba só</b>: a Hyperliquid limita as consultas (~60 por minuto) e duas abas dividem esse limite.
 </p>
 <script>
 "use strict";
@@ -235,7 +248,7 @@ async function verificar(a){
                   reduz: !!o.reduceOnly, tpsl: !!o.isPositionTpsl, inteira, t: o.timestamp, user: a, pos: pos && pos[o.coin] ? pos[o.coin] : (antes.get(o.oid) || {}).pos});
   }
   const agoraIds = new Set(grandes.map(o => o.oid));
-  for (const [oid, o] of antes) if (!agoraIds.has(oid)) historico.push(Object.assign({}, o, {fim: agora, mm: c.mm}));
+  for (const [oid, o] of antes) if (!agoraIds.has(oid)) historico.push(Object.assign({}, o, {fim: agora, mm: c.mm || perfil(c, o.coin) === "mm"}));
   c.ordens = grandes; c.ultima = agora; c.quente = grandes.length > 0;
   salvarEstado();
   agendarDesenho(); listar();
@@ -246,17 +259,41 @@ function atualizarStatus(){
   $("varre").textContent = DEMO ? "dados de teste" : pausa ? "A Hyperliquid pediu uma pausa (limite de consultas). Retomando em instantes…" : vistas < tot ? `Verificando carteiras: ${vistas} de ${tot}` : `${tot} carteiras monitoradas · ${quentes} com ordens grandes`;
 }
 
+// ---------- perfil da carteira numa moeda ----------
+// "mm": cota compra e venda a menos de 1,5% do preço com tamanhos parecidos (ou tem dezenas de ordens só-maker)
+// "faixa": compra a mais de 3% abaixo E vende a mais de 3% acima (opera a faixa, não a direção)
+const PERTO = 0.015, LONGE = 0.03;
+const refDe = coin => coin === pref.moeda && precoAtual ? precoAtual : +mids[coin] || (coin === pref.moeda && velas.length ? velas[velas.length - 1].c : 0);
+function perfil(c, coin){
+  if (c.mm) return "mm";
+  const ref = refDe(coin); if (!ref) return "";
+  const os = (c.ordens || []).filter(o => o.coin === coin && !o.trig);
+  const b = os.filter(o => o.lado === "B"), a = os.filter(o => o.lado === "A");
+  if (!b.length || !a.length) return "";
+  const pb = b.filter(o => Math.abs(o.px / ref - 1) <= PERTO), pa = a.filter(o => Math.abs(o.px / ref - 1) <= PERTO);
+  for (const x of pb) for (const y of pa) if (Math.min(x.sz, y.sz) / Math.max(x.sz, y.sz) >= 0.85) return "mm";
+  if (b.some(o => 1 - o.px / ref >= LONGE) && a.some(o => o.px / ref - 1 >= LONGE)) return "faixa";
+  return "";
+}
+
 // ---------- ordens filtradas ----------
+let escondidas = {ordens: 0, carteiras: 0};
 function filtradas(incluiEncerradas){
   const min = +pref.min, out = [];
   const ok = o => o.coin === pref.moeda && o.val >= min && (pref.tipo === "todas" || (pref.tipo === "trig") === o.trig);
-  for (const c of carteiras.values()) { if (pref.semMM && c.mm) continue; for (const o of c.ordens || []) if (ok(o)) out.push(o); }
+  escondidas = {ordens: 0, carteiras: 0};
+  for (const c of carteiras.values()) {
+    const minhas = (c.ordens || []).filter(ok); if (!minhas.length) continue;
+    const pf = perfil(c, pref.moeda);
+    if (pref.semMM && pf === "mm") { escondidas.ordens += minhas.length; escondidas.carteiras++; continue; }
+    for (const o of minhas) out.push(Object.assign(o, {perfil: pf}));
+  }
   if (incluiEncerradas) for (const o of historico) if (ok(o) && !(pref.semMM && o.mm)) out.push(Object.assign({}, o, {encerrada: true}));
   return out;
 }
 
 // ---------- velas e preço ----------
-let velas = [], precoAtual = null;
+let velas = [], precoAtual = null, mids = {};
 async function carregarVelas(){
   const tf = TF[pref.tf], fim = Date.now(), ini = fim - tf.jan, moeda = pref.moeda;
   try {
@@ -269,7 +306,7 @@ async function carregarVelas(){
 async function atualizarPreco(){
   try {
     if (DEMO) precoAtual = velas.length ? velas[velas.length - 1].c : null;
-    else { const m = await info({type: "allMids"}); precoAtual = +m[pref.moeda]; }
+    else { const m = await info({type: "allMids"}); mids = m; precoAtual = +m[pref.moeda]; }
     if (velas.length && precoAtual) { const u = velas[velas.length - 1], ms = TF[pref.tf].ms;
       if (Date.now() - u.t < ms) { u.c = precoAtual; u.h = Math.max(u.h, precoAtual); u.l = Math.min(u.l, precoAtual); }
       else velas.push({t: Math.floor(Date.now() / ms) * ms, o: precoAtual, h: precoAtual, l: precoAtual, c: precoAtual}); }
@@ -347,7 +384,7 @@ function dicaOrdem(o, x, y){
       <div><span>Tamanho original</span>${usd(o.val)}<br><small>${qtd(o.sz)} ${o.coin}${o.inteira ? " (posição inteira)" : ""}</small></div>
       <div><span>Falta executar</span>${usd(o.resta * o.px)}<br><small>${qtd(o.resta)} ${o.coin}</small></div>
       ${o.trig ? `<div><span>Dispara em</span>${pr(o.px)}<br><small>${o.cond && o.cond !== "N/A" ? o.cond.replace("Price above", "preço acima de").replace("Price below", "preço abaixo de") : ""}</small></div><div><span>Preço limite</span>${pr(o.lim)}<br><small>${abrev(o.user)}</small></div>`
-        : `<div><span>Carteira</span>${abrev(o.user)}</div><div><span>Origem</span>${(carteiras.get(o.user) || {}).fonte || "—"}</div>`}
+        : `<div><span>Carteira</span>${abrev(o.user)}</div><div><span>Perfil</span>${o.perfil === "mm" ? "formador de mercado" : o.perfil === "faixa" ? "opera a faixa" : "direcional"}<br><small>origem: ${(carteiras.get(o.user) || {}).fonte || "—"}</small></div>`}
       ${o.pos && o.pos.szi ? `<div><span>Posição da carteira</span>${o.pos.szi > 0 ? "Long " : "Short "}${qtd(Math.abs(o.pos.szi))}</div><div><span>Entrada · liquidação</span>${pr(o.pos.entrada)} · ${o.pos.liq ? pr(o.pos.liq) : "—"}</div>` : ""}
     </div>
     <div class="rod"><span>Colocada ${dataHora(o.t)}</span><span>${o.encerrada ? "saiu " + dataHora(o.fim) : "aberta há " + dur(agora - o.t)}</span></div>`;
@@ -371,33 +408,66 @@ $("grafico").addEventListener("click", e => {
 });
 
 // ---------- lista lateral e cards ----------
+const dist = (px, ref) => ref ? (px >= ref ? "+" : "−") + Math.abs((px / ref - 1) * 100).toFixed(1).replace(".", ",") + "%" : "";
+const NOVA_MS = 10 * 6e4;
+function etiquetas(o){
+  return (o.trig ? '<span class="trig">GATILHO</span>' : "") +
+    (o.perfil === "mm" ? '<span class="mm" title="formador de mercado: cota os dois lados, não indica direção">MM</span>' : "") +
+    (o.perfil === "faixa" ? '<span class="faixa" title="compra bem abaixo e vende bem acima do preço">FAIXA</span>' : "") +
+    (Date.now() - o.t < NOVA_MS ? '<span class="nova" title="colocada há menos de 10 min: pode ser cancelada logo">NOVA</span>' : "");
+}
 function listar(){
   const ab = filtradas(false).sort((a, b) => b.px - a.px), ref = precoAtual;
-  $("ladoSub").textContent = `${pref.moeda} · ${ab.length} ordens ≥ ${usd(+pref.min)}` + (pref.semMM ? " · sem formadores de mercado" : "");
-  const linha = o => `<tr class="l" onclick="window.open('https://app.hyperliquid.xyz/explorer/address/${o.user}','_blank','noopener')" title="${TIPOS[o.tipo] || o.tipo}${o.reduz ? " · só reduz" : ""}">
-    <td class="${o.lado === "B" ? "pc" : "pv"}">${pr(o.px)}${o.trig ? '<span class="trig">GATILHO</span>' : ""}${(carteiras.get(o.user) || {}).mm ? '<span class="mm">MM</span>' : ""}</td>
-    <td>${qtd(o.sz)}</td><td>${usd(o.val)}</td><td><a href="https://app.hyperliquid.xyz/explorer/address/${o.user}" target="_blank" rel="noopener">${abrev(o.user)}</a></td></tr>`;
-  let html = `<table><tr><th>Preço</th><th>Qtd</th><th>Valor</th><th>Carteira</th></tr>`, pos = false;
-  for (const o of ab) { if (!pos && ref && o.px < ref) { html += `<tr class="meio"><td>${pr(ref)}</td><td colspan="3" style="text-align:right;font-weight:400;color:#8b93a3">preço atual</td></tr>`; pos = true; } html += linha(o); }
-  if (!pos && ref) html += `<tr class="meio"><td>${pr(ref)}</td><td colspan="3" style="text-align:right;font-weight:400;color:#8b93a3">preço atual</td></tr>`;
+  $("ladoSub").textContent = `${pref.moeda} · ${ab.length} ordens ≥ ${usd(+pref.min)}` +
+    (pref.semMM ? (escondidas.ordens ? ` · ${escondidas.ordens} de formadores de mercado escondidas` : " · sem formadores de mercado") : "") +
+    " · clique para ver a carteira";
+  const linha = o => `<tr class="l" onclick="window.open('https://app.hyperliquid.xyz/explorer/address/${o.user}','_blank','noopener')" title="${TIPOS[o.tipo] || o.tipo}${o.reduz ? " · só reduz" : ""} · ${qtd(o.sz)} ${o.coin}">
+    <td class="${o.lado === "B" ? "pc" : "pv"}">${pr(o.px)}${etiquetas(o)}</td>
+    <td class="d">${dist(o.px, ref)}</td><td>${usd(o.val)}</td><td class="d">${dur(Date.now() - o.t)}</td><td><a href="https://app.hyperliquid.xyz/explorer/address/${o.user}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${abrev(o.user)}</a></td></tr>`;
+  const meio = `<tr class="meio"><td>${ref ? pr(ref) : "—"}</td><td colspan="4" style="text-align:right;font-weight:400;color:#8b93a3">preço atual · acima = vendas, abaixo = compras</td></tr>`;
+  let html = `<table><tr><th>Preço</th><th title="distância do preço atual">Dist.</th><th>Valor</th><th title="há quanto tempo a ordem está parada">Há</th><th>Carteira</th></tr>`, pos = false;
+  for (const o of ab) { if (!pos && ref && o.px < ref) { html += meio; pos = true; } html += linha(o); }
+  if (!pos && ref) html += meio;
   $("lista").innerHTML = html + "</table>";
   cards();
 }
 function cards(){
   const ab = filtradas(false), ref = precoAtual || (velas.length ? velas[velas.length - 1].c : 0);
   const soma = f => ab.filter(f).reduce((a, o) => a + o.val, 0);
+  const lim = ab.filter(o => !o.trig);
   const comp = soma(o => o.lado === "B" && !o.trig), vend = soma(o => o.lado === "A" && !o.trig);
-  const tvA = soma(o => o.trig && o.lado === "A" && o.px < ref), tvB = soma(o => o.trig && o.lado === "A" && o.px >= ref);
-  const tcA = soma(o => o.trig && o.lado === "B" && o.px > ref), tcB = soma(o => o.trig && o.lado === "B" && o.px <= ref);
-  const maior = l => ab.filter(o => o.lado === l && !o.trig).sort((a, b) => b.val - a.val)[0];
+  const perto = o => ref && Math.abs(o.px / ref - 1) <= 0.02;
+  const cP = soma(o => o.lado === "B" && !o.trig && perto(o)), vP = soma(o => o.lado === "A" && !o.trig && perto(o));
+  const tv = soma(o => o.trig && o.lado === "A"), tc = soma(o => o.trig && o.lado === "B");
+  const maior = l => lim.filter(o => o.lado === l).sort((a, b) => b.val - a.val)[0];
   const mb = maior("B"), ma = maior("A");
-  const c = (t, v, s, cor) => `<div class="card"><div class="t">${t}</div><div class="v" style="color:${cor || "inherit"}">${v}</div><div class="s">${s || ""}</div></div>`;
+  const lado = (x, y) => x + y === 0 ? ["sem ordens", "inherit"] : x > y * 1.5 ? ["mais compra", "#089981"] : y > x * 1.5 ? ["mais venda", "#f23645"] : ["equilibrado", "inherit"];
+  const [lP, corP] = lado(cP, vP);
+  const c = (t, v, s, cor, tit) => `<div class="card" title="${tit || ""}"><div class="t">${t}</div><div class="v" style="color:${cor || "inherit"}">${v}</div><div class="s">${s || ""}</div></div>`;
+  const span = (cor, x) => `<span style="color:${cor}">${x}</span>`;
   $("cards").innerHTML =
     c("Preço " + pref.moeda + " · Hyperliquid", ref ? pr(ref) : "—", "") +
-    c("Ordens limite de compra", usd(comp), "venda: " + usd(vend), "#089981") +
-    c("Gatilhos de venda (TP/SL de longs)", usd(tvA + tvB), "stops abaixo " + usd(tvA) + " · lucros acima " + usd(tvB), "#f23645") +
-    c("Gatilhos de compra (TP/SL de shorts)", usd(tcA + tcB), "stops acima " + usd(tcA) + " · lucros abaixo " + usd(tcB), "#089981") +
-    c("Maior ordem limite", mb || ma ? pr((mb && (!ma || mb.val >= ma.val) ? mb : ma).px) : "—", mb || ma ? ((mb && (!ma || mb.val >= ma.val)) ? "compra " + usd(mb.val) : "venda " + usd(ma.val)) : "");
+    c("Perto do preço (±2%)", lP, "compra " + usd(cP) + " · venda " + usd(vP), corP, "Ordens limite a até 2% do preço atual: é o que segura ou trava o preço no curto prazo") +
+    c("Total parado (ordens limite)", span("#089981", usd(comp)) + " / " + span("#f23645", usd(vend)), "compra / venda, em qualquer distância") +
+    c("Gatilhos TP/SL", tv + tc ? usd(tv + tc) : "nenhum", tv + tc ? "de longs " + usd(tv) + " · de shorts " + usd(tc) : "nenhum ≥ " + usd(+pref.min) + " nas carteiras vistas", null, "Take profit e stop loss grandes encontrados") +
+    c("Maiores paredes", (ma ? span("#f23645", pr(ma.px)) : "—") + " / " + (mb ? span("#089981", pr(mb.px)) : "—"),
+      (ma ? usd(ma.val) + " " + dist(ma.px, ref) : "—") + " / " + (mb ? usd(mb.val) + " " + dist(mb.px, ref) : "—"), null,
+      "Maior ordem limite de venda / de compra: valor e distância do preço atual");
+  resumo({ref, cP, vP, lP, ma, mb, ab});
+}
+function resumo({ref, cP, vP, lP, ma, mb, ab}){
+  if (!ref) { $("resumo").innerHTML = ""; return; }
+  const itens = [];
+  itens.push(cP + vP ? `Perto do preço (±2%): <b class="${lP === "mais compra" ? "c" : lP === "mais venda" ? "v" : ""}">${lP}</b> — compra ${usd(cP)} contra venda ${usd(vP)}.`
+                     : "Nenhuma ordem grande a menos de 2% do preço: nada segurando nem travando o preço por perto.");
+  if (mb || ma) itens.push([ma ? `maior parede de <b class="v">venda</b>: ${usd(ma.val)} em ${pr(ma.px)} (${dist(ma.px, ref)})` : "", mb ? `maior parede de <b class="c">compra</b>: ${usd(mb.val)} em ${pr(mb.px)} (${dist(mb.px, ref)})` : ""].filter(Boolean).join("; ").replace(/^./, m => m.toUpperCase()) + ".");
+  const faixas = new Map();
+  for (const o of ab) if (o.perfil === "faixa" && !o.trig) { const f = faixas.get(o.user) || {lo: Infinity, hi: -Infinity}; if (o.lado === "B") f.lo = Math.min(f.lo, o.px); else f.hi = Math.max(f.hi, o.px); faixas.set(o.user, f); }
+  for (const [u, f] of faixas) if (isFinite(f.lo) && isFinite(f.hi)) itens.push(`A carteira ${abrev(u)} <b>opera a faixa</b>: compra em ${pr(f.lo)} e vende em ${pr(f.hi)}. Mostra onde ela acha caro e barato, não uma direção.`);
+  if (escondidas.ordens) itens.push(`${escondidas.ordens} ordens de ${escondidas.carteiras} formador(es) de mercado escondidas: cotam os dois lados e não indicam direção.`);
+  const novas = ab.filter(o => Date.now() - o.t < NOVA_MS).length;
+  if (novas) itens.push(`${novas} ordem(ns) com menos de 10 min (<span class="nova">NOVA</span>): podem sumir logo, dê mais peso às antigas.`);
+  $("resumo").innerHTML = `<b>Leitura rápida — ${pref.moeda}</b><ul>${itens.map(i => "<li>" + i + "</li>").join("")}</ul>`;
 }
 
 // ---------- controles ----------
@@ -409,15 +479,21 @@ addEventListener("resize", agendarDesenho);
 function demoVelas(tf){ const n = Math.round(tf.jan / tf.ms), t1 = Math.floor(Date.now() / tf.ms) * tf.ms; let p = 72000; const out = [];
   for (let i = n - 1; i >= 0; i--) { const o = p; p *= 1 + (Math.random() - 0.5) * 0.006; out.push({t: t1 - i * tf.ms, o, h: Math.max(o, p) * 1.002, l: Math.min(o, p) * 0.998, c: p}); } return out; }
 function demoOrdens(){
-  const agora = Date.now(), ps = [[75000, "A", 3.5e6, true], [74050, "A", 1.63e6, true], [73800, "A", 1.6e6, true], [71900, "A", 2.2e6, false], [70000, "B", 2.5e6, false], [69300, "B", 1.5e6, false], [68000, "B", 4e6, false], [70566, "B", 5.5e6, true]];
-  ps.forEach(([px, lado, val, trig], i) => { const a = "0x" + (i + 1).toString(16).padStart(40, "a");
-    carteiras.set(a, {ultima: agora, quente: true, fonte: "ranking", ordens: [{oid: i, coin: "BTC", lado, px, lim: px * (lado === "A" ? 0.9 : 1.1), sz: val / px, resta: val / px, val, tipo: trig ? "Stop Market" : "Limit", trig, cond: trig ? "Price above " + px : "N/A", reduz: trig, tpsl: false, t: agora - (i + 1) * 9e6, user: a}]}); });
-  historico.push({oid: 99, coin: "BTC", lado: "B", px: 70400, sz: 20, resta: 20, val: 1.4e6, tipo: "Limit", trig: false, t: agora - 2e8, fim: agora - 1e8, user: "0x" + "b".repeat(40)});
+  const agora = Date.now(), ref = velas.length ? velas[velas.length - 1].c : 72000;
+  const add = (a, ordens) => carteiras.set(a, {ultima: agora, quente: true, fonte: "ranking", ordens});
+  const ordem = (i, a, k, lado, val, trig, idade) => { const px = Math.round(ref * k); return {oid: i, coin: "BTC", lado, px, lim: px * (lado === "A" ? 0.9 : 1.1), sz: val / px, resta: val / px, val,
+    tipo: trig ? "Stop Market" : "Limit", trig, cond: trig ? "Price above " + px : "N/A", reduz: trig, tpsl: false, t: agora - idade, user: a}; };
+  const w = i => "0x" + i.toString(16).padStart(40, "a");
+  [[1.04, "A", 3.5e6, true], [1.028, "A", 1.63e6, true], [1.012, "A", 2.2e6, false], [0.985, "B", 2.5e6, false], [0.95, "B", 4e6, false]]
+    .forEach(([k, lado, val, trig], i) => add(w(i + 1), [ordem(i, w(i + 1), k, lado, val, trig, (i + 1) * 9e6)]));
+  add(w(20), [ordem(20, w(20), 1.0015, "A", 1.5e6, false, 3e6), ordem(21, w(20), 0.9985, "B", 1.52e6, false, 3e6), ordem(22, w(20), 1.003, "A", 7.5e5, false, 3e6), ordem(23, w(20), 0.997, "B", 7.4e5, false, 3e6)]);
+  add(w(30), [ordem(30, w(30), 1.083, "A", 3.27e6, false, 4e7), ordem(31, w(30), 0.894, "B", 5.39e6, false, 4e7)]);
+  add(w(40), [ordem(40, w(40), 0.992, "B", 9e5, false, 2e5)]);
+  historico.push({oid: 99, coin: "BTC", lado: "B", px: Math.round(ref * 0.978), sz: 20, resta: 20, val: 1.4e6, tipo: "Limit", trig: false, t: agora - 2e8, fim: agora - 1e8, user: "0x" + "b".repeat(40)});
 }
 
 (async () => {
-  if (DEMO) demoOrdens();
-  await carregarVelas(); await atualizarPreco(); listar(); atualizarStatus();
+  await carregarVelas(); if (DEMO) demoOrdens(); await atualizarPreco(); listar(); atualizarStatus();
   setInterval(atualizarPreco, 5000);
   setInterval(() => { if (!DEMO) carregarVelas(); }, 120000);
   if (!DEMO) { await montarListaCarteiras(); ouvirNegocios(); varrer(); }
