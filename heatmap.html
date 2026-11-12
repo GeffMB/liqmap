@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Heatmap do livro — LiqMap</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg?v=2">
+<style>
+:root{--bg:#ffffff;--line:#e0e3eb;--hover:#f0f3fa;--txt:#131722;--sub:#787b86;--up:#089981;--down:#f23645;--accent:#2962ff;--escuro:#0b0e14;--escuro2:#141923;--linhaE:#232a36}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.4 -apple-system,BlinkMacSystemFont,"Trebuchet MS",Roboto,Ubuntu,"Segoe UI",sans-serif;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:2px;height:44px;padding:0 8px;border-bottom:1px solid var(--line);flex:0 0 auto;overflow-x:auto;scrollbar-width:none}
+.marca{font-weight:700;padding:0 10px 0 4px;white-space:nowrap;color:var(--txt);text-decoration:none}
+.marca span{color:var(--accent)}
+.marca .logo{width:20px;height:20px;vertical-align:-4px;margin-right:6px;border-radius:5px}
+.sep{width:1px;height:24px;background:var(--line);margin:0 6px;flex:0 0 auto}
+.btn{background:transparent;border:0;border-radius:4px;padding:6px 8px;cursor:pointer;white-space:nowrap;text-decoration:none;color:var(--txt);font:inherit}
+.btn:hover{background:var(--hover)}
+.btn.ativo{color:var(--accent);font-weight:600}
+.status{color:var(--sub);font-size:12px;white-space:nowrap}
+.filtros{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:8px 12px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.filtros label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--sub)}
+.filtros select{min-width:86px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:#f0f3fa;color:var(--txt);font:inherit;cursor:pointer}
+.filtros input[type=range]{width:120px}
+.grav{margin-left:auto;font-size:12px;color:var(--sub);align-self:center;display:flex;align-items:center;gap:6px}
+.ponto{width:8px;height:8px;border-radius:50%;background:#f23645;display:inline-block}
+.ponto.on{background:#089981;animation:pisca 1.6s infinite}
+@keyframes pisca{50%{opacity:.35}}
+.cards{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;padding:8px 12px;flex:0 0 auto}
+.card{border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:0}
+.card .t{color:var(--sub);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .v{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.card .s{font-size:11px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.corpo{flex:1 1 auto;display:flex;min-height:420px;padding:0 12px 12px;gap:8px}
+.grafico{flex:1 1 auto;position:relative;min-width:0;background:var(--escuro);border-radius:8px;overflow:hidden}
+.grafico canvas{position:absolute;inset:0;width:100%;height:100%}
+.vazio{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);color:#9aa4b5;text-align:center;font-size:13px;pointer-events:none;max-width:420px;line-height:1.6}
+.dica{position:absolute;pointer-events:none;background:rgba(20,25,35,.96);color:#e6e9ef;border:1px solid #333c4b;border-radius:6px;padding:6px 9px;font-size:12px;display:none;white-space:nowrap;z-index:3;font-variant-numeric:tabular-nums}
+.lado{width:330px;flex:0 0 330px;background:var(--escuro);color:#d1d4dc;border-radius:8px;display:flex;flex-direction:column;overflow:hidden}
+.lado h3{margin:0;padding:9px 12px 4px;font-size:13px;color:#fff}
+.lado .sub{padding:0 12px 6px;font-size:11px;color:#8b93a3}
+.escada{flex:1 1 auto;overflow-y:auto;font-variant-numeric:tabular-nums;font-size:11.5px}
+.escada table{width:100%;border-collapse:collapse}
+.escada th{position:sticky;top:0;background:var(--escuro2);color:#8b93a3;font-weight:500;text-align:right;padding:4px 8px}
+.escada td{text-align:right;padding:2px 8px;position:relative}
+.escada th:first-child,.escada td:first-child{text-align:left}
+.escada td.acum{background-repeat:no-repeat;background-position:right}
+.escada tr.meio td{background:var(--escuro2);color:#fff;font-weight:600;padding:5px 8px}
+.pa{color:#ff8a3d}.pb{color:#3ddc84}
+.nota{color:var(--sub);font-size:11.5px;line-height:1.55;padding:0 12px 14px;flex:0 0 auto}
+@media (max-width:900px){
+  .cards{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .corpo{flex-direction:column}
+  .grafico{flex:0 0 62vh}
+  .lado{width:auto;flex:0 0 420px}
+  .marca .txt,.top .status{display:none}
+}
+</style>
+</head>
+<body>
+<div class="top">
+  <a class="marca" href="./"><img src="logo.svg?v=2" alt="" class="logo">Liq<span>Map</span></a>
+  <div class="sep"></div>
+  <a class="btn" href="./">Gráfico</a>
+  <a class="btn" href="futuros.html">Futuros</a>
+  <a class="btn ativo" href="heatmap.html">Heatmap do livro</a>
+  <a class="btn" href="retornos.html">Retornos</a>
+  <a class="btn" href="livro.html">Livro de ofertas</a>
+  <a class="btn" href="fluxos.html">Fluxos</a>
+  <span style="flex:1"></span>
+  <span class="status" id="status"></span>
+</div>
+<div class="filtros">
+  <label>Moeda <select id="moeda"></select></label>
+  <label>Tempo gráfico <select id="tf"><option value="1m">1 min (3h)</option><option value="5m">5 min (12h)</option><option value="15m">15 min (24h)</option></select></label>
+  <label>Agrupar preço <select id="grade"></select></label>
+  <label>Faixa dos cards <select id="faixa"><option value="1">±1%</option><option value="2">±2%</option><option value="5">±5%</option></select></label>
+  <label>Intensidade <input type="range" id="intens" min="0.3" max="4" step="0.1"></label>
+  <div class="grav"><span class="ponto" id="ponto"></span><span id="grav">conectando…</span></div>
+</div>
+<div class="cards" id="cards"></div>
+<div class="corpo">
+  <div class="grafico" id="grafico"><canvas id="cv"></canvas><div class="vazio" id="vazio"></div><div class="dica" id="dica"></div></div>
+  <aside class="lado">
+    <h3>Livro agora</h3>
+    <div class="sub" id="ladoSub">Binance Futuros (perpétuo)</div>
+    <div class="escada" id="escada"></div>
+  </aside>
+</div>
+<p class="nota">
+  Cada linha horizontal é uma ordem limitada parada no livro da Binance Futuros. Verde = compra (abaixo do preço), laranja = venda (acima); quanto mais clara, maior a ordem. O comprimento mostra quanto tempo ela ficou lá.
+  Linhas longas e contínuas são liquidez real; linhas que somem quando o preço chega perto costumam ser spoofing (ordens colocadas para assustar).
+  O LiqMap grava o livro das 5 moedas a cada 10 segundos <b>enquanto esta página está aberta</b> e guarda as últimas 12 horas neste navegador. Trechos escuros no gráfico são períodos em que a página estava fechada.
+</p>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const DEMO = new URLSearchParams(location.search).has("demo");
+const SIMBOLOS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "QNTUSDT"];
+const GRADE0 = {BTCUSDT: 10, ETHUSDT: 0.5, SOLUSDT: 0.01, XRPUSDT: 0.0001, QNTUSDT: 0.05};
+const FAIXA_GRAV = 0.06, FOTO_MS = 10000, RETER = 12 * 36e5;
+const TF = {"1m": {ms: 6e4, jan: 3 * 36e5}, "5m": {ms: 3e5, jan: 12 * 36e5}, "15m": {ms: 9e5, jan: 24 * 36e5}};
+
+let pref = {simbolo: "BTCUSDT", tf: "5m", mult: 1, faixa: "2", intens: 1.2};
+try { Object.assign(pref, JSON.parse(localStorage.getItem("liqmap-heatmap") || "{}")); } catch (e) {}
+if (!SIMBOLOS.includes(pref.simbolo)) pref.simbolo = "BTCUSDT";
+const salvar = () => { try { localStorage.setItem("liqmap-heatmap", JSON.stringify(pref)); } catch (e) {} };
+
+const casas = p => p >= 1000 ? 1 : p >= 10 ? 2 : p >= 1 ? 3 : 4;
+const pr = p => p.toLocaleString("pt-BR", {minimumFractionDigits: casas(p), maximumFractionDigits: casas(p)});
+const usd = x => { const a = Math.abs(x); return (x < 0 ? "−" : "") + (a >= 1e9 ? "$" + (a / 1e9).toFixed(2) + "B" : a >= 1e6 ? "$" + (a / 1e6).toFixed(2) + "M" : a >= 1e3 ? "$" + (a / 1e3).toFixed(0) + "K" : "$" + a.toFixed(0)); };
+const qtd = x => x >= 1000 ? (x / 1000).toFixed(1) + "K" : x >= 10 ? x.toFixed(1) : x.toFixed(3);
+const pct = (x, d = 1) => (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toFixed(d).replace(".", ",") + "%";
+const hora = t => new Date(t).toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"});
+const grade = s => GRADE0[s] * pref.mult;
+
+// ---------- armazenamento (IndexedDB: uma foto do livro a cada 10 s, 12 horas) ----------
+let banco = null;
+function abrirBanco(){
+  return new Promise(res => {
+    try {
+      const r = indexedDB.open("liqmap-heatmap", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("fotos", {keyPath: ["s", "t"]});
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => res(null);
+    } catch (e) { res(null); }
+  });
+}
+function guardarFoto(f){ if (!banco) return; try { banco.transaction("fotos", "readwrite").objectStore("fotos").put(f); } catch (e) {} }
+function lerFotos(s){
+  return new Promise(res => {
+    if (!banco) return res([]);
+    try {
+      const st = banco.transaction("fotos", "readwrite").objectStore("fotos");
+      st.delete(IDBKeyRange.bound([s, 0], [s, Date.now() - RETER]));
+      const r = st.getAll(IDBKeyRange.bound([s, Date.now() - RETER], [s, Infinity]));
+      r.onsuccess = () => res(r.result || []); r.onerror = () => res([]);
+    } catch (e) { res([]); }
+  });
+}
+
+// ---------- livro local de cada moeda (stream de diferenças da Binance + foto inicial) ----------
+class Livro {
+  constructor(s){ this.s = s; this.b = new Map(); this.a = new Map(); this.ok = false; this.buf = []; this.ultU = null; this.ultFoto = 0; this.fotos = []; this.desde = Date.now(); }
+  async iniciar(){
+    this.fotos = await lerFotos(this.s);
+    if (DEMO) { demoLivro(this); return; }
+    this.conectar();
+  }
+  conectar(){
+    const ws = new WebSocket("wss://fstream.binance.com/ws/" + this.s.toLowerCase() + "@depth@500ms");
+    this.ws = ws;
+    ws.onopen = () => this.sincronizar();
+    ws.onmessage = ev => { let e; try { e = JSON.parse(ev.data); } catch (x) { return; }
+      if (!this.ok) { this.buf.push(e); if (this.buf.length > 2000) this.buf.shift(); return; }
+      if (this.ultU === null) {   // primeiro evento depois da foto inicial: precisa cobrir o lastUpdateId
+        if (e.u < this.L) return;
+        if (e.U > this.L) { this.sincronizar(); return; }
+      } else if (e.pu !== this.ultU) { this.sincronizar(); return; }
+      this.aplicar(e); };
+    ws.onclose = () => { this.ok = false; setTimeout(() => this.conectar(), 4000); };
+  }
+  async sincronizar(){
+    if (this.sinc) return; this.sinc = true; this.ok = false; this.buf = [];
+    try {
+      await new Promise(r => setTimeout(r, 600));
+      const r = await fetch("https://fapi.binance.com/fapi/v1/depth?limit=1000&symbol=" + this.s);
+      const d = await r.json(), L = d.lastUpdateId; this.L = L;
+      this.b = new Map(d.bids.map(([p, q]) => [+p, +q])); this.a = new Map(d.asks.map(([p, q]) => [+p, +q]));
+      const evs = this.buf.filter(e => e.u >= L); this.buf = [];
+      this.ultU = null;
+      for (const e of evs) {
+        if (this.ultU === null) { if (e.U > L) throw new Error("fora de ordem"); }
+        else if (e.pu !== this.ultU) throw new Error("buraco");
+        this.aplicar(e);
+      }
+      this.ok = true;
+    } catch (e) { setTimeout(() => { this.sinc = false; this.sincronizar(); }, 3000); return; }
+    this.sinc = false;
+  }
+  aplicar(e){
+    for (const [p, q] of e.b) { const x = +q; if (x === 0) this.b.delete(+p); else this.b.set(+p, x); }
+    for (const [p, q] of e.a) { const x = +q; if (x === 0) this.a.delete(+p); else this.a.set(+p, x); }
+    this.ultU = e.u;
+    // a foto é tirada aqui (e não num relógio) porque o navegador atrasa relógios de abas em segundo plano
+    if (e.E - this.ultFoto >= FOTO_MS) { this.ultFoto = e.E - e.E % FOTO_MS; this.foto(this.ultFoto); }
+  }
+  topo(){ let bb = -Infinity, ba = Infinity; for (const p of this.b.keys()) if (p > bb) bb = p; for (const p of this.a.keys()) if (p < ba) ba = p; return {bb, ba, mid: (bb + ba) / 2}; }
+  foto(t){
+    const {bb, ba, mid} = this.topo(); if (!isFinite(mid)) return;
+    const g = GRADE0[this.s], base = Math.floor(mid * (1 - FAIXA_GRAV) / g), n = Math.ceil(mid * 2 * FAIXA_GRAV / g) + 1;
+    const v = new Float32Array(n);
+    for (const lado of [this.b, this.a]) for (const [p, q] of lado) {
+      const i = Math.floor(p / g + 1e-9) - base;
+      if (i >= 0 && i < n) v[i] += p * q;
+      else if (Math.abs(p / mid - 1) > 0.15) lado.delete(p);   // limpa níveis muito longe
+    }
+    const f = {s: this.s, t, mid, bb, ba, base, g, v};
+    this.fotos.push(f);
+    while (this.fotos.length && this.fotos[0].t < t - RETER) this.fotos.shift();
+    guardarFoto(f);
+    if (this.s === pref.simbolo) agendarDesenho();
+  }
+  // soma do valor (US$) numa faixa de preço [p0, p1) dentro de uma foto
+  static valor(f, p0, p1){
+    let i0 = Math.round(p0 / f.g) - f.base, i1 = Math.round(p1 / f.g) - f.base, a = 0;
+    if (i1 <= 0 || i0 >= f.v.length) return 0;
+    i0 = Math.max(0, i0); i1 = Math.min(f.v.length, i1);
+    for (let i = i0; i < i1; i++) a += f.v[i];
+    return a;
+  }
+}
+const livros = {};
+
+// ---------- velas ----------
+let velas = [], wsVela = null;
+async function carregarVelas(){
+  const s = pref.simbolo, tf = TF[pref.tf], n = Math.ceil(tf.jan / tf.ms) + 1;
+  try {
+    const d = DEMO ? demoVelas(n, tf.ms) : await (await fetch("https://fapi.binance.com/fapi/v1/klines?symbol=" + s + "&interval=" + pref.tf + "&limit=" + n)).json();
+    if (s !== pref.simbolo) return;
+    velas = d.map(k => ({t: +k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], v: +k[7]}));
+  } catch (e) { velas = []; }
+  if (wsVela) { wsVela.onclose = null; wsVela.close(); }
+  if (!DEMO) {
+    wsVela = new WebSocket("wss://fstream.binance.com/ws/" + s.toLowerCase() + "@kline_" + pref.tf);
+    wsVela.onmessage = ev => { try { const k = JSON.parse(ev.data).k; const x = {t: k.t, o: +k.o, h: +k.h, l: +k.l, c: +k.c, v: +k.q};
+      if (velas.length && velas[velas.length - 1].t === x.t) velas[velas.length - 1] = x; else if (!velas.length || x.t > velas[velas.length - 1].t) velas.push(x); } catch (e) {} };
+    wsVela.onclose = () => setTimeout(() => { if (pref.simbolo === s) carregarVelas(); }, 4000);
+  }
+  agendarDesenho();
+}
+
+// ---------- desenho ----------
+const cv = $("cv"), ctx = cv.getContext("2d");
+const R_EIXO = 76, VOL_H = 52, X_EIXO = 20;
+let desenhoPend = false, vista = null;
+function agendarDesenho(){ if (desenhoPend) return; desenhoPend = true; requestAnimationFrame(() => { desenhoPend = false; desenhar(); }); }
+function buscarFoto(fotos, t){
+  let lo = 0, hi = fotos.length - 1, r = -1;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (fotos[m].t <= t) { r = m; lo = m + 1; } else hi = m - 1; }
+  if (r < 0 || t - fotos[r].t > FOTO_MS * 3) return null;
+  return fotos[r];
+}
+function desenhar(){
+  const s = pref.simbolo, L = livros[s];
+  const r = cv.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
+  if (!r.width) return;
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = r.width, H = r.height, PW = W - R_EIXO, PH = H - VOL_H - X_EIXO;
+  ctx.fillStyle = "#0b0e14"; ctx.fillRect(0, 0, W, H);
+  const tf = TF[pref.tf], agora = Date.now();
+  const t1 = Math.floor(agora / tf.ms) * tf.ms + tf.ms * 1.5, t0 = t1 - tf.jan - tf.ms * 1.5;
+  const xDe = t => (t - t0) / (t1 - t0) * PW;
+  const vis = velas.filter(v => v.t >= t0 - tf.ms);
+  const topo = L ? L.topo() : null;
+  let lo = Infinity, hi = -Infinity;
+  for (const v of vis) { lo = Math.min(lo, v.l); hi = Math.max(hi, v.h); }
+  if (topo && isFinite(topo.mid)) { lo = Math.min(lo, topo.mid); hi = Math.max(hi, topo.mid); }
+  if (!isFinite(lo)) { $("vazio").textContent = "carregando…"; return; }
+  const meio = (lo + hi) / 2, amp = Math.max(hi - lo, meio * 0.006) * 1.16;
+  lo = meio - amp / 2; hi = meio + amp / 2;
+  const yDe = p => (hi - p) / (hi - lo) * PH;
+  vista = {t0, t1, lo, hi, PW, PH, W, H};
+
+  // mapa de calor: uma coluna de pixels por vez, cada uma lida da foto daquele instante
+  const fotos = L ? L.fotos : [], g = grade(s);
+  const cw = Math.max(1, Math.round(PW)), ch = Math.max(1, Math.round(PH));
+  const val = new Float32Array(cw * ch), lado = new Uint8Array(cw * ch);
+  const linhaP0 = new Float64Array(ch);
+  for (let y = 0; y < ch; y++) { const p = hi - (y + 0.5) / ch * (hi - lo); linhaP0[y] = Math.floor(p / g + 1e-9) * g; }
+  const amostra = [];
+  let temFoto = 0;
+  for (let x = 0; x < cw; x++) {
+    const t = t0 + (x + 0.5) / cw * (t1 - t0);
+    const f = buscarFoto(fotos, t); if (!f) continue;
+    temFoto++;
+    let ultP = NaN, ultV = 0;
+    for (let y = 0; y < ch; y++) {
+      const p0 = linhaP0[y];
+      if (p0 !== ultP) { ultP = p0; ultV = Livro.valor(f, p0, p0 + g); }
+      if (ultV > 0) { val[y * cw + x] = ultV; lado[y * cw + x] = p0 + g / 2 < f.mid ? 1 : 2; if ((x + y) % 7 === 0) amostra.push(ultV); }
+    }
+  }
+  $("vazio").innerHTML = temFoto ? "" : "Gravando o livro… o mapa aparece em alguns segundos<br>e vai se preenchendo enquanto esta página fica aberta.";
+  if (amostra.length) {
+    amostra.sort((a, b) => a - b);
+    const vmax = amostra[Math.floor(amostra.length * 0.985)] / pref.intens || 1;
+    const img = ctx.createImageData(cw, ch), d = img.data;
+    for (let i = 0; i < val.length; i++) {
+      const v = val[i]; const j = i * 4;
+      d[j + 3] = 255;
+      if (!v) { d[j] = 11; d[j + 1] = 14; d[j + 2] = 20; continue; }
+      const f = Math.min(1, Math.sqrt(v / vmax)), w = Math.max(0, (v / vmax - 1) * 0.25);
+      if (lado[i] === 1) { d[j] = 11 + 40 * f + 160 * Math.min(1, w); d[j + 1] = 14 + 226 * f; d[j + 2] = 20 + 80 * f + 140 * Math.min(1, w); }
+      else { d[j] = 11 + 244 * f; d[j + 1] = 14 + 120 * f + 120 * Math.min(1, w); d[j + 2] = 20 + 20 * f + 160 * Math.min(1, w); }
+    }
+    const tmp = document.createElement("canvas"); tmp.width = cw; tmp.height = ch;
+    tmp.getContext("2d").putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(tmp, 0, 0, PW, PH);
+  }
+
+  // grade de preço e eixo
+  ctx.font = "11px -apple-system,Segoe UI,sans-serif"; ctx.textBaseline = "middle";
+  const passo = (() => { const bruto = (hi - lo) / 8, e = Math.pow(10, Math.floor(Math.log10(bruto))); return [1, 2, 2.5, 5, 10].map(m => m * e).find(m => m >= bruto); })();
+  for (let p = Math.ceil(lo / passo) * passo; p < hi; p += passo) {
+    const y = yDe(p); ctx.strokeStyle = "rgba(255,255,255,.05)"; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(PW, y); ctx.stroke();
+    ctx.fillStyle = "#8b93a3"; ctx.textAlign = "left"; ctx.fillText(pr(p), PW + 6, y);
+  }
+  // velas
+  const vw = Math.max(1, PW / (tf.jan / tf.ms) * 0.62);
+  let vmaxVol = 0; for (const v of vis) vmaxVol = Math.max(vmaxVol, v.v);
+  for (const v of vis) {
+    const x = xDe(v.t + tf.ms / 2), sobe = v.c >= v.o;
+    ctx.strokeStyle = ctx.fillStyle = sobe ? "#26a69a" : "#ef5350";
+    ctx.beginPath(); ctx.moveTo(x, yDe(v.h)); ctx.lineTo(x, yDe(v.l)); ctx.stroke();
+    const yo = yDe(v.o), yc = yDe(v.c); ctx.fillRect(x - vw / 2, Math.min(yo, yc), vw, Math.max(1, Math.abs(yc - yo)));
+    const hv = vmaxVol ? v.v / vmaxVol * (VOL_H - 8) : 0;
+    ctx.globalAlpha = 0.55; ctx.fillRect(x - vw / 2, PH + VOL_H - hv, vw, hv); ctx.globalAlpha = 1;
+  }
+  ctx.strokeStyle = "#232a36"; ctx.beginPath(); ctx.moveTo(0, PH + 0.5); ctx.lineTo(PW, PH + 0.5); ctx.moveTo(PW + 0.5, 0); ctx.lineTo(PW + 0.5, H); ctx.stroke();
+  // eixo do tempo
+  ctx.fillStyle = "#8b93a3"; ctx.textAlign = "center";
+  const pt = tf.jan / 6; for (let t = Math.ceil(t0 / pt) * pt; t < t1; t += pt) ctx.fillText(hora(t), xDe(t), H - X_EIXO / 2);
+
+  // paredes atuais (as 3 maiores de cada lado) e preço atual
+  if (topo && isFinite(topo.mid)) {
+    const par = paredes(s, g, 3);
+    ctx.textAlign = "right";
+    for (const w of par) {
+      const y = yDe(w.p + g / 2); if (y < 6 || y > PH - 6) continue;
+      const txt = (w.lado === 1 ? "Parede compra " : "Parede venda ") + usd(w.v), tw = ctx.measureText(txt).width + 10;
+      ctx.fillStyle = w.lado === 1 ? "rgba(8,153,129,.18)" : "rgba(255,138,61,.16)"; ctx.fillRect(PW - tw - 4, y - 8, tw, 16);
+      ctx.strokeStyle = w.lado === 1 ? "#3ddc84" : "#ff8a3d"; ctx.strokeRect(PW - tw - 4 + 0.5, y - 7.5, tw - 1, 15);
+      ctx.fillStyle = w.lado === 1 ? "#3ddc84" : "#ff8a3d"; ctx.fillText(txt, PW - 9, y);
+    }
+    const ult = vis.length ? vis[vis.length - 1].c : topo.mid, y = yDe(ult);
+    ctx.setLineDash([3, 3]); ctx.strokeStyle = "rgba(255,255,255,.5)"; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(PW, y); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(PW + 1, y - 9, R_EIXO - 2, 18);
+    ctx.fillStyle = "#0b0e14"; ctx.textAlign = "left"; ctx.font = "600 11px -apple-system,Segoe UI,sans-serif"; ctx.fillText(pr(ult), PW + 6, y);
+  }
+  if (mira) desenharMira();
+}
+let mira = null;
+function desenharMira(){
+  if (!vista || !mira) return;
+  const {PW, PH} = vista;
+  if (mira.x > PW || mira.y > PH) return;
+  ctx.strokeStyle = "rgba(255,255,255,.35)"; ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(mira.x, 0); ctx.lineTo(mira.x, PH); ctx.moveTo(0, mira.y); ctx.lineTo(PW, mira.y); ctx.stroke(); ctx.setLineDash([]);
+}
+$("grafico").addEventListener("mousemove", e => {
+  if (!vista) return;
+  const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  const {t0, t1, lo, hi, PW, PH} = vista;
+  if (x > PW || y > PH) { $("dica").style.display = "none"; mira = null; agendarDesenho(); return; }
+  mira = {x, y}; agendarDesenho();
+  const t = t0 + x / PW * (t1 - t0), p = hi - y / PH * (hi - lo), g = grade(pref.simbolo), p0 = Math.floor(p / g + 1e-9) * g;
+  const L = livros[pref.simbolo], f = L ? buscarFoto(L.fotos, t) : null;
+  const dk = $("dica");
+  const linhas = [new Date(t).toLocaleString("pt-BR", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit"}), "Preço " + pr(p0) + " – " + pr(p0 + g)];
+  if (f) { const v = Livro.valor(f, p0, p0 + g); linhas.push(v ? (p0 < f.mid ? "Compra " : "Venda ") + usd(v) + " (" + qtd(v / (p0 + g / 2)) + " " + pref.simbolo.replace("USDT", "") + ")" : "Nenhuma ordem"); }
+  else linhas.push("Sem gravação neste horário");
+  dk.innerHTML = linhas.map((l, i) => i === 2 ? "<b>" + l + "</b>" : l).join("<br>");
+  dk.style.display = "block";
+  const dw = dk.offsetWidth; dk.style.left = (x + 14 + dw > PW ? x - dw - 14 : x + 14) + "px"; dk.style.top = Math.max(4, y - 40) + "px";
+});
+$("grafico").addEventListener("mouseleave", () => { $("dica").style.display = "none"; mira = null; agendarDesenho(); });
+
+// ---------- livro agrupado, paredes, cards e escada ----------
+function agrupado(s, g){
+  const L = livros[s]; if (!L) return null;
+  const {mid} = L.topo(); if (!isFinite(mid)) return null;
+  const b = new Map(), a = new Map();
+  for (const [p, q] of L.b) { const k = Math.floor(p / g + 1e-9) * g; b.set(k, (b.get(k) || 0) + q); }
+  for (const [p, q] of L.a) { const k = Math.floor(p / g + 1e-9) * g; a.set(k, (a.get(k) || 0) + q); }
+  return {mid, b, a};
+}
+function paredes(s, g, n){
+  const ag = agrupado(s, g); if (!ag) return [];
+  const lim = +pref.faixa / 100, out = [];
+  const pega = (m, ladoN) => [...m].filter(([p]) => Math.abs(p / ag.mid - 1) <= lim).map(([p, q]) => ({p, v: p * q, lado: ladoN})).sort((x, y) => y.v - x.v).slice(0, n);
+  return pega(ag.b, 1).concat(pega(ag.a, 2));
+}
+function idadeParede(s, w, g){
+  const L = livros[s]; if (!L || !L.fotos.length) return 0;
+  let i = L.fotos.length - 1; const ref = w.v * 0.5;
+  for (; i >= 0; i--) if (Livro.valor(L.fotos[i], w.p, w.p + g) < ref) break;
+  return i === L.fotos.length - 1 ? 0 : Date.now() - L.fotos[i + 1].t;
+}
+const dur = ms => { const m = Math.round(ms / 6e4); return m < 1 ? "agora" : m < 60 ? m + " min" : Math.floor(m / 60) + "h" + String(m % 60).padStart(2, "0"); };
+function painel(){
+  const s = pref.simbolo, g = grade(s), ag = agrupado(s, g), L = livros[s];
+  const base = s.replace("USDT", "");
+  // gravação
+  const fot = L ? L.fotos : [];
+  $("ponto").className = "ponto" + (L && (L.ok || DEMO) ? " on" : "");
+  $("grav").textContent = !L ? "conectando…" : !(L.ok || DEMO) ? "sincronizando o livro…" : "Gravando · " + (fot.length ? dur(Date.now() - fot[0].t) + " guardados" : "começando");
+  if (!ag) { $("cards").replaceChildren(); return; }
+  const lim = +pref.faixa / 100;
+  let bd = 0, ad = 0, bq = 0, aq = 0;
+  for (const [p, q] of L.b) if (p >= ag.mid * (1 - lim)) { bd += p * q; bq += q; }
+  for (const [p, q] of L.a) if (p <= ag.mid * (1 + lim)) { ad += p * q; aq += q; }
+  const imb = bd + ad ? (bd - ad) / (bd + ad) * 100 : 0;
+  const ws = paredes(s, g, 1), wb = ws.find(w => w.lado === 1), wa = ws.find(w => w.lado === 2);
+  const {bb, ba} = L.topo();
+  const ult = velas.length ? velas[velas.length - 1].c : ag.mid;
+  const card = (t, v, s2, cor) => { const c = document.createElement("div"); c.className = "card"; c.innerHTML = `<div class="t">${t}</div><div class="v" style="color:${cor || "inherit"}">${v}</div><div class="s">${s2 || ""}</div>`; return c; };
+  const fx = "±" + pref.faixa + "%";
+  $("cards").replaceChildren(
+    card("Último preço · Binance Perp", pr(ult), "compra " + pr(bb) + " · venda " + pr(ba)),
+    card("Ordens de compra (" + pref.faixa + "% abaixo)", usd(bd), qtd(bq) + " " + base, "#089981"),
+    card("Ordens de venda (" + pref.faixa + "% acima)", usd(ad), qtd(aq) + " " + base, "#f23645"),
+    card("Desequilíbrio " + fx, pct(imb), imb >= 0 ? "compradores mais pesados" : "vendedores mais pesados", imb >= 0 ? "#089981" : "#f23645"),
+    wb ? card("Maior parede de compra", pr(wb.p), usd(wb.v) + " · " + pct((wb.p / ult - 1) * 100, 2) + " do preço · há " + dur(idadeParede(s, wb, g)), "#089981") : card("Maior parede de compra", "—"),
+    wa ? card("Maior parede de venda", pr(wa.p), usd(wa.v) + " · " + pct((wa.p / ult - 1) * 100, 2) + " do preço · há " + dur(idadeParede(s, wa, g)), "#f23645") : card("Maior parede de venda", "—"));
+  // escada
+  const N = 18;
+  const asks = [...ag.a].sort((x, y) => x[0] - y[0]).slice(0, N), bids = [...ag.b].sort((x, y) => y[0] - x[0]).slice(0, N);
+  let ca = 0; const la = asks.map(([p, q]) => { ca += p * q; return {p, q, v: p * q, c: ca}; }).reverse();
+  let cb = 0; const lb = bids.map(([p, q]) => { cb += p * q; return {p, q, v: p * q, c: cb}; });
+  const maxV = Math.max(...la.map(x => x.v), ...lb.map(x => x.v), 1), maxC = Math.max(ca, cb, 1);
+  const linha = (x, cor, rgba) => `<tr><td class="${cor}">${pr(x.p)}</td><td>${qtd(x.q)}</td><td style="background:linear-gradient(to left,${rgba} ${x.v / maxV * 100}%,transparent 0)">${usd(x.v)}</td><td class="acum" style="background:linear-gradient(to left,${rgba.replace(".55", ".22")} ${x.c / maxC * 100}%,transparent 0)">${usd(x.c)}</td></tr>`;
+  $("ladoSub").textContent = "Binance Futuros · agrupado em " + pr(g) + " · spread " + pr(ba - bb);
+  $("escada").innerHTML = `<table><tr><th>Preço</th><th>Qtd (${base})</th><th>Valor</th><th>Acumulado</th></tr>` +
+    la.map(x => linha(x, "pa", "rgba(255,138,61,.55)")).join("") +
+    `<tr class="meio"><td>${pr(ult)}</td><td colspan="3" style="text-align:right;font-weight:400;color:#8b93a3">${imb >= 0 ? "compra" : "venda"} ${pct(Math.abs(imb)).replace("+", "")} mais pesada</td></tr>` +
+    lb.map(x => linha(x, "pb", "rgba(61,220,132,.55)")).join("") + "</table>";
+}
+
+// ---------- controles ----------
+for (const s of SIMBOLOS) $("moeda").append(new Option(s.replace("USDT", "") + " · " + s, s));
+function opcoesGrade(){
+  const s = pref.simbolo; $("grade").replaceChildren(...[1, 2, 5, 10, 25].map(m => new Option(pr(GRADE0[s] * m).replace(/,?0+$/, "") || String(GRADE0[s] * m), m)));
+  $("grade").value = String(pref.mult);
+}
+$("moeda").value = pref.simbolo; $("tf").value = pref.tf; $("faixa").value = pref.faixa; $("intens").value = pref.intens;
+opcoesGrade();
+$("moeda").addEventListener("change", () => { pref.simbolo = $("moeda").value; pref.mult = 1; salvar(); opcoesGrade(); velas = []; carregarVelas(); painel(); });
+$("tf").addEventListener("change", () => { pref.tf = $("tf").value; salvar(); velas = []; carregarVelas(); });
+$("grade").addEventListener("change", () => { pref.mult = +$("grade").value; salvar(); painel(); agendarDesenho(); });
+$("faixa").addEventListener("change", () => { pref.faixa = $("faixa").value; salvar(); painel(); agendarDesenho(); });
+$("intens").addEventListener("input", () => { pref.intens = +$("intens").value; salvar(); agendarDesenho(); });
+addEventListener("resize", agendarDesenho);
+
+// ---------- dados de teste (?demo=1) ----------
+function demoVelas(n, ms){
+  const t1 = Math.floor(Date.now() / ms) * ms; let p = {BTCUSDT: 74000, ETHUSDT: 2050, SOLUSDT: 85, XRPUSDT: 1.06, QNTUSDT: 177}[pref.simbolo]; const out = [];
+  for (let i = n - 1; i >= 0; i--) { const o = p; p *= 1 + (Math.random() - 0.5) * 0.004; out.push([t1 - i * ms, o, Math.max(o, p) * 1.001, Math.min(o, p) * 0.999, p, 0, 0, 1e7 * Math.random()]); }
+  return out;
+}
+function demoLivro(L){
+  const mid0 = {BTCUSDT: 74000, ETHUSDT: 2050, SOLUSDT: 85, XRPUSDT: 1.06, QNTUSDT: 177}[L.s], g = GRADE0[L.s];
+  const paredesD = [[0.989, 3e7], [0.984, 1.3e7], [1.012, 2.7e7], [1.019, 1.5e7]].map(([k, v]) => [mid0 * k, v]);
+  const agora = Date.now();
+  for (let t = Math.floor((agora - 3 * 36e5) / FOTO_MS) * FOTO_MS; t <= agora; t += FOTO_MS) {
+    const mid = mid0 * (1 + Math.sin(t / 4e6) * 0.006);
+    const base = Math.floor(mid * (1 - FAIXA_GRAV) / g), n = Math.ceil(mid * 2 * FAIXA_GRAV / g) + 1, v = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const p = (base + i) * g; v[i] = Math.random() < 0.6 ? Math.random() * 1.5e6 * Math.exp(-Math.abs(p / mid - 1) * 40) : 0; }
+    for (const [p, val] of paredesD) { const i = Math.floor(p / g) - base; if (i >= 0 && i < n && (p !== paredesD[3][0] || t % 3e6 < 1.5e6)) v[i] += val; }
+    L.fotos.push({s: L.s, t, mid, bb: mid - g, ba: mid + g, base, g, v});
+  }
+  const f = L.fotos[L.fotos.length - 1];
+  for (let i = 0; i < f.v.length; i++) { const p = (f.base + i) * g; if (f.v[i]) (p < f.mid ? L.b : L.a).set(p, f.v[i] / p); }
+  L.ok = true;
+}
+
+(async () => {
+  banco = DEMO ? null : await abrirBanco();
+  for (const s of SIMBOLOS) { livros[s] = new Livro(s); livros[s].iniciar(); }
+  carregarVelas();
+  setInterval(() => { if (!document.hidden) { painel(); agendarDesenho(); } }, 1000);
+  setInterval(() => { if (document.hidden) return; $("status").textContent = new Date().toLocaleTimeString("pt-BR") + (DEMO ? " · DADOS DE TESTE" : ""); }, 1000);
+})();
+</script>
+</body>
+</html>
