@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ordens grandes Hyperliquid — LiqMap</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg?v=2">
+<style>
+:root{--bg:#ffffff;--line:#e0e3eb;--hover:#f0f3fa;--txt:#131722;--sub:#787b86;--up:#089981;--down:#f23645;--accent:#2962ff;--escuro:#0b0e14;--escuro2:#141923}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.4 -apple-system,BlinkMacSystemFont,"Trebuchet MS",Roboto,Ubuntu,"Segoe UI",sans-serif;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:2px;height:44px;padding:0 8px;border-bottom:1px solid var(--line);flex:0 0 auto;overflow-x:auto;scrollbar-width:none}
+.marca{font-weight:700;padding:0 10px 0 4px;white-space:nowrap;color:var(--txt);text-decoration:none}
+.marca span{color:var(--accent)}
+.marca .logo{width:20px;height:20px;vertical-align:-4px;margin-right:6px;border-radius:5px}
+.sep{width:1px;height:24px;background:var(--line);margin:0 6px;flex:0 0 auto}
+.btn{background:transparent;border:0;border-radius:4px;padding:6px 8px;cursor:pointer;white-space:nowrap;text-decoration:none;color:var(--txt);font:inherit}
+.btn:hover{background:var(--hover)}
+.btn.ativo{color:var(--accent);font-weight:600}
+.filtros{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:8px 12px;border-bottom:1px solid var(--line);flex:0 0 auto}
+.filtros label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--sub)}
+.filtros label.cb{flex-direction:row;align-items:center;gap:6px;color:var(--txt);font-size:12.5px;padding-bottom:6px}
+.filtros select{min-width:86px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;background:#f0f3fa;color:var(--txt);font:inherit;cursor:pointer}
+.varre{margin-left:auto;font-size:12px;color:var(--sub);align-self:center;display:flex;align-items:center;gap:6px}
+.ponto{width:8px;height:8px;border-radius:50%;background:#089981;display:inline-block;animation:pisca 1.6s infinite}
+@keyframes pisca{50%{opacity:.35}}
+.cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;padding:8px 12px;flex:0 0 auto}
+.card{border:1px solid var(--line);border-radius:8px;padding:7px 10px;min-width:0}
+.card .t{color:var(--sub);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card .v{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.card .s{font-size:11px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.corpo{flex:1 1 auto;display:flex;min-height:440px;padding:0 12px 10px;gap:8px}
+.grafico{flex:1 1 auto;position:relative;min-width:0;background:var(--escuro);border-radius:8px;overflow:hidden}
+.grafico canvas{position:absolute;inset:0;width:100%;height:100%}
+.vazio{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);color:#9aa4b5;text-align:center;font-size:13px;pointer-events:none;max-width:440px;line-height:1.6}
+.dica{position:absolute;pointer-events:none;background:#141923;color:#e6e9ef;border:1px solid #333c4b;border-radius:8px;padding:10px 12px;font-size:12px;display:none;z-index:3;font-variant-numeric:tabular-nums;width:270px;box-shadow:0 6px 18px rgba(0,0,0,.4)}
+.dica .cab{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
+.dica .tag{font-size:10.5px;padding:1px 6px;border-radius:4px;font-weight:600}
+.dica .pz{font-size:18px;font-weight:700;margin:4px 0 6px}
+.dica .gr{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.dica .gr div{background:#0b0e14;border-radius:6px;padding:5px 7px}
+.dica .gr span{display:block;color:#8b93a3;font-size:10.5px}
+.dica .rod{display:flex;justify-content:space-between;color:#8b93a3;font-size:11px;margin-top:6px}
+.lado{width:350px;flex:0 0 350px;background:var(--escuro);color:#d1d4dc;border-radius:8px;display:flex;flex-direction:column;overflow:hidden}
+.lado h3{margin:0;padding:9px 12px 2px;font-size:13px;color:#fff}
+.lado .sub{padding:0 12px 6px;font-size:11px;color:#8b93a3}
+.lista{flex:1 1 auto;overflow-y:auto;font-variant-numeric:tabular-nums;font-size:11.5px}
+.lista table{width:100%;border-collapse:collapse}
+.lista th{position:sticky;top:0;background:var(--escuro2);color:#8b93a3;font-weight:500;text-align:right;padding:4px 8px}
+.lista td{text-align:right;padding:3px 8px;border-top:1px solid #161c27;white-space:nowrap}
+.lista th:first-child,.lista td:first-child{text-align:left}
+.lista tr.l:hover td{background:#1a2130;cursor:pointer}
+.lista tr.meio td{background:var(--escuro2);color:#fff;font-weight:600;padding:5px 8px}
+.lista a{color:#8fa8ff;text-decoration:none}
+.trig{font-size:9.5px;padding:0 4px;border-radius:3px;background:#2b3345;color:#c3cad8;margin-left:4px}
+.mm{font-size:9.5px;padding:0 4px;border-radius:3px;background:#3a2f12;color:#e0b84c;margin-left:3px}
+.pv{color:#ff7a59}.pc{color:#3ddc84}
+.nota{color:var(--sub);font-size:11.5px;line-height:1.55;padding:0 12px 14px;flex:0 0 auto}
+@media (max-width:900px){
+  html,body{height:auto} body{display:block}
+  .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .corpo{flex-direction:column}
+  .grafico{flex:0 0 60vh;min-height:360px}
+  .lado{width:auto;flex:0 0 420px}
+  .marca .txt{display:none}
+}
+</style>
+</head>
+<body>
+<div class="top">
+  <a class="marca" href="./"><img src="logo.svg?v=2" alt="" class="logo">Liq<span>Map</span></a>
+  <div class="sep"></div>
+  <a class="btn" href="./">Gráfico</a>
+  <a class="btn" href="futuros.html">Futuros</a>
+  <a class="btn" href="heatmap.html">Heatmap do livro</a>
+  <a class="btn ativo" href="ordens-hl.html">Ordens HL</a>
+  <a class="btn" href="retornos.html">Retornos</a>
+  <a class="btn" href="livro.html">Livro de ofertas</a>
+  <a class="btn" href="fluxos.html">Fluxos</a>
+</div>
+<div class="filtros">
+  <label>Moeda <select id="moeda"><option>BTC</option><option>ETH</option><option>SOL</option><option>XRP</option></select></label>
+  <label>Velas <select id="tf"><option value="15m">15 min (3 dias)</option><option value="1h">1 hora (10 dias)</option><option value="4h">4 horas (30 dias)</option></select></label>
+  <label>Tamanho mínimo <select id="min"><option value="100000">$100K</option><option value="250000">$250K</option><option value="500000">$500K</option><option value="1000000">$1M</option><option value="5000000">$5M</option></select></label>
+  <label>Tipo <select id="tipo"><option value="todas">Todas</option><option value="lim">Só ordens limite</option><option value="trig">Só gatilhos (TP/SL)</option></select></label>
+  <label class="cb"><input type="checkbox" id="semMM"> Esconder formadores de mercado</label>
+  <label class="cb"><input type="checkbox" id="encerradas"> Mostrar encerradas</label>
+  <div class="varre"><span class="ponto"></span><span id="varre">preparando…</span></div>
+</div>
+<div class="cards" id="cards"></div>
+<div class="corpo">
+  <div class="grafico" id="grafico"><canvas id="cv"></canvas><div class="vazio" id="vazio"></div><div class="dica" id="dica"></div></div>
+  <aside class="lado">
+    <h3>Ordens grandes abertas</h3>
+    <div class="sub" id="ladoSub"></div>
+    <div class="lista" id="lista"></div>
+  </aside>
+</div>
+<p class="nota">
+  Ordens grandes paradas na Hyperliquid, com o endereço de quem colocou. <b>Linha cheia</b> = ordem limite no preço dela; <b>tracejada</b> = gatilho (take profit ou stop loss) no preço de disparo; <b>apagada</b> = ordem que saiu (executada ou cancelada). A espessura mostra o tamanho. Verde = compra, vermelho = venda.
+  A Hyperliquid não publica uma lista de todas as ordens: o LiqMap consulta, uma a uma, as maiores carteiras do ranking da Hyperliquid e as que fizeram negócios grandes, por isso a lista vai se completando nos primeiros minutos e cada carteira é verificada de novo a cada poucos minutos (as que têm ordens grandes, a cada minuto).
+  “Formador de mercado” = carteira com dezenas de ordens pequenas e grandes dos dois lados (robôs de liquidez), que costumam poluir a visão.
+</p>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const DEMO = new URLSearchParams(location.search).has("demo");
+const HL = "https://api.hyperliquid.xyz/info";
+const MOEDAS = ["BTC", "ETH", "SOL", "XRP"];
+const TF = {"15m": {ms: 9e5, jan: 3 * 864e5}, "1h": {ms: 36e5, jan: 10 * 864e5}, "4h": {ms: 144e5, jan: 30 * 864e5}};
+const TIPOS = {"Limit": "Limite", "Stop Market": "Stop a mercado", "Stop Limit": "Stop limite", "Take Profit Market": "Take profit a mercado", "Take Profit Limit": "Take profit limite"};
+
+let pref = {moeda: "BTC", tf: "15m", min: "500000", tipo: "todas", semMM: true, encerradas: true};
+try { Object.assign(pref, JSON.parse(localStorage.getItem("liqmap-hlordens-pref") || "{}")); } catch (e) {}
+const salvarPref = () => { try { localStorage.setItem("liqmap-hlordens-pref", JSON.stringify(pref)); } catch (e) {} };
+
+const casas = p => p >= 1000 ? 0 : p >= 10 ? 2 : 4;
+const pr = p => (+p).toLocaleString("pt-BR", {minimumFractionDigits: casas(p), maximumFractionDigits: casas(p)});
+const usd = x => { const a = Math.abs(x); return "$" + (a >= 1e9 ? (a / 1e9).toFixed(2) + "B" : a >= 1e6 ? (a / 1e6).toFixed(2) + "M" : a >= 1e3 ? (a / 1e3).toFixed(0) + "K" : a.toFixed(0)); };
+const qtd = x => x >= 1e6 ? (x / 1e6).toFixed(2) + "M" : x >= 1e3 ? (x / 1e3).toFixed(1) + "K" : x >= 10 ? x.toFixed(1) : x.toFixed(3);
+const abrev = a => a.slice(0, 6) + "…" + a.slice(-4);
+const dur = ms => { const m = Math.round(ms / 6e4); return m < 60 ? m + " min" : m < 1440 ? Math.floor(m / 60) + "h" + String(m % 60).padStart(2, "0") : Math.floor(m / 1440) + "d " + Math.floor(m % 1440 / 60) + "h"; };
+const dataHora = t => new Date(t).toLocaleString("pt-BR", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"});
+
+async function info(corpo){
+  const r = await fetch(HL, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(corpo)});
+  if (!r.ok) throw new Error("Hyperliquid " + r.status);
+  return r.json();
+}
+
+// ---------- estado (guardado no navegador) ----------
+// carteiras: endereço -> {ultima, ordens: [...], mm, quente, pos: {moeda: tamanho}}
+let carteiras = new Map(), historico = [];
+try {
+  const g = JSON.parse(localStorage.getItem("liqmap-hlordens") || "{}");
+  for (const [a, c] of g.carteiras || []) carteiras.set(a, c);
+  historico = (g.historico || []).filter(o => Date.now() - o.fim < 3 * 864e5);
+} catch (e) {}
+let salvarT = 0;
+function salvarEstado(){
+  clearTimeout(salvarT);
+  salvarT = setTimeout(() => {
+    try { localStorage.setItem("liqmap-hlordens", JSON.stringify({carteiras: [...carteiras].filter(([, c]) => c.ultima), historico: historico.slice(-600)})); } catch (e) {}
+  }, 3000);
+}
+function addCarteira(a, fonte){
+  a = a.toLowerCase();
+  if (!carteiras.has(a)) carteiras.set(a, {ultima: 0, ordens: [], fonte});
+}
+
+// ---------- quais carteiras olhar ----------
+async function montarListaCarteiras(){
+  let lista = null;
+  try { const c = JSON.parse(localStorage.getItem("liqmap-hlordens-top") || "null"); if (c && Date.now() - c.t < 6 * 36e5) lista = c.lista; } catch (e) {}
+  if (!lista) {
+    try {
+      const j = await (await fetch("https://stats-data.hyperliquid.xyz/Mainnet/leaderboard")).json();
+      const rows = j.leaderboardRows || [];
+      const vol = r => { const m = (r.windowPerformances || []).find(w => w[0] === "month"); return m ? +m[1].vlm : 0; };
+      const porValor = rows.slice().sort((a, b) => +b.accountValue - +a.accountValue).slice(0, 260);
+      const porVolume = rows.slice().sort((a, b) => vol(b) - vol(a)).slice(0, 140);
+      lista = [...new Set(porValor.concat(porVolume).map(r => r.ethAddress.toLowerCase()))];
+      try { localStorage.setItem("liqmap-hlordens-top", JSON.stringify({t: Date.now(), lista})); } catch (e) {}
+    } catch (e) { lista = []; }
+  }
+  for (const a of lista) addCarteira(a, "ranking");
+  // quem fez negócio grande (registrado pela aba Hyperliquid da página Futuros)
+  try { for (const b of JSON.parse(localStorage.getItem("liqmap-hl-baleias") || "[]")) addCarteira(b.user, "negócio grande"); } catch (e) {}
+}
+// negócios grandes ao vivo também entram na lista
+function ouvirNegocios(){
+  if (DEMO) return;
+  const ws = new WebSocket("wss://api.hyperliquid.xyz/ws");
+  ws.onopen = () => { for (const c of MOEDAS) ws.send(JSON.stringify({method: "subscribe", subscription: {type: "trades", coin: c}})); };
+  ws.onmessage = ev => { let j; try { j = JSON.parse(ev.data); } catch (e) { return; } if (j.channel !== "trades") return;
+    for (const f of j.data) if (+f.px * +f.sz >= 100000) for (const u of f.users) { const novo = !carteiras.has(u.toLowerCase()); addCarteira(u, "negócio grande"); if (novo) filaUrgente.push(u.toLowerCase()); } };
+  ws.onclose = () => setTimeout(ouvirNegocios, 5000);
+  setInterval(() => { try { ws.send(JSON.stringify({method: "ping"})); } catch (e) {} }, 50000);
+}
+
+// ---------- varredura: uma carteira a cada 1,5 s (limite da Hyperliquid) ----------
+const filaUrgente = [];
+let rodizio = 0, verificadas = 0;
+function proxima(){
+  if (filaUrgente.length) return filaUrgente.shift();
+  const agora = Date.now();
+  // carteiras com ordens grandes: a cada ~1 min
+  for (const [a, c] of carteiras) if (c.quente && agora - c.ultima > 60000) return a;
+  const chaves = [...carteiras.keys()];
+  if (!chaves.length) return null;
+  // nunca verificadas primeiro, depois rodízio
+  const nova = chaves.find(a => !carteiras.get(a).ultima);
+  if (nova) return nova;
+  rodizio = (rodizio + 1) % chaves.length;
+  return chaves[rodizio];
+}
+async function varrer(){
+  const a = proxima();
+  if (a) {
+    try { await verificar(a); verificadas++; } catch (e) { console.warn(e); }
+  }
+  atualizarStatus();
+  setTimeout(varrer, a ? 1500 : 5000);
+}
+async function verificar(a){
+  const c = carteiras.get(a);
+  const ordens = await info({type: "frontendOpenOrders", user: a});
+  const antes = new Map((c.ordens || []).map(o => [o.oid, o]));
+  const agora = Date.now();
+  c.mm = ordens.length >= 30 && ordens.filter(o => o.tif === "Alo").length >= ordens.length * 0.6;
+  // gatilhos de "posição inteira" vêm com tamanho 0: o tamanho é o da posição
+  let pos = null;
+  if (ordens.some(o => +o.origSz === 0 && MOEDAS.includes(o.coin))) {
+    try { const st = await info({type: "clearinghouseState", user: a}); pos = {}; for (const p of st.assetPositions || []) pos[p.position.coin] = {szi: +p.position.szi, entrada: +p.position.entryPx, liq: +p.position.liquidationPx}; } catch (e) {}
+  }
+  const grandes = [];
+  for (const o of ordens) {
+    if (!MOEDAS.includes(o.coin)) continue;
+    const px = o.isTrigger && +o.triggerPx ? +o.triggerPx : +o.limitPx;
+    let sz = +o.origSz, resta = +o.sz, inteira = false;
+    if (!sz && pos && pos[o.coin]) { sz = resta = Math.abs(pos[o.coin].szi); inteira = true; }
+    const val = sz * px;
+    if (val < 100000) continue;
+    grandes.push({oid: o.oid, coin: o.coin, lado: o.side, px, lim: +o.limitPx, sz, resta, val, tipo: o.orderType, trig: !!o.isTrigger, cond: o.triggerCondition,
+                  reduz: !!o.reduceOnly, tpsl: !!o.isPositionTpsl, inteira, t: o.timestamp, user: a, pos: pos && pos[o.coin] ? pos[o.coin] : (antes.get(o.oid) || {}).pos});
+  }
+  const agoraIds = new Set(grandes.map(o => o.oid));
+  for (const [oid, o] of antes) if (!agoraIds.has(oid)) historico.push(Object.assign({}, o, {fim: agora, mm: c.mm}));
+  c.ordens = grandes; c.ultima = agora; c.quente = grandes.length > 0;
+  salvarEstado();
+  agendarDesenho(); listar();
+}
+function atualizarStatus(){
+  const tot = carteiras.size, vistas = [...carteiras.values()].filter(c => c.ultima).length;
+  const quentes = [...carteiras.values()].filter(c => c.quente).length;
+  $("varre").textContent = DEMO ? "dados de teste" : vistas < tot ? `Verificando carteiras: ${vistas} de ${tot}` : `${tot} carteiras monitoradas · ${quentes} com ordens grandes`;
+}
+
+// ---------- ordens filtradas ----------
+function filtradas(incluiEncerradas){
+  const min = +pref.min, out = [];
+  const ok = o => o.coin === pref.moeda && o.val >= min && (pref.tipo === "todas" || (pref.tipo === "trig") === o.trig);
+  for (const c of carteiras.values()) { if (pref.semMM && c.mm) continue; for (const o of c.ordens || []) if (ok(o)) out.push(o); }
+  if (incluiEncerradas) for (const o of historico) if (ok(o) && !(pref.semMM && o.mm)) out.push(Object.assign({}, o, {encerrada: true}));
+  return out;
+}
+
+// ---------- velas e preço ----------
+let velas = [], precoAtual = null;
+async function carregarVelas(){
+  const tf = TF[pref.tf], fim = Date.now(), ini = fim - tf.jan, moeda = pref.moeda;
+  try {
+    const d = DEMO ? demoVelas(tf) : await info({type: "candleSnapshot", req: {coin: moeda, interval: pref.tf, startTime: ini, endTime: fim}});
+    if (moeda !== pref.moeda) return;
+    velas = d.map(k => ({t: +k.t, o: +k.o, h: +k.h, l: +k.l, c: +k.c}));
+  } catch (e) { velas = []; }
+  agendarDesenho();
+}
+async function atualizarPreco(){
+  try {
+    if (DEMO) precoAtual = velas.length ? velas[velas.length - 1].c : null;
+    else { const m = await info({type: "allMids"}); precoAtual = +m[pref.moeda]; }
+    if (velas.length && precoAtual) { const u = velas[velas.length - 1], ms = TF[pref.tf].ms;
+      if (Date.now() - u.t < ms) { u.c = precoAtual; u.h = Math.max(u.h, precoAtual); u.l = Math.min(u.l, precoAtual); }
+      else velas.push({t: Math.floor(Date.now() / ms) * ms, o: precoAtual, h: precoAtual, l: precoAtual, c: precoAtual}); }
+    agendarDesenho(); listar(); cards();
+  } catch (e) {}
+}
+
+// ---------- desenho ----------
+const cv = $("cv"), ctx = cv.getContext("2d");
+const R_EIXO = 76, X_EIXO = 22;
+let pend = false, vista = null, barras = [], mira = null;
+function agendarDesenho(){ if (pend) return; pend = true; requestAnimationFrame(() => { pend = false; desenhar(); }); }
+function espessura(v){ return Math.max(1.5, Math.min(9, 1.5 + Math.log10(v / 1e5) * 3.2)); }
+function desenhar(){
+  const r = cv.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1); if (!r.width) return;
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const W = r.width, H = r.height, PW = W - R_EIXO, PH = H - X_EIXO;
+  ctx.fillStyle = "#0b0e14"; ctx.fillRect(0, 0, W, H);
+  if (!velas.length) { $("vazio").textContent = "carregando…"; return; }
+  const tf = TF[pref.tf], t1 = Date.now() + tf.ms * 4, t0 = t1 - tf.jan - tf.ms * 4;
+  const xDe = t => (t - t0) / (t1 - t0) * PW;
+  const ordens = filtradas(pref.encerradas).filter(o => !o.encerrada || o.fim > t0);
+  const ref = precoAtual || velas[velas.length - 1].c;
+  let lo = Infinity, hi = -Infinity;
+  for (const v of velas) if (v.t >= t0) { lo = Math.min(lo, v.l); hi = Math.max(hi, v.h); }
+  for (const o of ordens) if (Math.abs(o.px / ref - 1) < 0.12) { lo = Math.min(lo, o.px); hi = Math.max(hi, o.px); }
+  const pad = (hi - lo) * 0.06; lo -= pad; hi += pad;
+  const yDe = p => (hi - p) / (hi - lo) * PH;
+  vista = {t0, t1, lo, hi, PW, PH};
+  $("vazio").innerHTML = ordens.length ? "" : (carteiras.size && [...carteiras.values()].some(c => c.ultima) ? "Nenhuma ordem desse tamanho encontrada até agora.<br>A varredura continua; diminua o tamanho mínimo para ver mais." : "Buscando as maiores carteiras da Hyperliquid…");
+  // grade
+  ctx.font = "11px -apple-system,Segoe UI,sans-serif"; ctx.textBaseline = "middle";
+  const bruto = (hi - lo) / 8, e10 = Math.pow(10, Math.floor(Math.log10(bruto))), passo = [1, 2, 2.5, 5, 10].map(m => m * e10).find(m => m >= bruto);
+  for (let p = Math.ceil(lo / passo) * passo; p < hi; p += passo) { const y = yDe(p);
+    ctx.strokeStyle = "rgba(255,255,255,.05)"; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(PW, y); ctx.stroke();
+    ctx.fillStyle = "#8b93a3"; ctx.textAlign = "left"; ctx.fillText(pr(p), PW + 6, y); }
+  const pt = tf.jan / 7; ctx.textAlign = "center";
+  for (let t = Math.ceil(t0 / pt) * pt; t < t1; t += pt) ctx.fillText(new Date(t).toLocaleString("pt-BR", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"}), xDe(t), H - X_EIXO / 2);
+  // velas
+  const vw = Math.max(1, PW / (tf.jan / tf.ms) * 0.6);
+  for (const v of velas) { if (v.t < t0) continue; const x = xDe(v.t + tf.ms / 2), sobe = v.c >= v.o;
+    ctx.strokeStyle = ctx.fillStyle = sobe ? "rgba(38,166,154,.9)" : "rgba(239,83,80,.9)";
+    ctx.beginPath(); ctx.moveTo(x, yDe(v.h)); ctx.lineTo(x, yDe(v.l)); ctx.stroke();
+    const yo = yDe(v.o), yc = yDe(v.c); ctx.fillRect(x - vw / 2, Math.min(yo, yc), vw, Math.max(1, Math.abs(yc - yo))); }
+  // ordens
+  barras = [];
+  const ordenadas = ordens.slice().sort((a, b) => (a.encerrada ? 0 : 1) - (b.encerrada ? 0 : 1) || a.val - b.val);
+  for (const o of ordenadas) {
+    if (o.px < lo || o.px > hi) continue;
+    const x0 = Math.max(0, xDe(o.t)), x1 = o.encerrada ? xDe(o.fim) : PW, y = yDe(o.px), esp = espessura(o.val);
+    const cor = o.lado === "B" ? [61, 220, 132] : [255, 99, 99];
+    ctx.strokeStyle = `rgba(${cor},${o.encerrada ? 0.28 : 0.95})`; ctx.lineWidth = esp;
+    ctx.setLineDash(o.trig ? [6, 4] : []);
+    ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1;
+    if (o.encerrada) { ctx.fillStyle = `rgba(${cor},.5)`; ctx.fillText("×", x1 + 4, y); }
+    else if (o.val >= +pref.min * 4 || o.val >= 5e6) { ctx.textAlign = "right"; ctx.fillStyle = `rgba(${cor},1)`; ctx.fillText(usd(o.val), PW - 4, y - esp / 2 - 6); ctx.textAlign = "center"; }
+    barras.push({o, x0, x1, y, esp});
+  }
+  ctx.strokeStyle = "#232a36"; ctx.beginPath(); ctx.moveTo(PW + 0.5, 0); ctx.lineTo(PW + 0.5, H); ctx.moveTo(0, PH + 0.5); ctx.lineTo(PW, PH + 0.5); ctx.stroke();
+  // preço atual
+  const y = yDe(ref);
+  ctx.setLineDash([3, 3]); ctx.strokeStyle = "rgba(255,255,255,.5)"; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(PW, y); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = "#2962ff"; ctx.fillRect(PW + 1, y - 9, R_EIXO - 2, 18); ctx.fillStyle = "#fff"; ctx.textAlign = "left"; ctx.font = "600 11px -apple-system,Segoe UI,sans-serif"; ctx.fillText(pr(ref), PW + 6, y);
+  if (mira && mira.x < PW && mira.y < PH) { ctx.strokeStyle = "rgba(255,255,255,.3)"; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(mira.x, 0); ctx.lineTo(mira.x, PH); ctx.moveTo(0, mira.y); ctx.lineTo(PW, mira.y); ctx.stroke(); ctx.setLineDash([]); }
+}
+function dicaOrdem(o, x, y){
+  const d = $("dica"), compra = o.lado === "B", agora = Date.now();
+  const tipo = (TIPOS[o.tipo] || o.tipo) + (o.reduz ? " · só reduz posição" : "");
+  const st = o.encerrada ? "Encerrada" : "Aberta";
+  d.innerHTML = `<div class="cab"><b>Hyperliquid ${o.coin}-USD</b><span class="tag" style="background:${compra ? "#123d2a" : "#45191c"};color:${compra ? "#3ddc84" : "#ff7a7a"}">${compra ? "Compra" : "Venda"}</span></div>
+    <div style="color:#8b93a3;font-size:11px">${tipo}${o.tpsl ? " · TP/SL da posição" : ""}</div>
+    <div class="pz">${pr(o.px)} <span style="font-size:12px;font-weight:500;color:${o.px >= (precoAtual || o.px) ? "#3ddc84" : "#ff7a7a"}">${precoAtual ? (o.px >= precoAtual ? "+" : "−") + Math.abs((o.px / precoAtual - 1) * 100).toFixed(2).replace(".", ",") + "%" : ""}</span>
+      <span class="tag" style="float:right;background:#1d2a4a;color:#8fa8ff">${st}</span></div>
+    <div class="gr">
+      <div><span>Tamanho original</span>${usd(o.val)}<br><small>${qtd(o.sz)} ${o.coin}${o.inteira ? " (posição inteira)" : ""}</small></div>
+      <div><span>Falta executar</span>${usd(o.resta * o.px)}<br><small>${qtd(o.resta)} ${o.coin}</small></div>
+      ${o.trig ? `<div><span>Dispara em</span>${pr(o.px)}<br><small>${o.cond && o.cond !== "N/A" ? o.cond.replace("Price above", "preço acima de").replace("Price below", "preço abaixo de") : ""}</small></div><div><span>Preço limite</span>${pr(o.lim)}<br><small>${abrev(o.user)}</small></div>`
+        : `<div><span>Carteira</span>${abrev(o.user)}</div><div><span>Origem</span>${(carteiras.get(o.user) || {}).fonte || "—"}</div>`}
+      ${o.pos && o.pos.szi ? `<div><span>Posição da carteira</span>${o.pos.szi > 0 ? "Long " : "Short "}${qtd(Math.abs(o.pos.szi))}</div><div><span>Entrada · liquidação</span>${pr(o.pos.entrada)} · ${o.pos.liq ? pr(o.pos.liq) : "—"}</div>` : ""}
+    </div>
+    <div class="rod"><span>Colocada ${dataHora(o.t)}</span><span>${o.encerrada ? "saiu " + dataHora(o.fim) : "aberta há " + dur(agora - o.t)}</span></div>`;
+  d.style.display = "block";
+  const {PW, PH} = vista, dw = d.offsetWidth, dh = d.offsetHeight;
+  d.style.left = (x + 16 + dw > PW ? x - dw - 16 : x + 16) + "px"; d.style.top = Math.min(PH - dh - 4, Math.max(4, y - dh / 2)) + "px";
+}
+$("grafico").addEventListener("mousemove", e => {
+  if (!vista) return;
+  const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  mira = {x, y}; agendarDesenho();
+  let melhor = null, dist = 7;
+  for (const b of barras) if (x >= b.x0 - 4 && x <= b.x1 + 4) { const d = Math.abs(y - b.y) - b.esp / 2; if (d < dist) { dist = d; melhor = b; } }
+  if (melhor) { dicaOrdem(melhor.o, x, y); $("grafico").style.cursor = "pointer"; } else { $("dica").style.display = "none"; $("grafico").style.cursor = ""; }
+});
+$("grafico").addEventListener("mouseleave", () => { $("dica").style.display = "none"; mira = null; agendarDesenho(); });
+$("grafico").addEventListener("click", e => {
+  if (!vista) return; const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  const b = barras.find(b => x >= b.x0 - 4 && x <= b.x1 + 4 && Math.abs(y - b.y) <= b.esp / 2 + 6);
+  if (b) window.open("https://app.hyperliquid.xyz/explorer/address/" + b.o.user, "_blank", "noopener");
+});
+
+// ---------- lista lateral e cards ----------
+function listar(){
+  const ab = filtradas(false).sort((a, b) => b.px - a.px), ref = precoAtual;
+  $("ladoSub").textContent = `${pref.moeda} · ${ab.length} ordens ≥ ${usd(+pref.min)}` + (pref.semMM ? " · sem formadores de mercado" : "");
+  const linha = o => `<tr class="l" onclick="window.open('https://app.hyperliquid.xyz/explorer/address/${o.user}','_blank','noopener')" title="${TIPOS[o.tipo] || o.tipo}${o.reduz ? " · só reduz" : ""}">
+    <td class="${o.lado === "B" ? "pc" : "pv"}">${pr(o.px)}${o.trig ? '<span class="trig">GATILHO</span>' : ""}${(carteiras.get(o.user) || {}).mm ? '<span class="mm">MM</span>' : ""}</td>
+    <td>${qtd(o.sz)}</td><td>${usd(o.val)}</td><td><a href="https://app.hyperliquid.xyz/explorer/address/${o.user}" target="_blank" rel="noopener">${abrev(o.user)}</a></td></tr>`;
+  let html = `<table><tr><th>Preço</th><th>Qtd</th><th>Valor</th><th>Carteira</th></tr>`, pos = false;
+  for (const o of ab) { if (!pos && ref && o.px < ref) { html += `<tr class="meio"><td>${pr(ref)}</td><td colspan="3" style="text-align:right;font-weight:400;color:#8b93a3">preço atual</td></tr>`; pos = true; } html += linha(o); }
+  if (!pos && ref) html += `<tr class="meio"><td>${pr(ref)}</td><td colspan="3" style="text-align:right;font-weight:400;color:#8b93a3">preço atual</td></tr>`;
+  $("lista").innerHTML = html + "</table>";
+  cards();
+}
+function cards(){
+  const ab = filtradas(false), ref = precoAtual || (velas.length ? velas[velas.length - 1].c : 0);
+  const soma = f => ab.filter(f).reduce((a, o) => a + o.val, 0);
+  const comp = soma(o => o.lado === "B" && !o.trig), vend = soma(o => o.lado === "A" && !o.trig);
+  const tvA = soma(o => o.trig && o.lado === "A" && o.px < ref), tvB = soma(o => o.trig && o.lado === "A" && o.px >= ref);
+  const tcA = soma(o => o.trig && o.lado === "B" && o.px > ref), tcB = soma(o => o.trig && o.lado === "B" && o.px <= ref);
+  const maior = l => ab.filter(o => o.lado === l && !o.trig).sort((a, b) => b.val - a.val)[0];
+  const mb = maior("B"), ma = maior("A");
+  const c = (t, v, s, cor) => `<div class="card"><div class="t">${t}</div><div class="v" style="color:${cor || "inherit"}">${v}</div><div class="s">${s || ""}</div></div>`;
+  $("cards").innerHTML =
+    c("Preço " + pref.moeda + " · Hyperliquid", ref ? pr(ref) : "—", "") +
+    c("Ordens limite de compra", usd(comp), "venda: " + usd(vend), "#089981") +
+    c("Gatilhos de venda (TP/SL de longs)", usd(tvA + tvB), "stops abaixo " + usd(tvA) + " · lucros acima " + usd(tvB), "#f23645") +
+    c("Gatilhos de compra (TP/SL de shorts)", usd(tcA + tcB), "stops acima " + usd(tcA) + " · lucros abaixo " + usd(tcB), "#089981") +
+    c("Maior ordem limite", mb || ma ? pr((mb && (!ma || mb.val >= ma.val) ? mb : ma).px) : "—", mb || ma ? ((mb && (!ma || mb.val >= ma.val)) ? "compra " + usd(mb.val) : "venda " + usd(ma.val)) : "");
+}
+
+// ---------- controles ----------
+for (const id of ["moeda", "tf", "min", "tipo"]) { $(id).value = pref[id]; $(id).addEventListener("change", () => { pref[id] = $(id).value; salvarPref(); if (id === "moeda" || id === "tf") { velas = []; carregarVelas(); atualizarPreco(); } agendarDesenho(); listar(); }); }
+for (const id of ["semMM", "encerradas"]) { $(id).checked = !!pref[id]; $(id).addEventListener("change", () => { pref[id] = $(id).checked; salvarPref(); agendarDesenho(); listar(); }); }
+addEventListener("resize", agendarDesenho);
+
+// ---------- dados de teste ----------
+function demoVelas(tf){ const n = Math.round(tf.jan / tf.ms), t1 = Math.floor(Date.now() / tf.ms) * tf.ms; let p = 72000; const out = [];
+  for (let i = n - 1; i >= 0; i--) { const o = p; p *= 1 + (Math.random() - 0.5) * 0.006; out.push({t: t1 - i * tf.ms, o, h: Math.max(o, p) * 1.002, l: Math.min(o, p) * 0.998, c: p}); } return out; }
+function demoOrdens(){
+  const agora = Date.now(), ps = [[75000, "A", 3.5e6, true], [74050, "A", 1.63e6, true], [73800, "A", 1.6e6, true], [71900, "A", 2.2e6, false], [70000, "B", 2.5e6, false], [69300, "B", 1.5e6, false], [68000, "B", 4e6, false], [70566, "B", 5.5e6, true]];
+  ps.forEach(([px, lado, val, trig], i) => { const a = "0x" + (i + 1).toString(16).padStart(40, "a");
+    carteiras.set(a, {ultima: agora, quente: true, fonte: "ranking", ordens: [{oid: i, coin: "BTC", lado, px, lim: px * (lado === "A" ? 0.9 : 1.1), sz: val / px, resta: val / px, val, tipo: trig ? "Stop Market" : "Limit", trig, cond: trig ? "Price above " + px : "N/A", reduz: trig, tpsl: false, t: agora - (i + 1) * 9e6, user: a}]}); });
+  historico.push({oid: 99, coin: "BTC", lado: "B", px: 70400, sz: 20, resta: 20, val: 1.4e6, tipo: "Limit", trig: false, t: agora - 2e8, fim: agora - 1e8, user: "0x" + "b".repeat(40)});
+}
+
+(async () => {
+  if (DEMO) demoOrdens();
+  await carregarVelas(); await atualizarPreco(); listar(); atualizarStatus();
+  setInterval(atualizarPreco, 5000);
+  setInterval(() => { if (!DEMO) carregarVelas(); }, 120000);
+  if (!DEMO) { await montarListaCarteiras(); ouvirNegocios(); varrer(); }
+})();
+</script>
+</body>
+</html>
