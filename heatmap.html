@@ -73,7 +73,8 @@ body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.4 -apple-system,
 </div>
 <div class="filtros">
   <label>Moeda <select id="moeda"></select></label>
-  <label>Tempo gráfico <select id="tf"><option value="1m">1 min (3h)</option><option value="5m">5 min (12h)</option><option value="15m">15 min (24h)</option></select></label>
+  <label>Janela <select id="jan"><option value="auto">Automática (o que foi gravado)</option><option value="1800000">30 min</option><option value="3600000">1 hora</option><option value="10800000">3 horas</option><option value="21600000">6 horas</option><option value="43200000">12 horas</option><option value="86400000">24 horas</option></select></label>
+  <label>Velas <select id="tf"><option value="auto">Automático</option><option value="1m">1 min</option><option value="5m">5 min</option><option value="15m">15 min</option></select></label>
   <label>Agrupar preço <select id="grade"></select></label>
   <label>Faixa dos cards <select id="faixa"><option value="1">±1%</option><option value="2">±2%</option><option value="5">±5%</option></select></label>
   <label>Intensidade <input type="range" id="intens" min="0.3" max="4" step="0.1"></label>
@@ -100,11 +101,21 @@ const DEMO = new URLSearchParams(location.search).has("demo");
 const SIMBOLOS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "QNTUSDT"];
 const GRADE0 = {BTCUSDT: 10, ETHUSDT: 0.5, SOLUSDT: 0.01, XRPUSDT: 0.0001, QNTUSDT: 0.05};
 const FAIXA_GRAV = 0.06, FOTO_MS = 10000, RETER = 12 * 36e5;
-const TF = {"1m": {ms: 6e4, jan: 3 * 36e5}, "5m": {ms: 3e5, jan: 12 * 36e5}, "15m": {ms: 9e5, jan: 24 * 36e5}};
+const TF_MS = {"1m": 6e4, "5m": 3e5, "15m": 9e5};
+// janela e velas efetivas: no automático, a janela cobre só o que já foi gravado (mín. 30 min, máx. 24h),
+// assim o mapa ocupa o gráfico inteiro mesmo com pouca gravação, como no heatmap da CoinGlass
+function efetivo(){
+  const L = livros[pref.simbolo], f = L && L.fotos.length ? L.fotos[0].t : Date.now();
+  const jan = pref.jan === "auto" ? Math.min(24 * 36e5, Math.max(30 * 6e4, Date.now() - f + 3 * 6e4)) : +pref.jan;
+  const tf = pref.tf !== "auto" ? pref.tf : jan <= 3 * 36e5 ? "1m" : jan <= 12 * 36e5 ? "5m" : "15m";
+  return {jan, tf, ms: TF_MS[tf]};
+}
+let tfCarregado = "";
 
-let pref = {simbolo: "BTCUSDT", tf: "5m", mult: 1, faixa: "2", intens: 1.2};
+let pref = {simbolo: "BTCUSDT", tf: "auto", jan: "auto", mult: 1, faixa: "2", intens: 1.2};
 try { Object.assign(pref, JSON.parse(localStorage.getItem("liqmap-heatmap") || "{}")); } catch (e) {}
 if (!SIMBOLOS.includes(pref.simbolo)) pref.simbolo = "BTCUSDT";
+if (!pref.jan) { pref.jan = "auto"; pref.tf = "auto"; }
 const salvar = () => { try { localStorage.setItem("liqmap-heatmap", JSON.stringify(pref)); } catch (e) {} };
 
 const casas = p => p >= 1000 ? 1 : p >= 10 ? 2 : p >= 1 ? 3 : 4;
@@ -216,18 +227,20 @@ const livros = {};
 // ---------- velas ----------
 let velas = [], wsVela = null;
 async function carregarVelas(){
-  const s = pref.simbolo, tf = TF[pref.tf], n = Math.ceil(tf.jan / tf.ms) + 1;
+  const s = pref.simbolo, e = efetivo(), tfN = e.tf, n = Math.min(1500, Math.ceil(24 * 36e5 / e.ms) + 2);
+  if (tfCarregado !== s + tfN) velas = [];
+  tfCarregado = s + tfN;
   try {
-    const d = DEMO ? demoVelas(n, tf.ms) : await (await fetch("https://fapi.binance.com/fapi/v1/klines?symbol=" + s + "&interval=" + pref.tf + "&limit=" + n)).json();
-    if (s !== pref.simbolo) return;
+    const d = DEMO ? demoVelas(n, e.ms) : await (await fetch("https://fapi.binance.com/fapi/v1/klines?symbol=" + s + "&interval=" + tfN + "&limit=" + n)).json();
+    if (tfCarregado !== s + tfN) return;
     velas = d.map(k => ({t: +k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], v: +k[7]}));
   } catch (e) { velas = []; }
   if (wsVela) { wsVela.onclose = null; wsVela.close(); }
   if (!DEMO) {
-    wsVela = new WebSocket("wss://fstream.binance.com/market/ws/" + s.toLowerCase() + "@kline_" + pref.tf);
+    wsVela = new WebSocket("wss://fstream.binance.com/market/ws/" + s.toLowerCase() + "@kline_" + tfN);
     wsVela.onmessage = ev => { try { const k = JSON.parse(ev.data).k; const x = {t: k.t, o: +k.o, h: +k.h, l: +k.l, c: +k.c, v: +k.q};
       if (velas.length && velas[velas.length - 1].t === x.t) velas[velas.length - 1] = x; else if (!velas.length || x.t > velas[velas.length - 1].t) velas.push(x); } catch (e) {} };
-    wsVela.onclose = () => setTimeout(() => { if (pref.simbolo === s) carregarVelas(); }, 4000);
+    wsVela.onclose = () => setTimeout(() => { if (tfCarregado === s + tfN) carregarVelas(); }, 4000);
   }
   agendarDesenho();
 }
@@ -251,7 +264,8 @@ function desenhar(){
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const W = r.width, H = r.height, PW = W - R_EIXO, PH = H - VOL_H - X_EIXO;
   ctx.fillStyle = "#0b0e14"; ctx.fillRect(0, 0, W, H);
-  const tf = TF[pref.tf], agora = Date.now();
+  const tf = efetivo(), agora = Date.now();
+  if (tfCarregado !== s + tf.tf) { carregarVelas(); return; }
   const t1 = Math.floor(agora / tf.ms) * tf.ms + tf.ms * 1.5, t0 = t1 - tf.jan - tf.ms * 1.5;
   const xDe = t => (t - t0) / (t1 - t0) * PW;
   const vis = velas.filter(v => v.t >= t0 - tf.ms);
@@ -311,7 +325,7 @@ function desenhar(){
     ctx.fillStyle = "#8b93a3"; ctx.textAlign = "left"; ctx.fillText(pr(p), PW + 6, y);
   }
   // velas
-  const vw = Math.max(1, PW / (tf.jan / tf.ms) * 0.62);
+  const vw = Math.max(1, PW / ((t1 - t0) / tf.ms) * 0.62);
   let vmaxVol = 0; for (const v of vis) vmaxVol = Math.max(vmaxVol, v.v);
   for (const v of vis) {
     const x = xDe(v.t + tf.ms / 2), sobe = v.c >= v.o;
@@ -324,7 +338,7 @@ function desenhar(){
   ctx.strokeStyle = "#232a36"; ctx.beginPath(); ctx.moveTo(0, PH + 0.5); ctx.lineTo(PW, PH + 0.5); ctx.moveTo(PW + 0.5, 0); ctx.lineTo(PW + 0.5, H); ctx.stroke();
   // eixo do tempo
   ctx.fillStyle = "#8b93a3"; ctx.textAlign = "center";
-  const pt = tf.jan / 6; for (let t = Math.ceil(t0 / pt) * pt; t < t1; t += pt) ctx.fillText(hora(t), xDe(t), H - X_EIXO / 2);
+  const pt = [6e4, 3e5, 6e5, 9e5, 18e5, 36e5, 72e5, 108e5, 144e5].find(x => x >= tf.jan / 7) || 216e5; for (let t = Math.ceil(t0 / pt) * pt; t < t1; t += pt) ctx.fillText(hora(t), xDe(t), H - X_EIXO / 2);
 
   // paredes atuais (as 3 maiores de cada lado) e preço atual
   if (topo && isFinite(topo.mid)) {
@@ -437,10 +451,11 @@ function opcoesGrade(){
   const s = pref.simbolo; $("grade").replaceChildren(...[1, 2, 5, 10, 25].map(m => new Option(pr(GRADE0[s] * m).replace(/,?0+$/, "") || String(GRADE0[s] * m), m)));
   $("grade").value = String(pref.mult);
 }
-$("moeda").value = pref.simbolo; $("tf").value = pref.tf; $("faixa").value = pref.faixa; $("intens").value = pref.intens;
+$("moeda").value = pref.simbolo; $("tf").value = pref.tf; $("jan").value = pref.jan; $("faixa").value = pref.faixa; $("intens").value = pref.intens;
 opcoesGrade();
 $("moeda").addEventListener("change", () => { pref.simbolo = $("moeda").value; pref.mult = 1; salvar(); opcoesGrade(); velas = []; carregarVelas(); painel(); });
-$("tf").addEventListener("change", () => { pref.tf = $("tf").value; salvar(); velas = []; carregarVelas(); });
+$("tf").addEventListener("change", () => { pref.tf = $("tf").value; salvar(); agendarDesenho(); });
+$("jan").addEventListener("change", () => { pref.jan = $("jan").value; salvar(); agendarDesenho(); });
 $("grade").addEventListener("change", () => { pref.mult = +$("grade").value; salvar(); painel(); agendarDesenho(); });
 $("faixa").addEventListener("change", () => { pref.faixa = $("faixa").value; salvar(); painel(); agendarDesenho(); });
 $("intens").addEventListener("input", () => { pref.intens = +$("intens").value; salvar(); agendarDesenho(); });
