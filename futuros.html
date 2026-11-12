@@ -289,7 +289,7 @@ function novaLiq(s, t, p, u, long){
 }
 function ouvirLiqs(){
   if (DEMO) return;
-  const ws = new WebSocket("wss://fstream.binance.com/stream?streams=" + SIMBOLOS.map(s => s.toLowerCase() + "@forceOrder").join("/"));
+  const ws = new WebSocket("wss://fstream.binance.com/market/stream?streams=" + SIMBOLOS.map(s => s.toLowerCase() + "@forceOrder").join("/"));
   ws.onmessage = ev => { try { const o = JSON.parse(ev.data).data.o; const pz = +o.ap || +o.p, qz = +o.z || +o.q; novaLiq(o.s, +o.T, pz, pz * qz, o.S === "SELL"); } catch (e) {} };
   ws.onclose = () => setTimeout(ouvirLiqs, 5000);
 }

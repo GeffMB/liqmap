@@ -224,7 +224,7 @@ async function carregarVelas(){
   } catch (e) { velas = []; }
   if (wsVela) { wsVela.onclose = null; wsVela.close(); }
   if (!DEMO) {
-    wsVela = new WebSocket("wss://fstream.binance.com/ws/" + s.toLowerCase() + "@kline_" + pref.tf);
+    wsVela = new WebSocket("wss://fstream.binance.com/market/ws/" + s.toLowerCase() + "@kline_" + pref.tf);
     wsVela.onmessage = ev => { try { const k = JSON.parse(ev.data).k; const x = {t: k.t, o: +k.o, h: +k.h, l: +k.l, c: +k.c, v: +k.q};
       if (velas.length && velas[velas.length - 1].t === x.t) velas[velas.length - 1] = x; else if (!velas.length || x.t > velas[velas.length - 1].t) velas.push(x); } catch (e) {} };
     wsVela.onclose = () => setTimeout(() => { if (pref.simbolo === s) carregarVelas(); }, 4000);
