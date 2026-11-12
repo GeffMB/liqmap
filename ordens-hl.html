@@ -179,7 +179,7 @@ function ouvirNegocios(){
   setInterval(() => { try { ws.send(JSON.stringify({method: "ping"})); } catch (e) {} }, 50000);
 }
 
-// ---------- varredura: uma carteira a cada 1,5 s (limite da Hyperliquid) ----------
+// ---------- varredura: uma carteira a cada ~1,1 s (limite da Hyperliquid: ~60 consultas por minuto) ----------
 const filaUrgente = [];
 let rodizio = 0, verificadas = 0;
 function proxima(){
@@ -197,11 +197,13 @@ function proxima(){
 }
 async function varrer(){
   const a = proxima();
+  let espera = a ? 1100 : 5000;
   if (a) {
-    try { await verificar(a); verificadas++; } catch (e) { console.warn(e); }
+    try { await verificar(a); verificadas++; }
+    catch (e) { console.warn(e); espera = 15000; if (!carteiras.get(a).ultima) filaUrgente.push(a); }   // limite atingido: espera e tenta de novo
   }
   atualizarStatus();
-  setTimeout(varrer, a ? 1500 : 5000);
+  setTimeout(varrer, espera);
 }
 async function verificar(a){
   const c = carteiras.get(a);
