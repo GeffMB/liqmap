@@ -195,6 +195,7 @@ function ouvirNegocios(){
 
 // ---------- varredura: uma carteira a cada ~1,1 s (limite da Hyperliquid: ~60 consultas por minuto) ----------
 const filaUrgente = [];
+const urgente = a => { if (!DEMO && !filaUrgente.includes(a)) filaUrgente.push(a); };
 let rodizio = 0, verificadas = 0, alterna = false, pausa = 0;
 function proxima(){
   if (filaUrgente.length) return filaUrgente.shift();
@@ -256,13 +257,13 @@ async function verificar(a){
 function atualizarStatus(){
   const tot = carteiras.size, vistas = [...carteiras.values()].filter(c => c.ultima).length;
   const quentes = [...carteiras.values()].filter(c => c.quente).length;
-  $("varre").textContent = DEMO ? "dados de teste" : pausa ? "A Hyperliquid pediu uma pausa (limite de consultas). Retomando em instantes…" : vistas < tot ? `Verificando carteiras: ${vistas} de ${tot}` : `${tot} carteiras monitoradas · ${quentes} com ordens grandes`;
+  $("varre").textContent = DEMO ? "dados de teste" : pausa ? "A Hyperliquid pediu uma pausa (limite de consultas). Retomando em instantes…" : filaUrgente.length ? `Atualizando ${filaUrgente.length} carteira(s) com ordens grandes…` : vistas < tot ? `Verificando carteiras: ${vistas} de ${tot}` : `${tot} carteiras monitoradas · ${quentes} com ordens grandes`;
 }
 
 // ---------- perfil da carteira numa moeda ----------
-// "mm": cota compra e venda a menos de 1,5% do preço com tamanhos parecidos (ou tem dezenas de ordens só-maker)
+// "mm": cota compra e venda a menos de 3% uma da outra, com tamanhos parecidos (ou tem dezenas de ordens só-maker)
 // "faixa": compra a mais de 3% abaixo E vende a mais de 3% acima (opera a faixa, não a direção)
-const PERTO = 0.015, LONGE = 0.03;
+const SPREAD_MM = 0.03, LONGE = 0.03;
 const refDe = coin => coin === pref.moeda && precoAtual ? precoAtual : +mids[coin] || (coin === pref.moeda && velas.length ? velas[velas.length - 1].c : 0);
 function perfil(c, coin){
   if (c.mm) return "mm";
@@ -270,20 +271,23 @@ function perfil(c, coin){
   const os = (c.ordens || []).filter(o => o.coin === coin && !o.trig);
   const b = os.filter(o => o.lado === "B"), a = os.filter(o => o.lado === "A");
   if (!b.length || !a.length) return "";
-  const pb = b.filter(o => Math.abs(o.px / ref - 1) <= PERTO), pa = a.filter(o => Math.abs(o.px / ref - 1) <= PERTO);
-  for (const x of pb) for (const y of pa) if (Math.min(x.sz, y.sz) / Math.max(x.sz, y.sz) >= 0.85) return "mm";
+  for (const x of b) for (const y of a) if (Math.abs(y.px / x.px - 1) <= SPREAD_MM && Math.min(x.sz, y.sz) / Math.max(x.sz, y.sz) >= 0.85) return "mm";
   if (b.some(o => 1 - o.px / ref >= LONGE) && a.some(o => o.px / ref - 1 >= LONGE)) return "faixa";
   return "";
 }
 
 // ---------- ordens filtradas ----------
-let escondidas = {ordens: 0, carteiras: 0};
+let escondidas = {ordens: 0, carteiras: 0}, desatualizadas = 0;
 function filtradas(incluiEncerradas){
   const min = +pref.min, out = [];
   const ok = o => o.coin === pref.moeda && o.val >= min && (pref.tipo === "todas" || (pref.tipo === "trig") === o.trig);
-  escondidas = {ordens: 0, carteiras: 0};
-  for (const c of carteiras.values()) {
-    const minhas = (c.ordens || []).filter(ok); if (!minhas.length) continue;
+  escondidas = {ordens: 0, carteiras: 0}; desatualizadas = 0;
+  const ref = refDe(pref.moeda);
+  const impossivel = o => ref && !o.trig && (o.lado === "B" ? o.px > ref * 1.003 : o.px < ref * 0.997);
+  for (const [a, c] of carteiras) {
+    let minhas = (c.ordens || []).filter(ok); if (!minhas.length) continue;
+    const velhas = minhas.filter(impossivel);
+    if (velhas.length) { desatualizadas += velhas.length; urgente(a); minhas = minhas.filter(o => !impossivel(o)); if (!minhas.length) continue; }
     const pf = perfil(c, pref.moeda);
     if (pref.semMM && pf === "mm") { escondidas.ordens += minhas.length; escondidas.carteiras++; continue; }
     for (const o of minhas) out.push(Object.assign(o, {perfil: pf}));
@@ -464,6 +468,7 @@ function resumo({ref, cP, vP, lP, ma, mb, ab}){
   const faixas = new Map();
   for (const o of ab) if (o.perfil === "faixa" && !o.trig) { const f = faixas.get(o.user) || {lo: Infinity, hi: -Infinity}; if (o.lado === "B") f.lo = Math.min(f.lo, o.px); else f.hi = Math.max(f.hi, o.px); faixas.set(o.user, f); }
   for (const [u, f] of faixas) if (isFinite(f.lo) && isFinite(f.hi)) itens.push(`A carteira ${abrev(u)} <b>opera a faixa</b>: compra em ${pr(f.lo)} e vende em ${pr(f.hi)}. Mostra onde ela acha caro e barato, não uma direção.`);
+  if (desatualizadas) itens.push(`${desatualizadas} ordem(ns) antiga(s) escondida(s): o preço já passou por elas (dado guardado de antes). As carteiras estão sendo conferidas de novo.`);
   if (escondidas.ordens) itens.push(`${escondidas.ordens} ordens de ${escondidas.carteiras} formador(es) de mercado escondidas: cotam os dois lados e não indicam direção.`);
   const novas = ab.filter(o => Date.now() - o.t < NOVA_MS).length;
   if (novas) itens.push(`${novas} ordem(ns) com menos de 10 min (<span class="nova">NOVA</span>): podem sumir logo, dê mais peso às antigas.`);
@@ -489,6 +494,8 @@ function demoOrdens(){
   add(w(20), [ordem(20, w(20), 1.0015, "A", 1.5e6, false, 3e6), ordem(21, w(20), 0.9985, "B", 1.52e6, false, 3e6), ordem(22, w(20), 1.003, "A", 7.5e5, false, 3e6), ordem(23, w(20), 0.997, "B", 7.4e5, false, 3e6)]);
   add(w(30), [ordem(30, w(30), 1.083, "A", 3.27e6, false, 4e7), ordem(31, w(30), 0.894, "B", 5.39e6, false, 4e7)]);
   add(w(40), [ordem(40, w(40), 0.992, "B", 9e5, false, 2e5)]);
+  add(w(50), [ordem(50, w(50), 1.03, "B", 1.5e6, false, 6e7)]);   // compra acima do preço: dado antigo
+  add(w(60), [ordem(60, w(60), 1.035, "A", 8.8e5, false, 6e7), ordem(61, w(60), 1.025, "B", 8.7e5, false, 6e7)]);   // MM longe do preço
   historico.push({oid: 99, coin: "BTC", lado: "B", px: Math.round(ref * 0.978), sz: 20, resta: 20, val: 1.4e6, tipo: "Limit", trig: false, t: agora - 2e8, fim: agora - 1e8, user: "0x" + "b".repeat(40)});
 }
 
@@ -496,7 +503,7 @@ function demoOrdens(){
   await carregarVelas(); if (DEMO) demoOrdens(); await atualizarPreco(); listar(); atualizarStatus();
   setInterval(atualizarPreco, 5000);
   setInterval(() => { if (!DEMO) carregarVelas(); }, 120000);
-  if (!DEMO) { await montarListaCarteiras(); ouvirNegocios(); varrer(); }
+  if (!DEMO) { for (const [a, c] of carteiras) if (c.quente) urgente(a); await montarListaCarteiras(); ouvirNegocios(); varrer(); }
 })();
 </script>
 </body>
