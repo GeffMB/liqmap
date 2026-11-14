@@ -166,7 +166,7 @@ function addCarteira(a, fonte){
 // ---------- quais carteiras olhar ----------
 async function montarListaCarteiras(){
   let lista = null;
-  try { const c = JSON.parse(localStorage.getItem("liqmap-hlordens-top") || "null"); if (c && Date.now() - c.t < 6 * 36e5) lista = c.lista; } catch (e) {}
+  try { const c = JSON.parse(localStorage.getItem("liqmap-hlordens-top") || "null"); if (c && Date.now() - c.t < 6 * 36e5 && localStorage.getItem("liqmap-hlordens-cand")) lista = c.lista; } catch (e) {}
   if (!lista) {
     try {
       const j = await (await fetch("https://stats-data.hyperliquid.xyz/Mainnet/leaderboard")).json();
@@ -176,11 +176,38 @@ async function montarListaCarteiras(){
       const porVolume = rows.slice().sort((a, b) => vol(b) - vol(a)).slice(0, 140);
       lista = [...new Set(porValor.concat(porVolume).map(r => r.ethAddress.toLowerCase()))];
       try { localStorage.setItem("liqmap-hlordens-top", JSON.stringify({t: Date.now(), lista})); } catch (e) {}
+      // candidatos para a triagem: as 3.000 maiores contas e as 400 que mais negociam no mês
+      const cand = [...new Set(rows.slice().sort((a, b) => +b.accountValue - +a.accountValue).slice(0, 3000)
+        .concat(rows.slice().sort((a, b) => vol(b) - vol(a)).slice(0, 400)).map(r => r.ethAddress.toLowerCase()))].filter(a => !lista.includes(a));
+      try { localStorage.setItem("liqmap-hlordens-cand", JSON.stringify({t: Date.now(), cand})); } catch (e) {}
     } catch (e) { lista = []; }
   }
   for (const a of lista) addCarteira(a, "ranking");
+  try { const c = JSON.parse(localStorage.getItem("liqmap-hlordens-cand") || "null"); candidatos = c && c.cand || []; } catch (e) { candidatos = []; }
   // quem fez negócio grande (registrado pela aba Hyperliquid da página Futuros)
   try { for (const b of JSON.parse(localStorage.getItem("liqmap-hl-baleias") || "[]")) addCarteira(b.user, "negócio grande"); } catch (e) {}
+}
+// ---------- triagem: confere a POSIÇÃO de milhares de carteiras (consulta 10× mais leve que a de ordens) ----------
+// quem tem posição grande em BTC/ETH/SOL/XRP (e por isso costuma ter TP/SL e ordens grandes) entra na varredura de ordens
+let candidatos = [], triI = 0, triAchadas = 0;
+try { const t = JSON.parse(localStorage.getItem("liqmap-hlordens-tri") || "null"); if (t && Date.now() - t.t < 6 * 36e5) { triI = t.i; triAchadas = t.n || 0; } } catch (e) {}
+async function triagem(){
+  let espera = 340;
+  if (triI < candidatos.length && !pausa) {
+    const a = candidatos[triI];
+    try {
+      const st = await info({type: "clearinghouseState", user: a});
+      const conta = +(st.marginSummary || {}).accountValue || 0;
+      let maior = 0; const pos = {};
+      for (const p of st.assetPositions || []) { const x = p.position; if (!MOEDAS.includes(x.coin)) continue;
+        maior = Math.max(maior, Math.abs(+x.positionValue || 0)); pos[x.coin] = {szi: +x.szi, entrada: +x.entryPx, liq: +x.liquidationPx}; }
+      if (maior >= 150000 || conta >= 2e6) { if (!carteiras.has(a)) { addCarteira(a, maior >= 150000 ? "posição grande" : "conta grande"); triAchadas++; } carteiras.get(a).pos = pos; }
+      triI++;
+    } catch (e) { if (/429/.test(e.message)) { pausa = Date.now(); espera = 20000; } else triI++; }
+    try { localStorage.setItem("liqmap-hlordens-tri", JSON.stringify({t: Date.now(), i: triI, n: triAchadas})); } catch (e) {}
+    atualizarStatus();
+  } else if (triI >= candidatos.length) espera = 60000;
+  setTimeout(triagem, espera);
 }
 // negócios grandes ao vivo também entram na lista
 function ouvirNegocios(){
@@ -213,7 +240,7 @@ function proxima(){
 }
 async function varrer(){
   const a = proxima(), ini = Date.now();
-  let espera = a ? 1100 : 5000;
+  let espera = a ? 1600 : 5000;
   if (a) {
     try { await verificar(a); verificadas++; pausa = 0; }
     catch (e) {
@@ -257,7 +284,9 @@ async function verificar(a){
 function atualizarStatus(){
   const tot = carteiras.size, vistas = [...carteiras.values()].filter(c => c.ultima).length;
   const quentes = [...carteiras.values()].filter(c => c.quente).length;
+  const tri = candidatos.length && triI < candidatos.length ? ` · triagem ${triI} de ${candidatos.length} (${triAchadas} com posição grande)` : "";
   $("varre").textContent = DEMO ? "dados de teste" : pausa ? "A Hyperliquid pediu uma pausa (limite de consultas). Retomando em instantes…" : filaUrgente.length ? `Atualizando ${filaUrgente.length} carteira(s) com ordens grandes…` : vistas < tot ? `Verificando carteiras: ${vistas} de ${tot}` : `${tot} carteiras monitoradas · ${quentes} com ordens grandes`;
+  if (tri) $("varre").textContent += tri;
 }
 
 // ---------- perfil da carteira numa moeda ----------
@@ -503,7 +532,7 @@ function demoOrdens(){
   await carregarVelas(); if (DEMO) demoOrdens(); await atualizarPreco(); listar(); atualizarStatus();
   setInterval(atualizarPreco, 5000);
   setInterval(() => { if (!DEMO) carregarVelas(); }, 120000);
-  if (!DEMO) { for (const [a, c] of carteiras) if (c.quente) urgente(a); await montarListaCarteiras(); ouvirNegocios(); varrer(); }
+  if (!DEMO) { for (const [a, c] of carteiras) if (c.quente) urgente(a); await montarListaCarteiras(); ouvirNegocios(); varrer(); triagem(); }
 })();
 </script>
 </body>
