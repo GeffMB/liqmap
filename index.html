@@ -1960,7 +1960,12 @@ function salvarDesenhos(){
     if (!d.id) d.id = "d" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
     if (antes.get(d.id) !== JSON.stringify(Object.assign({}, d, {mod: 0}))) d.mod = Date.now();
   }
-  try { localStorage.setItem(ch, JSON.stringify(desenhos)); } catch(e) {}
+  try { localStorage.setItem(ch, JSON.stringify(desenhos)); }
+  catch (e) {
+    // memória do navegador cheia: apaga os caches das outras páginas (são refeitos sozinhos) e grava de novo
+    for (const k of Object.keys(localStorage)) if (/^liqmap-(hlordens|oi-fotos-|hl-baleias|liqs-)/.test(k)) localStorage.removeItem(k);
+    try { localStorage.setItem(ch, JSON.stringify(desenhos)); } catch (e2) { avisar("Não foi possível salvar os desenhos: memória do navegador cheia."); }
+  }
   agendarSync(4000, ch);
   desVersao++; atualizarBarra();
 }
@@ -2351,7 +2356,10 @@ function valorLocal(k){
   if (v != null && ehHistorico(k)) { try { v = JSON.stringify(JSON.parse(v).slice(-300)); } catch (e) {} }   // histórico enxuto: arquivo leve para o vigia
   return v;
 }
-function chavesLocais(){ const out = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith("liqmap") && !NAO_SYNC.has(k)) out.push(k); } return out; }
+// só vai para a nuvem o que é do gráfico: ajustes, desenhos (com alertas e notas) e históricos de baleias/liquidações.
+// Os caches das outras páginas (heatmap, ordens HL, futuros...) ficam só neste aparelho: são grandes e deixavam a sincronização pesada.
+const deveSync = k => k === "liqmap2" || k.startsWith("liqmap-des-") || ehHistorico(k);
+function chavesLocais(){ const out = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && deveSync(k)) out.push(k); } return out; }
 function pacoteLocal(){ const dados = {}; for (const k of chavesLocais()) dados[k] = valorLocal(k); return {versao: 2, atualizado: Date.now(), dados, mod: lerJ(CH_MOD, {})}; }
 function hashTxt(t){ let h = 2166136261; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); }
 // desenhos antigos não tinham id: usa um id fixo tirado do próprio conteúdo (igual nos dois aparelhos)
@@ -2405,7 +2413,7 @@ async function sincronizar(){
     const final = {}, finalMod = {}, mudouLocal = [];
     let mudouNuvem = false;
     for (const k of new Set([...chavesLocais(), ...Object.keys(R), ...Object.keys(B)])) {
-      if (NAO_SYNC.has(k)) continue;
+      if (!deveSync(k)) { if (k in R) mudouNuvem = true; continue; }   // limpa da nuvem o que não deve ir para lá
       const l = valorLocal(k), r = k in R ? R[k] : null, b = k in B ? B[k] : null;
       const lc = l !== b, rc = r !== b;
       let v, m;

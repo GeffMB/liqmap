@@ -284,7 +284,7 @@ function novaLiq(s, t, p, u, long){
     // junta com o que o gráfico (se estiver aberto em outra aba) já gravou
     const mapa = new Map();
     for (const x of lerLiqs(s).concat(liqs[s])) mapa.set(x.t + ":" + x.p + ":" + x.l, x);
-    liqs[s] = [...mapa.values()].sort((a, b) => a.t - b.t).slice(-4000);
+    liqs[s] = [...mapa.values()].sort((a, b) => a.t - b.t).slice(-1500);
     try { localStorage.setItem("liqmap-liqs-" + s, JSON.stringify(liqs[s])); } catch (e) {}
   }, 3000);
 }
