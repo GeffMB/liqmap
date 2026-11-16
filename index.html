@@ -177,6 +177,7 @@ button,select,input{font:inherit;color:inherit}
   <a class="btn" href="retornos.html" title="Tabela de retornos históricos por mês, dia e ano">📅<span class="txt"> Retornos</span></a>
   <a class="btn" href="livro.html" title="Livro de ofertas completo de várias corretoras">📚<span class="txt"> Livro de ofertas</span></a>
   <a class="btn" href="heatmap.html" title="Heatmap do livro de ofertas: paredes de compra e venda ao longo do tempo">🔥<span class="txt"> Heatmap</span></a>
+  <a class="btn" href="carteiras.html" title="Carteiras rastreadas: longs e shorts de baleias com aviso no celular">👛<span class="txt"> Carteiras</span></a>
   <a class="btn" href="ordens-hl.html" title="Ordens grandes da Hyperliquid com TP e SL das baleias">🐋<span class="txt"> Ordens HL</span></a>
   <a class="btn" href="futuros.html" title="Futuros por timeframe: open interest, funding, liquidações e quem está movendo o preço">📊<span class="txt"> Futuros</span></a>
   <a class="btn" href="fluxos.html" title="Fluxo de dinheiro: corretoras, ETFs e stablecoins">💧<span class="txt"> Fluxos</span></a>
@@ -2358,7 +2359,7 @@ function valorLocal(k){
 }
 // só vai para a nuvem o que é do gráfico: ajustes, desenhos (com alertas e notas) e históricos de baleias/liquidações.
 // Os caches das outras páginas (heatmap, ordens HL, futuros...) ficam só neste aparelho: são grandes e deixavam a sincronização pesada.
-const deveSync = k => k === "liqmap2" || k.startsWith("liqmap-des-") || ehHistorico(k);
+const deveSync = k => k === "liqmap2" || k === "liqmap-carteiras" || k.startsWith("liqmap-des-") || ehHistorico(k);
 function chavesLocais(){ const out = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && deveSync(k)) out.push(k); } return out; }
 function pacoteLocal(){ const dados = {}; for (const k of chavesLocais()) dados[k] = valorLocal(k); return {versao: 2, atualizado: Date.now(), dados, mod: lerJ(CH_MOD, {})}; }
 function hashTxt(t){ let h = 2166136261; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); }

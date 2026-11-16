@@ -83,6 +83,7 @@ body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.4 -apple-system,
   <a class="btn" href="futuros.html">Futuros</a>
   <a class="btn" href="heatmap.html">Heatmap do livro</a>
   <a class="btn ativo" href="ordens-hl.html">Ordens HL</a>
+  <a class="btn" href="carteiras.html">Carteiras</a>
   <a class="btn" href="retornos.html">Retornos</a>
   <a class="btn" href="livro.html">Livro de ofertas</a>
   <a class="btn" href="fluxos.html">Fluxos</a>
@@ -456,7 +457,7 @@ function listar(){
     " · clique para ver a carteira";
   const linha = o => `<tr class="l" onclick="window.open('https://app.hyperliquid.xyz/explorer/address/${o.user}','_blank','noopener')" title="${TIPOS[o.tipo] || o.tipo}${o.reduz ? " · só reduz" : ""} · ${qtd(o.sz)} ${o.coin}">
     <td class="${o.lado === "B" ? "pc" : "pv"}">${pr(o.px)}${etiquetas(o)}</td>
-    <td class="d">${dist(o.px, ref)}</td><td>${usd(o.val)}</td><td class="d">${dur(Date.now() - o.t)}</td><td><a href="https://app.hyperliquid.xyz/explorer/address/${o.user}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${abrev(o.user)}</a></td></tr>`;
+    <td class="d">${dist(o.px, ref)}</td><td>${usd(o.val)}</td><td class="d">${dur(Date.now() - o.t)}</td><td><a href="https://app.hyperliquid.xyz/explorer/address/${o.user}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${abrev(o.user)}</a> <a href="carteiras.html?add=${o.user}" title="Rastrear esta carteira (avisos de long/short)" onclick="event.stopPropagation()" style="text-decoration:none">⭐</a></td></tr>`;
   const meio = `<tr class="meio"><td>${ref ? pr(ref) : "—"}</td><td colspan="4" style="text-align:right;font-weight:400;color:#8b93a3">preço atual · acima = vendas, abaixo = compras</td></tr>`;
   let html = `<table><tr><th>Preço</th><th title="distância do preço atual">Dist.</th><th>Valor</th><th title="há quanto tempo a ordem está parada">Há</th><th>Carteira</th></tr>`, pos = false;
   for (const o of ab) { if (!pos && ref && o.px < ref) { html += meio; pos = true; } html += linha(o); }

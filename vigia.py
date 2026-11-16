@@ -18,6 +18,8 @@ import urllib.request
 
 ARQ_SYNC = "liqmap-sync.json"
 ARQ_VIGIA = "liqmap-vigia.json"
+ARQ_CART = "liqmap-carteiras-vigia.json"   # última posição vista de cada carteira rastreada
+MUDA_PCT, MUDA_USD = 0.10, 25000
 TOKEN = os.environ.get("GIST_TOKEN", "").strip()
 
 
@@ -109,6 +111,82 @@ def ntfy(topico, titulo, txt):
     req(f"https://ntfy.sh/{urllib.parse.quote(topico)}?{q}", "POST", txt.encode())
 
 
+def hl(corpo):
+    return req("https://api.hyperliquid.xyz/info", "POST", corpo)
+
+
+def usd(x):
+    a = abs(x)
+    return "$" + (f"{a/1e9:.2f}B" if a >= 1e9 else f"{a/1e6:.2f}M" if a >= 1e6 else f"{a/1e3:.1f}K" if a >= 1e3 else f"{a:.0f}")
+
+
+def mudanca(a, b, px, coin):
+    L = lambda x: "LONG" if x > 0 else "SHORT"
+    if not a and b:
+        return f"abriu {L(b)} {coin} de {usd(abs(b) * px)}"
+    if a and not b:
+        return f"fechou o {L(a)} {coin} ({usd(abs(a) * px)})"
+    if a and b and (a > 0) != (b > 0):
+        return f"virou de {L(a)} para {L(b)} {coin} ({usd(abs(b) * px)})"
+    if a and b:
+        d = abs(b) - abs(a)
+        if abs(d) / abs(a) >= MUDA_PCT and abs(d) * px >= MUDA_USD:
+            return f"{'aumentou' if d > 0 else 'reduziu'} o {L(b)} {coin} em {usd(abs(d) * px)} (agora {usd(abs(b) * px)})"
+    return None
+
+
+def carteiras(g, dados, topico, agora):
+    """Confere as carteiras rastreadas (página Carteiras). Devolve o conteúdo novo do arquivo ou None."""
+    try:
+        lista = [c for c in json.loads(dados.get("liqmap-carteiras") or "[]") if not c.get("del") and c.get("notif")][:20]
+    except Exception:
+        lista = []
+    ant = conteudo(g, ARQ_CART) or {}
+    if not lista:
+        return None
+    # o vigia do Cloudflare (a cada minuto) cuida disso; este aqui é só reserva
+    if ant.get("fonte") == "cloudflare" and agora - (ant.get("ultimo") or 0) < 15 * 60:
+        print("Carteiras: o vigia do Cloudflare está ativo, nada a fazer aqui.")
+        return None
+    snaps, novos = ant.get("snaps") or {}, {}
+    try:
+        mids = hl({"type": "allMids"})
+    except Exception:
+        mids = {}
+    for c in lista:
+        try:
+            st = hl({"type": "clearinghouseState", "user": c["addr"]})
+        except Exception as e:
+            print("Falha ao ler carteira", c["addr"][:8], e)
+            if c["addr"] in snaps:
+                novos[c["addr"]] = snaps[c["addr"]]
+            continue
+        atual, pxs = {}, {}
+        for p in st.get("assetPositions") or []:
+            x = p["position"]
+            szi = float(x["szi"])
+            if szi:
+                atual[x["coin"]] = szi
+                pxs[x["coin"]] = abs(float(x["positionValue"]) / szi)
+        novos[c["addr"]] = atual
+        a0 = snaps.get(c["addr"])
+        if a0 is None:
+            continue
+        quem = c.get("nome") or (c["addr"][:6] + "…" + c["addr"][-4:])
+        for coin in set(a0) | set(atual):
+            t = mudanca(a0.get(coin, 0), atual.get(coin, 0), pxs.get(coin) or float(mids.get(coin) or 0), coin)
+            if t:
+                msg = f"🐋 {quem} {t}"
+                print("CARTEIRA:", msg)
+                if topico:
+                    try:
+                        ntfy(topico, "LiqMap — carteira rastreada", msg)
+                    except Exception as e:
+                        print("Falha no ntfy:", e)
+    print(f"Carteiras conferidas: {len(novos)}")
+    return json.dumps({"ultimo": agora, "fonte": "github", "snaps": novos}, separators=(",", ":"))
+
+
 def main():
     if not TOKEN:
         print("Sem GIST_TOKEN: configure o segredo no repositório para ligar o vigia 24h.")
@@ -184,6 +262,9 @@ def main():
 
     arquivos = {ARQ_VIGIA: {"content": json.dumps({"ultimo": agora, "disparados": disparados, "ativos": ativos,
                                                     "versao": 1}, separators=(",", ":"))}}
+    novo_cart = carteiras(g, dados, topico, agora)
+    if novo_cart:
+        arquivos[ARQ_CART] = {"content": novo_cart}
     if mudou_sync:
         pac["dados"] = dados
         pac["atualizado"] = int(agora * 1000)

@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carteiras rastreadas — LiqMap</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg?v=2">
+<style>
+:root{--bg:#ffffff;--panel2:#f0f3fa;--line:#e0e3eb;--hover:#f0f3fa;--txt:#131722;--sub:#787b86;--up:#089981;--down:#f23645;--accent:#2962ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.45 -apple-system,BlinkMacSystemFont,"Trebuchet MS",Roboto,Ubuntu,"Segoe UI",sans-serif}
+.top{display:flex;align-items:center;gap:2px;height:44px;padding:0 8px;border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none;position:sticky;top:0;background:var(--bg);z-index:5}
+.marca{font-weight:700;padding:0 10px 0 4px;white-space:nowrap;color:var(--txt);text-decoration:none}
+.marca span{color:var(--accent)}
+.marca .logo{width:20px;height:20px;vertical-align:-4px;margin-right:6px;border-radius:5px}
+.sep{width:1px;height:24px;background:var(--line);margin:0 6px;flex:0 0 auto}
+.btn{background:transparent;border:0;border-radius:4px;padding:6px 8px;cursor:pointer;white-space:nowrap;text-decoration:none;color:var(--txt);font:inherit}
+.btn:hover{background:var(--hover)}
+.btn.ativo{color:var(--accent);font-weight:600}
+main{max-width:1180px;margin:0 auto;padding:14px 16px 40px}
+h2{font-size:17px;margin:4px 0 4px}
+h3{font-size:13.5px;margin:22px 0 8px}
+.sub{color:var(--sub)}
+.add{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 4px}
+.add input{padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit;background:#fff;color:var(--txt)}
+.add #endereco{flex:1 1 360px;font-family:ui-monospace,Consolas,monospace;font-size:12.5px}
+.add #apelido{flex:0 1 200px}
+.prim{background:var(--accent);color:#fff;border:0;border-radius:6px;padding:8px 14px;font:inherit;font-weight:600;cursor:pointer}
+.sec{background:var(--panel2);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit;cursor:pointer}
+.sec:hover{background:#e6eaf3}
+.msg{font-size:12px;min-height:18px}
+.msg.err{color:var(--down)}
+.estado{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--sub);margin-top:6px}
+.estado b{color:var(--txt)}
+.resumo{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px}
+.rcard{border:1px solid var(--line);border-radius:8px;padding:9px 12px}
+.rcard .t{font-weight:600}
+.barra{display:flex;height:6px;border-radius:3px;overflow:hidden;background:#eef0f4;margin:6px 0 4px}
+.barra i{display:block;height:100%}
+.cart{border:1px solid var(--line);border-radius:10px;margin-bottom:12px;overflow:hidden}
+.cart .cab{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;background:#fafbfd;border-bottom:1px solid var(--line)}
+.cart .nome{font-weight:700;font-size:14px}
+.cart .end{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--accent);text-decoration:none}
+.cart .num{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--sub);margin-left:auto}
+.cart .num b{color:var(--txt);font-variant-numeric:tabular-nums}
+.cart .acoes{display:flex;gap:6px}
+.cart .corpo{padding:4px 0 8px}
+.rolar{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:12.5px}
+th{color:var(--sub);font-weight:500;text-align:right;padding:6px 12px;white-space:nowrap}
+td{text-align:right;padding:6px 12px;border-top:1px solid #eef0f4;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+td small{display:block;font-size:11px;color:var(--sub)}
+.chip{display:inline-block;padding:1px 8px;border-radius:4px;font-size:11.5px;font-weight:700}
+.long{background:#d8f3ec;color:#05705e}.short{background:#fde2e4;color:#c21f30}
+.up{color:var(--up)}.down{color:var(--down)}.k{color:var(--sub)}
+.vazio{color:var(--sub);padding:10px 14px}
+.feed{border:1px solid var(--line);border-radius:8px;max-height:360px;overflow-y:auto}
+.feed div{padding:7px 12px;border-top:1px solid #eef0f4;font-size:12.5px}
+.feed div:first-child{border-top:0}
+.feed .h{color:var(--sub);font-variant-numeric:tabular-nums;margin-right:6px}
+.toggle{display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;user-select:none}
+.nota{color:var(--sub);font-size:11.5px;line-height:1.6;margin-top:16px}
+.toast{position:fixed;right:16px;bottom:16px;background:#131722;color:#fff;padding:10px 14px;border-radius:8px;font-size:13px;max-width:380px;box-shadow:0 6px 18px rgba(0,0,0,.25);z-index:20;display:none}
+.sug td{cursor:default}
+@media (max-width:700px){ .cart .num{margin-left:0} .marca .txt{display:none} }
+</style>
+</head>
+<body>
+<div class="top">
+  <a class="marca" href="./"><img src="logo.svg?v=2" alt="" class="logo">Liq<span>Map</span></a>
+  <div class="sep"></div>
+  <a class="btn" href="./">Gráfico</a>
+  <a class="btn" href="futuros.html">Futuros</a>
+  <a class="btn" href="heatmap.html">Heatmap do livro</a>
+  <a class="btn" href="ordens-hl.html">Ordens HL</a>
+  <a class="btn ativo" href="carteiras.html">Carteiras</a>
+  <a class="btn" href="retornos.html">Retornos</a>
+  <a class="btn" href="livro.html">Livro de ofertas</a>
+  <a class="btn" href="fluxos.html">Fluxos</a>
+</div>
+<main>
+  <h2>Carteiras rastreadas (Hyperliquid)</h2>
+  <div class="sub">Acompanhe os longs e shorts de carteiras escolhidas e receba aviso quando elas abrem, aumentam, reduzem, fecham ou viram de lado.</div>
+
+  <div class="add">
+    <input id="endereco" placeholder="Endereço da carteira (0x…)" autocomplete="off" spellcheck="false">
+    <input id="apelido" placeholder="Apelido (opcional)" autocomplete="off">
+    <button class="prim" id="bAdd">Rastrear</button>
+    <button class="sec" id="bSug">Sugestões do ranking</button>
+  </div>
+  <div class="msg" id="msg"></div>
+  <div class="estado" id="estado"></div>
+
+  <div id="sugestoes" hidden>
+    <h3>Maiores lucros do mês na Hyperliquid <span class="sub" style="font-weight:400">— clique em Rastrear para acompanhar</span></h3>
+    <div class="rolar"><table class="sug" id="tabSug"></table></div>
+  </div>
+
+  <h3>Posição somada das carteiras rastreadas</h3>
+  <div class="resumo" id="resumo"></div>
+
+  <h3>Carteiras</h3>
+  <div id="lista"></div>
+
+  <h3>Atividade recente <span class="sub" style="font-weight:400">— mudanças de posição vistas pelo LiqMap</span></h3>
+  <div class="feed" id="feed"></div>
+
+  <p class="nota">
+    Dados públicos da Hyperliquid (tudo é on-chain). Com a página aberta, cada carteira é conferida a cada 15 segundos e o aviso aparece aqui e no navegador.
+    <b>Com a página fechada</b>, o vigia 24h (o mesmo dos alertas de preço) confere as carteiras com 🔔 ligado e manda para o celular pelo ntfy — para isso a sincronização entre aparelhos precisa estar ligada (⚙ Ajustes no gráfico) e o canal do ntfy configurado.
+    Aviso de “aumentou/reduziu” só quando a posição muda pelo menos 10% e US$ 25 mil, para não avisar a cada pequeno ajuste.
+  </p>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const HL = "https://api.hyperliquid.xyz/info";
+const CH = "liqmap-carteiras", CH_FEED = "liqmap-carteiras-feed", CH_SNAP = "liqmap-carteiras-snap";
+const MUDA_PCT = 0.10, MUDA_USD = 25000;
+
+const casas = p => p >= 1000 ? 1 : p >= 10 ? 2 : p >= 1 ? 3 : 5;
+const pr = p => (+p).toLocaleString("pt-BR", {minimumFractionDigits: casas(Math.abs(p)), maximumFractionDigits: casas(Math.abs(p))});
+const usd = (x, sinal) => { const a = Math.abs(x), s = sinal ? (x > 0 ? "+" : x < 0 ? "−" : "") : (x < 0 ? "−" : "");
+  return s + "$" + (a >= 1e9 ? (a / 1e9).toFixed(2) + "B" : a >= 1e6 ? (a / 1e6).toFixed(2) + "M" : a >= 1e3 ? (a / 1e3).toFixed(1) + "K" : a.toFixed(0)); };
+const pct = x => (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toFixed(1).replace(".", ",") + "%";
+const qtd = x => { const a = Math.abs(x); return a >= 1e6 ? (a / 1e6).toFixed(2) + "M" : a >= 1e3 ? (a / 1e3).toFixed(2) + "K" : a >= 10 ? a.toFixed(1) : a.toFixed(4); };
+const abrev = a => a.slice(0, 6) + "…" + a.slice(-4);
+const hora = t => new Date(t).toLocaleString("pt-BR", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"});
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const lerJ = (k, pad) => { try { const v = JSON.parse(localStorage.getItem(k) || "null"); return v == null ? pad : v; } catch (e) { return pad; } };
+const gravar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+async function info(corpo){ const r = await fetch(HL, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(corpo)}); if (!r.ok) throw new Error("Hyperliquid " + r.status); return r.json(); }
+
+// ---------- lista (sincronizada entre aparelhos) ----------
+// cada item: {addr, nome, notif, mod, del}; "del" marca removida (para a remoção chegar aos outros aparelhos)
+let lista = lerJ(CH, []);
+const ativas = () => lista.filter(c => !c.del);
+function salvarLista(){
+  gravar(CH, lista);
+  const m = lerJ("liqmapSyncMod", {}); m[CH] = Date.now(); gravar("liqmapSyncMod", m);
+  enviarNuvem();
+}
+function juntar(a, b){
+  const m = new Map();
+  for (const c of [...a, ...b]) { const x = m.get(c.addr); if (!x || (c.mod || 0) > (x.mod || 0)) m.set(c.addr, c); }
+  return [...m.values()];
+}
+
+// sincronização direta com o Gist do LiqMap (o mesmo do gráfico), só desta lista
+const syncCfg = () => lerJ("liqmapSyncCfg", null);
+async function gh(caminho, op = {}){
+  const c = syncCfg();
+  const r = await fetch("https://api.github.com" + caminho, Object.assign({}, op, {headers: {"Authorization": "Bearer " + c.token, "Accept": "application/vnd.github+json", "Content-Type": "application/json"}}));
+  if (!r.ok) throw new Error("GitHub " + r.status);
+  return r.json();
+}
+async function lerGist(){
+  const c = syncCfg(); if (!c || !c.gist) return null;
+  const g = await gh("/gists/" + c.gist);
+  const f = g.files && g.files["liqmap-sync.json"]; if (!f) return null;
+  const txt = f.truncated ? await (await fetch(f.raw_url)).text() : f.content;
+  const pac = JSON.parse(txt);
+  const fv = g.files["liqmap-vigia.json"];
+  try { vigia = fv ? JSON.parse(fv.content) : null; } catch (e) { vigia = null; }
+  return pac;
+}
+let vigia = null, enviando = 0;
+async function puxarNuvem(){
+  try {
+    const pac = await lerGist(); if (!pac) return;
+    const remota = JSON.parse((pac.dados || {})[CH] || "[]");
+    const j = juntar(lista, remota);
+    if (JSON.stringify(j) !== JSON.stringify(lista)) { lista = j; gravar(CH, lista); montar(); }
+    if (JSON.stringify(j) !== JSON.stringify(remota)) enviarNuvem();
+    estado();
+  } catch (e) { console.warn(e); }
+}
+function enviarNuvem(){
+  if (!syncCfg()) { estado(); return; }
+  clearTimeout(enviando);
+  enviando = setTimeout(async () => {
+    try {
+      const pac = await lerGist(); if (!pac) return;
+      pac.dados = pac.dados || {}; pac.mod = pac.mod || {};
+      const remota = JSON.parse(pac.dados[CH] || "[]");
+      lista = juntar(lista, remota); gravar(CH, lista);
+      pac.dados[CH] = JSON.stringify(lista); pac.mod[CH] = Date.now(); pac.atualizado = Date.now();
+      await gh("/gists/" + syncCfg().gist, {method: "PATCH", body: JSON.stringify({files: {"liqmap-sync.json": {content: JSON.stringify(pac)}}})});
+      salvoNuvem = Date.now(); estado();
+    } catch (e) { aviso("Não foi possível salvar na nuvem: " + e.message, true); }
+  }, 800);
+}
+let salvoNuvem = 0;
+function estado(){
+  const c = syncCfg(), cfg = lerJ("liqmap2", {});
+  const partes = [];
+  partes.push(c ? "Sincronização: <b>ligada</b>" + (salvoNuvem ? " · salva às " + new Date(salvoNuvem).toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}) : "") : "Sincronização: <b>desligada</b> (ligue em ⚙ Ajustes no gráfico para ter avisos 24h)");
+  partes.push(cfg.ntfy ? "Celular (ntfy): <b>" + esc(cfg.ntfy) + "</b>" : "Celular: <b>não configurado</b> (⚙ Ajustes → Alertas no celular)");
+  if (vigia && vigia.ultimo) partes.push("Vigia 24h: última verificação há " + Math.max(0, Math.round((Date.now() / 1000 - vigia.ultimo) / 60)) + " min" + (vigia.carteiras ? " · " + Object.keys(vigia.carteiras).length + " carteira(s)" : " · <b>sem rastreio de carteiras ainda</b> (precisa atualizar o vigia)"));
+  partes.push("Notificação no navegador: <b>" + (!("Notification" in window) ? "indisponível" : Notification.permission === "granted" ? "ligada" : Notification.permission === "denied" ? "bloqueada" : "clique em Rastrear para permitir") + "</b>");
+  $("estado").innerHTML = partes.map(p => "<span>" + p + "</span>").join("");
+}
+
+// ---------- adicionar / remover ----------
+function aviso(t, erro){ $("msg").className = "msg" + (erro ? " err" : ""); $("msg").textContent = t; if (t) setTimeout(() => { if ($("msg").textContent === t) $("msg").textContent = ""; }, 6000); }
+function adicionar(addr, nome){
+  addr = String(addr || "").trim().toLowerCase();
+  if (!/^0x[0-9a-f]{40}$/.test(addr)) { aviso("Endereço inválido: precisa começar com 0x e ter 42 caracteres.", true); return false; }
+  const ex = lista.find(c => c.addr === addr);
+  if (ex && !ex.del) { aviso("Essa carteira já está na lista.", true); return false; }
+  const item = {addr, nome: (nome || "").trim().slice(0, 40), notif: true, mod: Date.now(), del: false};
+  if (ex) Object.assign(ex, item); else lista.push(item);
+  salvarLista(); montar(); atualizar(addr);
+  aviso("Carteira adicionada. Os avisos começam a partir da próxima mudança de posição.");
+  if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().then(estado);
+  return true;
+}
+$("bAdd").addEventListener("click", () => { if (adicionar($("endereco").value, $("apelido").value)) { $("endereco").value = ""; $("apelido").value = ""; } });
+$("endereco").addEventListener("keydown", e => { if (e.key === "Enter") $("bAdd").click(); });
+// vindo da página Ordens HL (?add=0x...)
+const veio = new URLSearchParams(location.search).get("add");
+if (veio) { setTimeout(() => adicionar(veio, ""), 300); history.replaceState(null, "", location.pathname); }
+
+// ---------- dados de cada carteira ----------
+const dados = {};   // addr -> {st, ordens, fills, t}
+let mids = {};
+let snaps = lerJ(CH_SNAP, {});   // addr -> {coin: szi} (para detectar mudanças)
+let feed = lerJ(CH_FEED, []);
+function posicoes(st){
+  const out = [];
+  for (const p of (st && st.assetPositions) || []) { const x = p.position; const szi = +x.szi; if (!szi) continue;
+    out.push({coin: x.coin, szi, val: Math.abs(+x.positionValue), entrada: +x.entryPx, pnl: +x.unrealizedPnl, roe: +x.returnOnEquity * 100,
+              liq: x.liquidationPx ? +x.liquidationPx : null, alav: x.leverage ? x.leverage.value : null, tipoAlav: x.leverage ? x.leverage.type : ""}); }
+  return out.sort((a, b) => b.val - a.val);
+}
+async function atualizar(addr, completo){
+  try {
+    const d = dados[addr] || (dados[addr] = {});
+    d.st = await info({type: "clearinghouseState", user: addr});
+    if (completo || !d.ordens) {
+      d.ordens = await info({type: "frontendOpenOrders", user: addr}).catch(() => d.ordens || []);
+      d.fills = await info({type: "userFillsByTime", user: addr, startTime: Date.now() - 7 * 864e5, aggregateByTime: true}).catch(() => d.fills || []);
+    }
+    d.t = Date.now(); d.erro = null;
+    detectar(addr, d.st);
+  } catch (e) { (dados[addr] = dados[addr] || {}).erro = e.message; }
+  montar();
+}
+// compara com a última foto e gera os avisos (mesma regra do vigia 24h)
+function detectar(addr, st){
+  const atual = {}; let pxs = {};
+  for (const p of posicoes(st)) { atual[p.coin] = p.szi; pxs[p.coin] = p.val / Math.abs(p.szi); }
+  const ant = snaps[addr];
+  snaps[addr] = atual; gravar(CH_SNAP, snaps);
+  if (!ant) return;   // primeira vez: só guarda
+  const c = lista.find(x => x.addr === addr) || {}, quem = c.nome || abrev(addr);
+  for (const coin of new Set([...Object.keys(ant), ...Object.keys(atual)])) {
+    const a = ant[coin] || 0, b = atual[coin] || 0, px = pxs[coin] || +mids[coin] || 0;
+    let txt = null;
+    if (!a && b) txt = `abriu ${b > 0 ? "LONG" : "SHORT"} ${coin} de ${usd(Math.abs(b) * px)}`;
+    else if (a && !b) txt = `fechou o ${a > 0 ? "LONG" : "SHORT"} ${coin} (${usd(Math.abs(a) * px)})`;
+    else if (a && b && Math.sign(a) !== Math.sign(b)) txt = `virou de ${a > 0 ? "LONG" : "SHORT"} para ${b > 0 ? "LONG" : "SHORT"} ${coin} (${usd(Math.abs(b) * px)})`;
+    else if (a && b) { const dlt = Math.abs(b) - Math.abs(a);
+      if (Math.abs(dlt) / Math.abs(a) >= MUDA_PCT && Math.abs(dlt) * px >= MUDA_USD)
+        txt = `${dlt > 0 ? "aumentou" : "reduziu"} o ${b > 0 ? "LONG" : "SHORT"} ${coin} em ${usd(Math.abs(dlt) * px)} (agora ${usd(Math.abs(b) * px)})`; }
+    if (txt) evento(addr, quem, txt, coin, b || a);
+  }
+}
+function evento(addr, quem, txt, coin, lado){
+  const e = {t: Date.now(), addr, quem, txt, coin, lado: lado > 0 ? "long" : "short", preco: +mids[coin] || null};
+  feed.unshift(e); feed = feed.slice(0, 200); gravar(CH_FEED, feed);
+  const msg = `🐋 ${quem} ${txt}` + (e.preco ? ` · ${coin} a ${pr(e.preco)}` : "");
+  const c = lista.find(x => x.addr === addr);
+  if (c && c.notif) {
+    try { if ("Notification" in window && Notification.permission === "granted") new Notification("LiqMap — carteira rastreada", {body: msg, tag: addr + coin}); } catch (err) {}
+    bip();
+  }
+  const t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(t._t); t._t = setTimeout(() => t.style.display = "none", 9000);
+}
+function bip(){ try { const ac = new (window.AudioContext || window.webkitAudioContext)(), o = ac.createOscillator(), g = ac.createGain(); o.connect(g); g.connect(ac.destination); o.frequency.value = 880; g.gain.setValueAtTime(0.12, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 0.5); o.start(); o.stop(ac.currentTime + 0.5); } catch (e) {} }
+
+// ---------- montagem ----------
+function montar(){
+  const at = ativas();
+  // resumo por moeda
+  const por = {};
+  for (const c of at) for (const p of posicoes((dados[c.addr] || {}).st)) { const r = por[p.coin] || (por[p.coin] = {l: 0, s: 0, nl: 0, ns: 0}); if (p.szi > 0) { r.l += p.val; r.nl++; } else { r.s += p.val; r.ns++; } }
+  const moedas = Object.entries(por).sort((a, b) => (b[1].l + b[1].s) - (a[1].l + a[1].s));
+  $("resumo").innerHTML = moedas.length ? moedas.slice(0, 12).map(([m, r]) => { const t = r.l + r.s;
+    return `<div class="rcard"><div class="t">${m} <span class="k" style="font-weight:400">· ${usd(t)}</span></div>
+      <div class="barra"><i style="width:${r.l / t * 100}%;background:#089981"></i><i style="width:${r.s / t * 100}%;background:#f23645"></i></div>
+      <div style="font-size:12px"><span class="up">Long ${usd(r.l)} (${r.nl})</span> · <span class="down">Short ${usd(r.s)} (${r.ns})</span></div></div>`; }).join("")
+    : `<div class="vazio">${at.length ? "Nenhuma posição aberta nas carteiras rastreadas." : "Adicione uma carteira acima para começar."}</div>`;
+
+  $("lista").innerHTML = at.length ? at.map(c => {
+    const d = dados[c.addr] || {}, st = d.st, ps = posicoes(st);
+    const conta = st ? +st.marginSummary.accountValue : null, exp = st ? +st.marginSummary.totalNtlPos : null;
+    const pnl = ps.reduce((a, p) => a + p.pnl, 0);
+    const trig = (d.ordens || []).filter(o => o.isTrigger || o.isPositionTpsl);
+    const tpsl = coin => { const os = trig.filter(o => o.coin === coin); if (!os.length) return "—";
+      return os.map(o => { const tp = /Take Profit/i.test(o.orderType); return `<span class="${tp ? "up" : "down"}">${tp ? "TP" : "SL"} ${pr(+o.triggerPx)}</span>`; }).join(" · "); };
+    const linhas = ps.map(p => { const mark = +mids[p.coin] || p.val / Math.abs(p.szi);
+      return `<tr><td><b>${p.coin}</b> <span class="chip ${p.szi > 0 ? "long" : "short"}">${p.szi > 0 ? "LONG" : "SHORT"}</span>${p.alav ? ` <small style="display:inline">${p.alav}x ${p.tipoAlav === "isolated" ? "isolada" : "cruzada"}</small>` : ""}</td>
+        <td>${usd(p.val)}<small>${qtd(p.szi)} ${p.coin}</small></td><td>${pr(p.entrada)}</td><td>${pr(mark)}</td>
+        <td class="${p.pnl >= 0 ? "up" : "down"}">${usd(p.pnl, true)}<small>${pct(p.roe)} sobre a margem</small></td>
+        <td>${p.liq ? pr(p.liq) + `<small>${pct((p.liq / mark - 1) * 100)} do preço</small>` : "—"}</td><td>${tpsl(p.coin)}</td></tr>`; }).join("");
+    const fills = (d.fills || []).slice(-6).reverse().map(f => { const dir = {"Open Long": "Abriu long", "Close Long": "Fechou long", "Open Short": "Abriu short", "Close Short": "Fechou short", "Long > Short": "Virou p/ short", "Short > Long": "Virou p/ long"}[f.dir] || f.dir;
+      return `<tr><td>${hora(f.time)}</td><td style="text-align:left"><b>${f.coin}</b> ${dir}</td><td>${usd(+f.px * +f.sz)}</td><td>${pr(+f.px)}</td><td class="${+f.closedPnl > 0 ? "up" : +f.closedPnl < 0 ? "down" : "k"}">${+f.closedPnl ? usd(+f.closedPnl, true) : "—"}</td></tr>`; }).join("");
+    return `<div class="cart">
+      <div class="cab"><span class="nome">${esc(c.nome || "Sem apelido")}</span><a class="end" href="https://app.hyperliquid.xyz/explorer/address/${c.addr}" target="_blank" rel="noopener">${abrev(c.addr)}</a>
+        <span class="num"><span>Conta <b>${conta == null ? "…" : usd(conta)}</b></span><span>Exposição <b>${exp == null ? "…" : usd(exp)}</b></span><span>PnL aberto <b class="${pnl >= 0 ? "up" : "down"}">${ps.length ? usd(pnl, true) : "—"}</b></span></span>
+        <span class="acoes"><label class="toggle" title="Avisar no navegador e, com o vigia 24h, no celular"><input type="checkbox" data-notif="${c.addr}" ${c.notif ? "checked" : ""}>🔔 avisar</label>
+          <button class="sec" data-nome="${c.addr}">Apelido</button><button class="sec" data-del="${c.addr}">Remover</button></span></div>
+      <div class="corpo">${d.erro ? `<div class="vazio down">Erro ao ler: ${esc(d.erro)}</div>` : !st ? `<div class="vazio">carregando…</div>` : ps.length ? `<div class="rolar"><table>
+        <tr><th>Posição</th><th>Tamanho</th><th>Entrada</th><th>Preço</th><th>PnL</th><th>Liquidação</th><th>TP / SL</th></tr>${linhas}</table></div>` : `<div class="vazio">Sem posição aberta agora.</div>`}
+        ${fills ? `<div class="rolar"><table style="margin-top:4px"><tr><th>Últimos negócios (7 dias)</th><th style="text-align:left">Ação</th><th>Valor</th><th>Preço</th><th>Resultado</th></tr>${fills}</table></div>` : ""}</div></div>`; }).join("")
+    : `<div class="vazio">Nenhuma carteira rastreada ainda. Cole um endereço acima, use “Sugestões do ranking” ou o ⭐ na página Ordens HL.</div>`;
+
+  $("feed").innerHTML = feed.length ? feed.slice(0, 80).map(e => `<div><span class="h">${hora(e.t)}</span>🐋 <b>${esc(e.quem)}</b> ${esc(e.txt)}${e.preco ? ` <span class="k">· ${e.coin} a ${pr(e.preco)}</span>` : ""}</div>`).join("")
+    : `<div class="k">Nenhuma mudança vista ainda. As mudanças aparecem aqui enquanto a página está aberta.</div>`;
+}
+$("lista").addEventListener("click", e => {
+  const del = e.target.getAttribute("data-del"), nome = e.target.getAttribute("data-nome");
+  if (del) { const c = lista.find(x => x.addr === del); if (c && confirm("Parar de rastrear " + (c.nome || abrev(del)) + "?")) { c.del = true; c.mod = Date.now(); delete snaps[del]; gravar(CH_SNAP, snaps); salvarLista(); montar(); } }
+  if (nome) { const c = lista.find(x => x.addr === nome); const n = prompt("Apelido da carteira:", c.nome || ""); if (n != null) { c.nome = n.trim().slice(0, 40); c.mod = Date.now(); salvarLista(); montar(); } }
+});
+$("lista").addEventListener("change", e => { const a = e.target.getAttribute("data-notif"); if (a) { const c = lista.find(x => x.addr === a); c.notif = e.target.checked; c.mod = Date.now(); salvarLista(); } });
+
+// ---------- sugestões (ranking da Hyperliquid) ----------
+$("bSug").addEventListener("click", async () => {
+  const box = $("sugestoes"); box.hidden = !box.hidden; if (box.hidden) return;
+  $("tabSug").innerHTML = "<tr><td class='k'>carregando o ranking…</td></tr>";
+  try {
+    const j = await (await fetch("https://stats-data.hyperliquid.xyz/Mainnet/leaderboard")).json();
+    const per = (r, w) => { const m = (r.windowPerformances || []).find(x => x[0] === w); return m ? m[1] : {pnl: 0, roi: 0, vlm: 0}; };
+    const top = (j.leaderboardRows || []).filter(r => +r.accountValue >= 1e5).sort((a, b) => +per(b, "month").pnl - +per(a, "month").pnl).slice(0, 15);
+    $("tabSug").innerHTML = `<tr><th>Carteira</th><th>Conta</th><th>Lucro no mês</th><th>Retorno no mês</th><th>Lucro total</th><th></th></tr>` +
+      top.map(r => { const m = per(r, "month"), a = per(r, "allTime"); return `<tr><td><a class="end" style="color:var(--accent);text-decoration:none;font-family:ui-monospace,Consolas,monospace" href="https://app.hyperliquid.xyz/explorer/address/${r.ethAddress}" target="_blank" rel="noopener">${esc(r.displayName || abrev(r.ethAddress))}</a></td>
+        <td>${usd(+r.accountValue)}</td><td class="up">${usd(+m.pnl, true)}</td><td>${pct(+m.roi * 100)}</td><td class="${+a.pnl >= 0 ? "up" : "down"}">${usd(+a.pnl, true)}</td>
+        <td><button class="sec" data-sug="${r.ethAddress}" data-sugnome="${esc(r.displayName || "")}">Rastrear</button></td></tr>`; }).join("");
+  } catch (e) { $("tabSug").innerHTML = "<tr><td class='down'>Não foi possível ler o ranking agora.</td></tr>"; }
+});
+$("tabSug").addEventListener("click", e => { const a = e.target.getAttribute("data-sug"); if (a && adicionar(a, e.target.getAttribute("data-sugnome") || "")) e.target.textContent = "✓ Rastreando"; });
+
+// ---------- ciclo ----------
+let giro = 0;
+async function ciclo(){
+  try { mids = await info({type: "allMids"}); } catch (e) {}
+  const at = ativas();
+  giro++;
+  for (const c of at) { await atualizar(c.addr, giro % 4 === 1); await new Promise(r => setTimeout(r, 250)); }
+  setTimeout(ciclo, 15000);
+}
+montar(); estado();
+puxarNuvem().then(ciclo);
+setInterval(puxarNuvem, 3 * 60e3);
+addEventListener("storage", e => { if (e.key === CH) { lista = lerJ(CH, []); montar(); } });
+</script>
+</body>
+</html>

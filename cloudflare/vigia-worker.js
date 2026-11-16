@@ -3,6 +3,8 @@
 // Roda a cada minuto (Cron Trigger "* * * * *"). Lê os desenhos com alerta ligado no Gist de
 // sincronização do LiqMap, confere os candles de 1 minuto mais recentes e, se o preço tocou o
 // nível, avisa o celular pelo ntfy e desliga o alerta no Gist.
+// Também confere as carteiras da Hyperliquid rastreadas no site (página Carteiras, com 🔔 ligado) e
+// avisa quando abrem, aumentam, reduzem, fecham ou viram uma posição.
 //
 // Configuração no painel do Cloudflare (Settings → Variables and Secrets):
 //   GIST_TOKEN  (Secret)  token do GitHub só com a permissão "gist" (o mesmo da sincronização)
@@ -13,6 +15,8 @@
 
 const ARQ_SYNC = "liqmap-sync.json";
 const ARQ_VIGIA = "liqmap-vigia.json";
+const ARQ_CART = "liqmap-carteiras-vigia.json";   // última posição vista de cada carteira rastreada
+const MUDA_PCT = 0.10, MUDA_USD = 25000;          // "aumentou/reduziu": pelo menos 10% e US$ 25 mil
 const JANELA_MIN = 5;   // olha os últimos 5 candles de 1 min (cobre execuções atrasadas)
 
 export default {
@@ -98,8 +102,8 @@ async function candles(simb) {
   return (await r.json()).map(k => ({t: k[0] / 1000, o: +k[1], h: +k[2], l: +k[3], c: +k[4]}));
 }
 
-async function ntfy(topico, titulo, txt) {
-  const q = new URLSearchParams({title: titulo, priority: "high", tags: "bell,chart_with_upwards_trend", click: "https://geffmb.github.io/liqmap/"});
+async function ntfy(topico, titulo, txt, link = "https://geffmb.github.io/liqmap/", tags = "bell,chart_with_upwards_trend") {
+  const q = new URLSearchParams({title: titulo, priority: "high", tags, click: link});
   await fetch("https://ntfy.sh/" + encodeURIComponent(topico) + "?" + q, {method: "POST", body: txt});
 }
 
@@ -154,15 +158,66 @@ async function vigiar(env, quando, forcarStatus = false) {
     if (cfg.ntfy) await ntfy(cfg.ntfy, "LiqMap — alerta 24h", a).catch(e => console.log("ntfy", e.message));
   }
 
+  // ---------- carteiras rastreadas (Hyperliquid) ----------
+  let rastreadas = [];
+  try { rastreadas = JSON.parse(dados["liqmap-carteiras"] || "[]").filter(c => !c.del && c.notif && /^0x[0-9a-f]{40}$/.test(c.addr)).slice(0, 20); } catch (e) {}
+  const antCart = (await conteudo(g, ARQ_CART)) || {};
+  const snaps = antCart.snaps || {}, novosSnaps = {};
+  const avisosCart = [];
+  if (rastreadas.length) {
+    let mids = {};
+    try { mids = await hl({type: "allMids"}); } catch (e) {}
+    for (const c of rastreadas) {
+      let st;
+      try { st = await hl({type: "clearinghouseState", user: c.addr}); } catch (e) { if (snaps[c.addr]) novosSnaps[c.addr] = snaps[c.addr]; continue; }
+      const atual = {}, pxs = {};
+      for (const p of st.assetPositions || []) { const x = p.position, szi = +x.szi; if (!szi) continue; atual[x.coin] = szi; pxs[x.coin] = Math.abs(+x.positionValue / szi); }
+      novosSnaps[c.addr] = atual;
+      const ant = snaps[c.addr];
+      if (!ant) continue;   // primeira vez: só guarda
+      const quem = c.nome || (c.addr.slice(0, 6) + "…" + c.addr.slice(-4));
+      for (const coin of new Set([...Object.keys(ant), ...Object.keys(atual)])) {
+        const t = mudanca(ant[coin] || 0, atual[coin] || 0, pxs[coin] || +mids[coin] || 0, coin);
+        if (t) avisosCart.push("🐋 " + quem + " " + t + (mids[coin] ? " · " + coin + " a " + pr(+mids[coin]) : ""));
+      }
+    }
+  }
+  for (const a of avisosCart) {
+    console.log("CARTEIRA:", a);
+    if (cfg.ntfy) await ntfy(cfg.ntfy, "LiqMap — carteira rastreada", a, "https://geffmb.github.io/liqmap/carteiras.html", "whale").catch(e => console.log("ntfy", e.message));
+  }
+  const mudouCart = JSON.stringify(novosSnaps) !== JSON.stringify(snaps);
+
   // status para o site: grava a cada 10 min (ou quando algo mudou) para não encher o histórico do Gist
   const arquivos = {};
   const minuto = Math.floor(agora / 60);
   if (mudouSync || forcarStatus || minuto % 10 === 0 || !estado.ultimo || agora - estado.ultimo > 900 || estado.ativos !== ativos)
-    arquivos[ARQ_VIGIA] = {content: JSON.stringify({ultimo: agora, disparados, ativos, fonte: "cloudflare", versao: 2})};
+    arquivos[ARQ_VIGIA] = {content: JSON.stringify({ultimo: agora, disparados, ativos, fonte: "cloudflare", versao: 3, carteiras: Object.keys(novosSnaps).length})};
+  if (mudouCart || (rastreadas.length && minuto % 10 === 0)) arquivos[ARQ_CART] = {content: JSON.stringify({ultimo: agora, fonte: "cloudflare", snaps: novosSnaps})};
   if (mudouSync) {
     pac.dados = dados; pac.atualizado = Date.now();
     arquivos[ARQ_SYNC] = {content: JSON.stringify(pac)};
   }
   if (Object.keys(arquivos).length) await gh(env, "/gists/" + gid, {method: "PATCH", body: {files: arquivos}});
-  return {ok: true, gist: gid, ativos, disparados: avisos, quando: quando.toISOString()};
+  return {ok: true, gist: gid, ativos, disparados: avisos, carteiras: rastreadas.length, avisosCarteiras: avisosCart, quando: quando.toISOString()};
+}
+
+async function hl(corpo) {
+  const r = await fetch("https://api.hyperliquid.xyz/info", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(corpo)});
+  if (!r.ok) throw new Error("Hyperliquid " + r.status);
+  return r.json();
+}
+const usd = x => { const a = Math.abs(x); return "$" + (a >= 1e9 ? (a / 1e9).toFixed(2) + "B" : a >= 1e6 ? (a / 1e6).toFixed(2) + "M" : a >= 1e3 ? (a / 1e3).toFixed(1) + "K" : a.toFixed(0)); };
+// a = tamanho antes, b = agora (positivo = long, negativo = short); devolve o texto do aviso ou null
+function mudanca(a, b, px, coin) {
+  const L = x => x > 0 ? "LONG" : "SHORT";
+  if (!a && b) return "abriu " + L(b) + " " + coin + " de " + usd(Math.abs(b) * px);
+  if (a && !b) return "fechou o " + L(a) + " " + coin + " (" + usd(Math.abs(a) * px) + ")";
+  if (a && b && Math.sign(a) !== Math.sign(b)) return "virou de " + L(a) + " para " + L(b) + " " + coin + " (" + usd(Math.abs(b) * px) + ")";
+  if (a && b) {
+    const d = Math.abs(b) - Math.abs(a);
+    if (Math.abs(d) / Math.abs(a) >= MUDA_PCT && Math.abs(d) * px >= MUDA_USD)
+      return (d > 0 ? "aumentou" : "reduziu") + " o " + L(b) + " " + coin + " em " + usd(Math.abs(d) * px) + " (agora " + usd(Math.abs(b) * px) + ")";
+  }
+  return null;
 }
