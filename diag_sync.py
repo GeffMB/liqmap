@@ -20,6 +20,12 @@ def main():
     g = gh("/gists/" + gid)
     f = (g.get("files") or {}).get(ARQ_SYNC) or {}
     print("Gist atualizado em:", g.get("updated_at"), "| tamanho do arquivo:", f.get("size"), "bytes | truncado na API:", f.get("truncated"))
+    vg = conteudo(g, "liqmap-vigia.json") or {}
+    print("Vigia: fonte", vg.get("fonte"), "| versão", vg.get("versao"), "| alertas ativos", vg.get("ativos"), "| carteiras", vg.get("carteiras"),
+          "| última verificação (UTC)", time.strftime("%Y-%m-%d %H:%M", time.gmtime(vg["ultimo"])) if vg.get("ultimo") else "-")
+    cv = conteudo(g, "liqmap-carteiras-vigia.json") or {}
+    print("Carteiras no vigia: fonte", cv.get("fonte"), "| carteiras com foto", len(cv.get("snaps") or {}),
+          "| atualizado (UTC)", time.strftime("%Y-%m-%d %H:%M", time.gmtime(cv["ultimo"])) if cv.get("ultimo") else "-")
     pac = conteudo(g, ARQ_SYNC) or {}
     dados, mod = pac.get("dados") or {}, pac.get("mod") or {}
     at = pac.get("atualizado")
