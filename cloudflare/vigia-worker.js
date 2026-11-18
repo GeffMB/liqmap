@@ -10,14 +10,15 @@
 //   GIST_TOKEN  (Secret)  token do GitHub só com a permissão "gist" (o mesmo da sincronização)
 //   GIST_ID     (Text, opcional) id do Gist; sem ele o vigia procura o Gist sozinho a cada execução
 //
-// Preço: candles do mercado à vista da Binance (data-api.binance.vision), que respondem de qualquer
-// lugar; a diferença para o futuro (basis) costuma ser de poucos centésimos de %.
+// Preço: candles de 1 min do mercado à vista. Tenta Binance (data-api.binance.vision); se a Binance
+// recusar o servidor do Cloudflare, usa Coinbase e depois Hyperliquid. A diferença entre elas e o
+// futuro da Binance costuma ser de poucos centésimos de %.
 
 const ARQ_SYNC = "liqmap-sync.json";
 const ARQ_VIGIA = "liqmap-vigia.json";
 const ARQ_CART = "liqmap-carteiras-vigia.json";   // última posição vista de cada carteira rastreada
 const MUDA_PCT = 0.10, MUDA_USD = 25000;          // "aumentou/reduziu": pelo menos 10% e US$ 25 mil
-const JANELA_MIN = 5;   // olha os últimos 5 candles de 1 min (cobre execuções atrasadas)
+const JANELA_MAX = 60;  // olha no máximo 60 min para trás (cobre execuções atrasadas ou falhas)
 
 export default {
   async scheduled(evento, env, ctx) {
@@ -96,10 +97,33 @@ async function chave(simb, d) {
   return [...new Uint8Array(h)].slice(0, 8).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function candles(simb) {
-  const r = await fetch("https://data-api.binance.vision/api/v3/klines?symbol=" + simb + "&interval=1m&limit=" + JANELA_MIN);
-  if (!r.ok) throw new Error("Binance " + r.status);
-  return (await r.json()).map(k => ({t: k[0] / 1000, o: +k[1], h: +k[2], l: +k[3], c: +k[4]}));
+// candles de 1 min desde "desde" (segundos); devolve {ks, fonte, erros}
+async function candles(simb, desde) {
+  const base = simb.replace(/USDT$/, ""), erros = [];
+  const fontes = [
+    ["binance", async () => {
+      const r = await fetch("https://data-api.binance.vision/api/v3/klines?symbol=" + simb + "&interval=1m&startTime=" + Math.floor(desde) * 1000 + "&limit=120");
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return (await r.json()).map(k => ({t: k[0] / 1000, o: +k[1], h: +k[2], l: +k[3], c: +k[4]}));
+    }],
+    ["coinbase", async () => {
+      const q = "granularity=60&start=" + new Date(desde * 1000).toISOString() + "&end=" + new Date().toISOString();
+      const r = await fetch("https://api.exchange.coinbase.com/products/" + base + "-USD/candles?" + q, {headers: {"User-Agent": "liqmap-vigia"}});
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return (await r.json()).map(k => ({t: k[0], l: +k[1], h: +k[2], o: +k[3], c: +k[4]})).sort((a, b) => a.t - b.t);
+    }],
+    ["hyperliquid", async () => {
+      const r = await fetch("https://api.hyperliquid.xyz/info", {method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({type: "candleSnapshot", req: {coin: base, interval: "1m", startTime: Math.floor(desde) * 1000, endTime: Date.now()}})});
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return (await r.json()).map(k => ({t: k.t / 1000, o: +k.o, h: +k.h, l: +k.l, c: +k.c}));
+    }]
+  ];
+  for (const [nome, f] of fontes) {
+    try { const ks = await f(); if (ks.length) return {ks, fonte: nome, erros}; erros.push(nome + ": vazio"); }
+    catch (e) { erros.push(nome + ": " + e.message); }
+  }
+  throw new Error(erros.join("; "));
 }
 
 async function ntfy(topico, titulo, txt, link = "https://geffmb.github.io/liqmap/", tags = "bell,chart_with_upwards_trend") {
@@ -122,7 +146,9 @@ async function vigiar(env, quando, forcarStatus = false) {
   for (const [k, v] of Object.entries(estado.disparados || {})) if (agora - v < 30 * 86400) disparados[k] = v;
 
   let mudouSync = false, ativos = 0;
-  const avisos = [];
+  const avisos = [], fontesPreco = {}, errosPreco = {};
+  // olha desde a última verificação registrada (com folga), no máximo 60 min
+  const desde = Math.max(agora - JANELA_MAX * 60, (estado.ultimo || agora - 600) - 120);
   for (const k of Object.keys(dados)) {
     if (!k.startsWith("liqmap-des-")) continue;
     const simb = k.slice("liqmap-des-".length);
@@ -132,13 +158,16 @@ async function vigiar(env, quando, forcarStatus = false) {
     if (!comAlerta.length) continue;
     ativos += comAlerta.length;
     let ks;
-    try { ks = await candles(simb); } catch (e) { console.log("Candles", simb, e.message); continue; }
+    try { const r = await candles(simb, desde); ks = r.ks; fontesPreco[simb] = r.fonte; if (r.erros.length) errosPreco[simb] = r.erros.join("; "); }
+    catch (e) { console.log("Candles", simb, e.message); errosPreco[simb] = e.message; continue; }
     let mudou = false;
     for (const d of comAlerta) {
       const ch = await chave(simb, d);
       if (disparados[ch]) { d.alerta = false; mudou = true; continue; }
       let achou = null;
+      const ligado = (d.alertaDesde || 0) / 1000;   // só vale o que aconteceu depois de o alerta ser ligado
       for (const c of ks) {
+        if (c.t + 60 < ligado) continue;
         for (const [nv, desc] of niveis(d, c.t + 30)) if (c.l <= nv && nv <= c.h) { achou = [c, desc]; break; }
         if (achou) break;
       }
@@ -191,15 +220,15 @@ async function vigiar(env, quando, forcarStatus = false) {
   // status para o site: grava a cada 10 min (ou quando algo mudou) para não encher o histórico do Gist
   const arquivos = {};
   const minuto = Math.floor(agora / 60);
-  if (mudouSync || forcarStatus || minuto % 10 === 0 || !estado.ultimo || agora - estado.ultimo > 900 || estado.ativos !== ativos)
-    arquivos[ARQ_VIGIA] = {content: JSON.stringify({ultimo: agora, disparados, ativos, fonte: "cloudflare", versao: 3, carteiras: Object.keys(novosSnaps).length})};
+  if (mudouSync || forcarStatus || minuto % 10 === 0 || !estado.ultimo || agora - estado.ultimo > 900 || estado.ativos !== ativos || JSON.stringify(estado.errosPreco || {}) !== JSON.stringify(errosPreco))
+    arquivos[ARQ_VIGIA] = {content: JSON.stringify({ultimo: agora, disparados, ativos, fonte: "cloudflare", versao: 4, carteiras: Object.keys(novosSnaps).length, fontesPreco, errosPreco})};
   if (mudouCart || (rastreadas.length && minuto % 10 === 0)) arquivos[ARQ_CART] = {content: JSON.stringify({ultimo: agora, fonte: "cloudflare", snaps: novosSnaps})};
   if (mudouSync) {
     pac.dados = dados; pac.atualizado = Date.now();
     arquivos[ARQ_SYNC] = {content: JSON.stringify(pac)};
   }
   if (Object.keys(arquivos).length) await gh(env, "/gists/" + gid, {method: "PATCH", body: {files: arquivos}});
-  return {ok: true, gist: gid, ativos, disparados: avisos, carteiras: rastreadas.length, avisosCarteiras: avisosCart, quando: quando.toISOString()};
+  return {ok: true, gist: gid, ativos, disparados: avisos, carteiras: rastreadas.length, avisosCarteiras: avisosCart, fontesPreco, errosPreco, quando: quando.toISOString()};
 }
 
 async function hl(corpo) {

@@ -18,7 +18,8 @@ import urllib.request
 
 ARQ_SYNC = "liqmap-sync.json"
 ARQ_VIGIA = "liqmap-vigia.json"
-ARQ_CART = "liqmap-carteiras-vigia.json"   # última posição vista de cada carteira rastreada
+ARQ_CART = "liqmap-carteiras-vigia.json"
+ARQ_GH = "liqmap-vigia-github.json"        # até onde ESTE vigia (GitHub) já olhou: o do Cloudflare não mexe nele   # última posição vista de cada carteira rastreada
 MUDA_PCT, MUDA_USD = 0.10, 25000
 TOKEN = os.environ.get("GIST_TOKEN", "").strip()
 
@@ -205,7 +206,8 @@ def main():
         cfg = {}
     topico = cfg.get("ntfy") or ""
     agora = time.time()
-    ultimo = estado.get("ultimo") or (agora - 600)
+    # olha desde a última execução DESTE vigia (as do GitHub atrasam horas; o "ultimo" do Cloudflare não serve aqui)
+    ultimo = (conteudo(g, ARQ_GH) or {}).get("ultimo") or (agora - 600)
     ultimo = max(ultimo, agora - 6 * 3600)          # depois de um intervalo grande, olha no máximo 6 h para trás
     disparados = {k: v for k, v in (estado.get("disparados") or {}).items() if agora - v < 30 * 86400}
 
@@ -234,7 +236,10 @@ def main():
                 mudou_sync = True
                 continue
             achou = None
+            ligado = (d.get("alertaDesde") or 0) / 1000   # só vale o que aconteceu depois de o alerta ser ligado
             for c in ks:
+                if c["t"] + 60 < ligado:
+                    continue
                 for nv, desc in niveis(d, c["t"] + 30):
                     if c["l"] <= nv <= c["h"]:
                         achou = (c, nv, desc)
@@ -262,6 +267,7 @@ def main():
 
     arquivos = {ARQ_VIGIA: {"content": json.dumps({"ultimo": agora, "disparados": disparados, "ativos": ativos,
                                                     "versao": 1}, separators=(",", ":"))}}
+    arquivos[ARQ_GH] = {"content": json.dumps({"ultimo": agora})}
     novo_cart = carteiras(g, dados, topico, agora)
     if novo_cart:
         arquivos[ARQ_CART] = {"content": novo_cart}
