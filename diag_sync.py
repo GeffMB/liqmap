@@ -9,6 +9,25 @@ import time
 from vigia import gh, achar_gist, conteudo, ARQ_SYNC, TOKEN
 
 
+def alertas_perto(simb, v):
+    """Para cada alerta ligado: distância (%) do preço atual e se o preço passou pelo nível nas últimas 24h (sem mostrar o preço)."""
+    import urllib.request
+    try:
+        ks = json.loads(urllib.request.urlopen(f"https://data-api.binance.vision/api/v3/klines?symbol={simb}&interval=1h&limit=24", timeout=20).read())
+        lo, hi, agora = min(float(x[3]) for x in ks), max(float(x[2]) for x in ks), float(ks[-1][4])
+    except Exception as e:
+        print("   (sem preço:", e, ")")
+        return
+    for d in json.loads(v):
+        if not d.get("alerta") or not d.get("pts"):
+            continue
+        if d.get("tipo") in ("horizontal", "raioH"):
+            p = d["pts"][0]["p"]
+            print(f"   alerta {d.get('tipo')}: {(p / agora - 1) * 100:+.1f}% do preço atual | tocado nas últimas 24h: {'SIM' if lo <= p <= hi else 'não'}")
+        else:
+            print(f"   alerta {d.get('tipo')}: (linha inclinada/zona, não calculado)")
+
+
 def main():
     if not TOKEN:
         print("Sem GIST_TOKEN.")
@@ -48,6 +67,8 @@ def main():
             except Exception as e:
                 extra = " | erro ao ler: " + str(e)
         print(f"{k}: {len(v)} bytes | editado (UTC) {quando}{extra}")
+        if k.startswith("liqmap-des-"):
+            alertas_perto(k[len("liqmap-des-"):], v)
 
 
 if __name__ == "__main__":
