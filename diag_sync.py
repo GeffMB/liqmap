@@ -24,6 +24,9 @@ def alertas_perto(simb, v):
         if d.get("tipo") in ("horizontal", "raioH"):
             p = d["pts"][0]["p"]
             print(f"   alerta {d.get('tipo')}: {(p / agora - 1) * 100:+.1f}% do preço atual | tocado nas últimas 24h: {'SIM' if lo <= p <= hi else 'não'}")
+            if lo <= p <= hi:
+                horas = [time.strftime("%d/%m %H:00", time.gmtime(int(x[0]) / 1000)) for x in ks if float(x[3]) <= p <= float(x[2])]
+                print("      tocado nas horas (UTC):", ", ".join(horas), "| alerta ligado desde (UTC):", time.strftime("%d/%m %H:%M", time.gmtime(d["alertaDesde"] / 1000)) if d.get("alertaDesde") else "?")
         else:
             print(f"   alerta {d.get('tipo')}: (linha inclinada/zona, não calculado)")
 
@@ -42,6 +45,13 @@ def main():
     vg = conteudo(g, "liqmap-vigia.json") or {}
     print("Vigia: fonte", vg.get("fonte"), "| versão", vg.get("versao"), "| alertas ativos", vg.get("ativos"), "| carteiras", vg.get("carteiras"),
           "| última verificação (UTC)", time.strftime("%Y-%m-%d %H:%M", time.gmtime(vg["ultimo"])) if vg.get("ultimo") else "-")
+    disp = vg.get("disparados") or {}
+    print("Vigia: alertas disparados nos últimos 30 dias:", len(disp), "| horários (UTC):", ", ".join(sorted(time.strftime("%d/%m %H:%M", time.gmtime(t)) for t in disp.values())[-8:]))
+    try:
+        cfg = json.loads((conteudo(g, ARQ_SYNC) or {}).get("dados", {}).get("liqmap2") or "{}")
+        print("Canal do celular (ntfy) configurado:", bool(cfg.get("ntfy")))
+    except Exception as e:
+        print("ntfy: erro", e)
     cv = conteudo(g, "liqmap-carteiras-vigia.json") or {}
     print("Carteiras no vigia: fonte", cv.get("fonte"), "| carteiras com foto", len(cv.get("snaps") or {}),
           "| atualizado (UTC)", time.strftime("%Y-%m-%d %H:%M", time.gmtime(cv["ultimo"])) if cv.get("ultimo") else "-")
