@@ -108,7 +108,7 @@ td small{display:block;font-size:11px;color:var(--sub)}
 
   <p class="nota">
     Dados públicos da Hyperliquid (tudo é on-chain). Com a página aberta, cada carteira é conferida a cada 15 segundos e o aviso aparece aqui e no navegador.
-    <b>Com a página fechada</b>, o vigia 24h (o mesmo dos alertas de preço) confere as carteiras com 🔔 ligado e manda para o celular pelo ntfy — para isso a sincronização entre aparelhos precisa estar ligada (⚙ Ajustes no gráfico) e o canal do ntfy configurado.
+    <b>Com a página fechada</b>, o vigia 24h (o mesmo dos alertas de preço) confere as carteiras com 📱 celular ligado e manda para o celular pelo ntfy. Com só 💻 PC ligado, o aviso aparece apenas no navegador do PC — para isso a sincronização entre aparelhos precisa estar ligada (⚙ Ajustes no gráfico) e o canal do ntfy configurado.
     Aviso de “aumentou/reduziu” só quando a posição muda pelo menos 10% e US$ 25 mil, para não avisar a cada pequeno ajuste.
   </p>
 </main>
@@ -134,8 +134,18 @@ const gravar = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } c
 async function info(corpo){ const r = await fetch(HL, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(corpo)}); if (!r.ok) throw new Error("Hyperliquid " + r.status); return r.json(); }
 
 // ---------- lista (sincronizada entre aparelhos) ----------
-// cada item: {addr, nome, notif, mod, del}; "del" marca removida (para a remoção chegar aos outros aparelhos)
+// cada item: {addr, nome, pc, notif, mod, del}
+//   pc    = avisar no navegador (PC) enquanto a página está aberta
+//   notif = avisar no CELULAR pelo vigia 24h (é o campo que o vigia lê)
+//   del   = removida (para a remoção chegar aos outros aparelhos)
 let lista = lerJ(CH, []);
+// versão antiga tinha um aviso só: vira "PC ligado, celular desligado"
+if (!localStorage.getItem("liqmap-carteiras-mig1")) {
+  let mudou = false;
+  for (const c of lista) if (c.pc === undefined) { c.pc = c.notif !== false; c.notif = false; c.mod = Date.now(); mudou = true; }
+  try { localStorage.setItem("liqmap-carteiras-mig1", "1"); } catch (e) {}
+  if (mudou) setTimeout(() => salvarLista(), 0);
+}
 const ativas = () => lista.filter(c => !c.del);
 function salvarLista(){
   gravar(CH, lista);
@@ -210,7 +220,7 @@ function adicionar(addr, nome){
   if (!/^0x[0-9a-f]{40}$/.test(addr)) { aviso("Endereço inválido: precisa começar com 0x e ter 42 caracteres.", true); return false; }
   const ex = lista.find(c => c.addr === addr);
   if (ex && !ex.del) { aviso("Essa carteira já está na lista.", true); return false; }
-  const item = {addr, nome: (nome || "").trim().slice(0, 40), notif: true, mod: Date.now(), del: false};
+  const item = {addr, nome: (nome || "").trim().slice(0, 40), pc: true, notif: false, mod: Date.now(), del: false};
   if (ex) Object.assign(ex, item); else lista.push(item);
   salvarLista(); montar(); atualizar(addr);
   aviso("Carteira adicionada. Os avisos começam a partir da próxima mudança de posição.");
@@ -273,7 +283,7 @@ function evento(addr, quem, txt, coin, lado){
   feed.unshift(e); feed = feed.slice(0, 200); gravar(CH_FEED, feed);
   const msg = `🐋 ${quem} ${txt}` + (e.preco ? ` · ${coin} a ${pr(e.preco)}` : "");
   const c = lista.find(x => x.addr === addr);
-  if (c && c.notif) {
+  if (c && c.pc !== false) {
     try { if ("Notification" in window && Notification.permission === "granted") new Notification("LiqMap — carteira rastreada", {body: msg, tag: addr + coin}); } catch (err) {}
     bip();
   }
@@ -311,7 +321,8 @@ function montar(){
     return `<div class="cart">
       <div class="cab"><span class="nome">${esc(c.nome || "Sem apelido")}</span><a class="end" href="https://app.hyperliquid.xyz/explorer/address/${c.addr}" target="_blank" rel="noopener">${abrev(c.addr)}</a>
         <span class="num"><span>Conta <b>${conta == null ? "…" : usd(conta)}</b></span><span>Exposição <b>${exp == null ? "…" : usd(exp)}</b></span><span>PnL aberto <b class="${pnl >= 0 ? "up" : "down"}">${ps.length ? usd(pnl, true) : "—"}</b></span></span>
-        <span class="acoes"><label class="toggle" title="Avisar no navegador e, com o vigia 24h, no celular"><input type="checkbox" data-notif="${c.addr}" ${c.notif ? "checked" : ""}>🔔 avisar</label>
+        <span class="acoes"><label class="toggle" title="Aviso no navegador do PC (com a página aberta)"><input type="checkbox" data-pc="${c.addr}" ${c.pc !== false ? "checked" : ""}>💻 PC</label>
+          <label class="toggle" title="Aviso no celular pelo vigia 24h (mesmo com a página fechada)"><input type="checkbox" data-notif="${c.addr}" ${c.notif ? "checked" : ""}>📱 celular</label>
           <button class="sec" data-nome="${c.addr}">Apelido</button><button class="sec" data-del="${c.addr}">Remover</button></span></div>
       <div class="corpo">${d.erro ? `<div class="vazio down">Erro ao ler: ${esc(d.erro)}</div>` : !st ? `<div class="vazio">carregando…</div>` : ps.length ? `<div class="rolar"><table>
         <tr><th>Posição</th><th>Tamanho</th><th>Entrada</th><th>Preço</th><th>PnL</th><th>Liquidação</th><th>TP / SL</th></tr>${linhas}</table></div>` : `<div class="vazio">Sem posição aberta agora.</div>`}
@@ -326,7 +337,12 @@ $("lista").addEventListener("click", e => {
   if (del) { const c = lista.find(x => x.addr === del); if (c && confirm("Parar de rastrear " + (c.nome || abrev(del)) + "?")) { c.del = true; c.mod = Date.now(); delete snaps[del]; gravar(CH_SNAP, snaps); salvarLista(); montar(); } }
   if (nome) { const c = lista.find(x => x.addr === nome); const n = prompt("Apelido da carteira:", c.nome || ""); if (n != null) { c.nome = n.trim().slice(0, 40); c.mod = Date.now(); salvarLista(); montar(); } }
 });
-$("lista").addEventListener("change", e => { const a = e.target.getAttribute("data-notif"); if (a) { const c = lista.find(x => x.addr === a); c.notif = e.target.checked; c.mod = Date.now(); salvarLista(); } });
+$("lista").addEventListener("change", e => {
+  const a = e.target.getAttribute("data-notif") || e.target.getAttribute("data-pc"); if (!a) return;
+  const c = lista.find(x => x.addr === a);
+  if (e.target.hasAttribute("data-pc")) c.pc = e.target.checked; else c.notif = e.target.checked;
+  c.mod = Date.now(); salvarLista();
+});
 
 // ---------- sugestões (ranking da Hyperliquid) ----------
 $("bSug").addEventListener("click", async () => {
