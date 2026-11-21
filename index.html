@@ -197,7 +197,7 @@ button,select,input{font:inherit;color:inherit}
       <div id="chart"></div>
       <canvas id="des"></canvas>
       <div class="aviso" id="aviso"></div>
-      <div class="selbar" id="selbar"><span id="selNome"></span><button id="selNota" title="Escrever o motivo deste desenho">✏️ Nota</button><button id="selAlerta" title="Avisar quando o preço cruzar este desenho">🔔 Alerta</button><button id="selApagar" title="Apagar desenho (Delete)">🗑 Apagar</button><button id="selFechar" title="Tirar seleção (Esc)">✕</button></div>
+      <div class="selbar" id="selbar"><span id="selNome"></span><input id="selPreco" type="text" inputmode="decimal" autocomplete="off" title="Digite o preço exato e tecle Enter" style="width:100px;padding:5px 7px;border:1px solid var(--line);border-radius:6px;font:inherit;font-variant-numeric:tabular-nums;display:none"><button id="selNota" title="Escrever o motivo deste desenho">✏️ Nota</button><button id="selAlerta" title="Avisar quando o preço cruzar este desenho">🔔 Alerta</button><button id="selApagar" title="Apagar desenho (Delete)">🗑 Apagar</button><button id="selFechar" title="Tirar seleção (Esc)">✕</button></div>
       <div class="legenda" id="legenda"></div>
       <div class="deriv" id="deriv"></div>
       <div class="alertas" id="alertas"></div>
@@ -810,6 +810,37 @@ $("selNota").addEventListener("click", () => {
   if (txt.trim()) d.nota = txt.trim().slice(0, 120); else delete d.nota;
   salvarDesenhos(); mostrarSel(); desVersao++;
 });
+// preço exato digitado na barra da linha selecionada ("1.734,4", "1734.4" ou "1734,4")
+function lerPrecoDigitado(txt, ref){
+  let t = String(txt).trim().replace(/\s|\$/g, "");
+  if (!t) return null;
+  if (t.includes(",")) return +t.replace(/\./g, "").replace(",", ".");
+  // só pontos: pode ser decimal (1.0597) ou milhar (1.734 = mil setecentos...): fica o que estiver mais perto do preço atual
+  const a = +t, b = +t.replace(/\./g, "");
+  if (!isFinite(a)) return null;
+  if (!t.includes(".") || !isFinite(b) || !ref) return a;
+  return Math.abs(Math.log(a / ref)) <= Math.abs(Math.log(b / ref)) ? a : b;
+}
+function moverLinhaPara(){
+  if (selecionado < 0) return;
+  const d = desenhos[selecionado];
+  if (d.tipo !== "horizontal" && d.tipo !== "raioH") return;
+  const ref = velas.length ? velas[velas.length - 1].close : d.pts[0].p;
+  const p = lerPrecoDigitado($("selPreco").value, ref);
+  if (!p || !isFinite(p) || p <= 0) { avisar("Preço inválido"); $("selPreco").value = pr(d.pts[0].p); return; }
+  if (p === d.pts[0].p) return;
+  d.pts[0].p = p;
+  if (d.alerta) d.alertaDesde = Date.now();   // o alerta passa a valer a partir do novo preço
+  salvarDesenhos(); mostrarSel(); desVersao++;
+  avisar("Linha movida para " + pr(p));
+}
+$("selPreco").addEventListener("keydown", e => {
+  e.stopPropagation();   // não dispara atalhos do gráfico (Delete, Esc...) enquanto digita
+  if (e.key === "Enter") { moverLinhaPara(); e.target.blur(); }
+  if (e.key === "Escape") { mostrarSel(); e.target.blur(); }
+});
+$("selPreco").addEventListener("change", moverLinhaPara);
+$("selPreco").addEventListener("focus", e => e.target.select());
 $("selAlerta").addEventListener("click", () => {
   if (selecionado < 0) return;
   const d = desenhos[selecionado]; d.alerta = !d.alerta;
@@ -2129,6 +2160,9 @@ function mostrarSel(){
     $("selNota").textContent = d.nota ? "✏️ Editar nota" : "✏️ Nota";
     $("selAlerta").style.display = ALERTAVEIS.includes(d.tipo) ? "" : "none";
     $("selAlerta").textContent = d.alerta ? "🔕 Tirar alerta" : "🔔 Alerta";
+    const temPreco = d.tipo === "horizontal" || d.tipo === "raioH";
+    $("selPreco").style.display = temPreco ? "" : "none";
+    if (temPreco && document.activeElement !== $("selPreco")) $("selPreco").value = pr(d.pts[0].p);
   }
   desVersao++;
 }
@@ -2175,7 +2209,7 @@ window.addEventListener("pointermove", ev => {
   arrasto.mexeu = true; desVersao++;
 });
 window.addEventListener("pointerup", () => {
-  if (arrasto && arrasto.mexeu) salvarDesenhos();
+  if (arrasto && arrasto.mexeu) { salvarDesenhos(); mostrarSel(); }   // atualiza o preço mostrado na barra
   arrasto = null; setTimeout(() => { bloqueando = false; }, 0);
 });
 window.addEventListener("pointercancel", () => { if (arrasto) { arrasto.d.pts = arrasto.orig; desVersao++; } arrasto = null; bloqueando = false; });
