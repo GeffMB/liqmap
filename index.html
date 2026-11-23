@@ -2112,8 +2112,14 @@ const RAIO = () => toqueGrosso() ? 18 : 9;
 function telaDe(ev){ const r = desCanvas.getBoundingClientRect(); return [ev.clientX - r.left, ev.clientY - r.top]; }
 function pontosTela(g, d){ return d.pts.map(q => [xDe(g, q.t), serie.priceToCoordinate(q.p)]); }
 // devolve {i, alca} do desenho mais próximo (alca = índice do ponto, ou -1 = corpo)
+// posição de cada etiqueta de nota na tela (para clicar nela e selecionar o desenho, mesmo com a linha fora da tela)
+const rotulosNota = new WeakMap();
 function acharDesenho(px, py){
   const g = geo(); if (!g || ocultos) return null;
+  for (let i = desenhos.length - 1; i >= 0; i--) {
+    const r = rotulosNota.get(desenhos[i]);
+    if (r && px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return {i, alca: -1};
+  }
   const W = parseFloat(desCanvas.style.width) || 0;
   let achado = null, menor = RAIO() + 1;
   desenhos.forEach((d, i) => {
@@ -2275,11 +2281,13 @@ function desenharNota(c, d, P, W){
   else { x = P[0][0] + 8; y = P[0][1] - 20; }
   x = Math.max(2, Math.min(x, W - tw - 14)); y = Math.max(2, y);
   c.fillStyle = "rgba(255,255,255,0.92)"; c.strokeStyle = COR_DES; c.lineWidth = 1;
+  rotulosNota.set(d, {x, y, w: tw + 12, h: 16});
   c.beginPath(); if (c.roundRect) c.roundRect(x, y, tw + 12, 16, 4); else c.rect(x, y, tw + 12, 16); c.fill(); c.stroke();
   c.fillStyle = COR_DES; c.fillText(txt, x + 6, y + 12);
   c.restore();
 }
 function desenharUm(c, g, d, W){
+  rotulosNota.delete(d);
   const P = d.pts.map(q => [xDe(g, q.t), serie.priceToCoordinate(q.p)]);
   if (P.some(q => q[1] == null)) return;
   if (d.alerta) { c.font = "12px sans-serif"; c.fillText("🔔", (d.tipo === "horizontal" ? 8 : P[0][0] + 6), P[0][1] - 6); }
