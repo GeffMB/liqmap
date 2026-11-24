@@ -3,7 +3,10 @@
 Roda no GitHub Actions a cada ~2 horas e grava fluxos.json com:
   - CEX: reservas das maiores corretoras (prova de reservas publicada no DefiLlama) e o fluxo líquido
     em 24h / 7d / 30d, calculado pela variação da QUANTIDADE de cada moeda × preço atual
-    (assim a alta ou queda do preço não conta como entrada/saída);
+    (assim a alta ou queda do preço não conta como entrada/saída). Só entram as moedas presentes
+    nas duas leituras comparadas (uma leitura incompleta do DefiLlama não vira entrada/saída falsa),
+    o fluxo é separado em moedas (BTC, ETH...) e stablecoins, e cada janela recebe um aviso de
+    "instável" quando a cobertura é baixa ou o fluxo de 24h é grande demais para ser real;
   - ETFs de BTC e ETH dos EUA (BlackRock, Fidelity, Grayscale...): fluxo diário por fundo (Farside);
   - Stablecoins: variação da oferta total (dinheiro novo em dólar digital entrando no cripto).
 Cada fonte é independente: se uma falhar, as outras continuam e o arquivo anterior daquela parte é mantido.
@@ -34,6 +37,33 @@ def baixar(url, js=True, tentativas=2):
 
 
 # ---------- CEX (DefiLlama, gratuito) ----------
+STABLES = {"USDT", "USDC", "FDUSD", "DAI", "TUSD", "USDE", "USDD", "PYUSD", "USDP", "BUSD", "GUSD", "USD1",
+           "USDGO", "RLUSD", "USDS", "FRAX", "LUSD", "USDB", "USDX", "USDTB", "USDG", "EURC", "EURT"}
+COBERTURA_MIN = 0.90       # parte das reservas atuais que precisa existir nas duas leituras
+LIMITE_24H = 0.02          # fluxo de 24h acima de 2% das reservas é tratado como suspeito
+
+
+def eh_stable(simbolo):
+    s = simbolo.upper()
+    return s in STABLES or (s.startswith("USD") and len(s) <= 6)
+
+
+def fluxo_janela(ult_q, q0, preco, ult_u):
+    """Fluxo entre duas leituras usando só as moedas presentes nas duas (e com preço atual)."""
+    mo = st = 0.0
+    coberto = 0.0
+    for s, q in ult_q.items():
+        if s not in q0 or s not in preco:
+            continue
+        v = (q - q0[s]) * preco[s]
+        if eh_stable(s):
+            st += v
+        else:
+            mo += v
+        coberto += ult_u.get(s) or 0
+    return mo, st, coberto
+
+
 def cex():
     protos = baixar("https://api.llama.fi/protocols")
     lista = sorted([p for p in protos if p.get("category") == "CEX" and (p.get("tvl") or 0) > 0],
@@ -49,20 +79,27 @@ def cex():
             preco = {s: ult_u[s] / q for s, q in ult_q.items() if q and s in ult_u and ult_u[s]}
             linha = {"nome": p["name"].replace(" CEX", ""), "slug": p["slug"], "logo": p.get("logo"),
                      "ativos": sum(v for v in ult_u.values() if v and v > 0), "atualizado": qtd[-1]["date"]}
+            instavel = {}
             for nome, seg in (("d1", DIA), ("d7", 7 * DIA), ("d30", 30 * DIA)):
                 alvo = qtd[-1]["date"] - seg
                 ant = next((x for x in reversed(qtd[:-1]) if x["date"] <= alvo + 3 * 3600), None)
                 if not ant:
                     linha[nome] = None
                     continue
-                q0 = ant["tokens"]
-                total = 0.0
-                for s in set(ult_q) | set(q0):
-                    pr = preco.get(s)
-                    if pr is None:
-                        continue
-                    total += (ult_q.get(s, 0) - q0.get(s, 0)) * pr
-                linha[nome] = total
+                mo, st, coberto = fluxo_janela(ult_q, ant["tokens"], preco, ult_u)
+                linha[nome] = mo + st
+                linha[nome + "_mo"] = mo
+                linha[nome + "_st"] = st
+                cob = coberto / linha["ativos"] if linha["ativos"] else 0
+                motivo = None
+                if cob < COBERTURA_MIN:
+                    motivo = "só %d%% das reservas aparece nas duas leituras" % round(cob * 100)
+                elif nome == "d1" and abs(linha[nome]) > LIMITE_24H * linha["ativos"]:
+                    motivo = "fluxo de 24h acima de %d%% das reservas" % round(LIMITE_24H * 100)
+                if motivo:
+                    instavel[nome] = motivo
+            if instavel:
+                linha["instavel"] = instavel
             # moedas principais (para o detalhe)
             top = sorted(ult_u.items(), key=lambda kv: -(kv[1] or 0))[:6]
             linha["composicao"] = [[s, v] for s, v in top]

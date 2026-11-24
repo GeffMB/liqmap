@@ -91,7 +91,9 @@ td.nome small{color:var(--sub);font-weight:400}
     <b>ETFs</b> com entrada forte = demanda institucional comprando BTC/ETH à vista (costuma ser altista).
     <b>Stablecoins</b> crescendo = mais dólar digital disponível para comprar cripto (liquidez entrando).
     <b>Corretoras</b>: entrada pode ser moeda chegando para vender (pressão de venda) ou stablecoin chegando para comprar; saída costuma ser moeda indo para custódia própria (menos oferta à venda).
+    Por isso o fluxo é separado: <b>moedas</b> (BTC, ETH…) saindo costuma ser bom (menos oferta à venda); <b>stablecoins</b> saindo costuma ser ruim (menos dólar pronto para comprar).
     Os números das corretoras vêm das carteiras que elas mesmas publicam (DefiLlama) e não incluem tudo o que elas têm.
+    Só entram as moedas presentes nas duas leituras comparadas. <b>⚠</b> = dado instável (leitura incompleta ou salto grande demais em 24h); esse valor fica fora da soma do card.
     Fontes: DefiLlama (corretoras e stablecoins), Farside Investors (ETFs, em US$). Atualiza a cada ~2 horas; ETFs fecham o dia após o pregão dos EUA.
   </p>
 </div>
@@ -151,8 +153,16 @@ function desenharTudo(){
     if (r) box.append(card(nome, [span(usd(r.ult, true), cls(r.ult))], [["Último dia (" + r.data.split("-").reverse().slice(0, 2).join("/") + ")", r.ult], ["Últimos 5 pregões", r.s7], ["Últimos 21 pregões", r.s30]], "Entrada líquida dos fundos à vista"));
   }
   if (D.cex && D.cex.length) {
-    const tot = k => D.cex.reduce((a, x) => a + (x[k] || 0), 0);
-    box.append(card("Corretoras (" + D.cex.length + " maiores)", [span(usd(D.cex.reduce((a, x) => a + x.ativos, 0)))], [["Fluxo 24h", tot("d1")], ["Fluxo 7 dias", tot("d7")], ["Fluxo 30 dias", tot("d30")]], "Reservas publicadas e fluxo líquido"));
+    // somas ignoram as janelas marcadas como instáveis (leitura incompleta do DefiLlama)
+    const ok = (x, k) => !(x.instavel && x.instavel[k]);
+    const tot = k => D.cex.reduce((a, x) => a + (ok(x, k.split("_")[0]) ? (x[k] || 0) : 0), 0);
+    const fora = [...new Set(D.cex.filter(x => x.instavel).map(x => x.nome))];
+    const temSplit = D.cex.some(x => x.d7_mo != null);
+    const linhas = [["Fluxo 24h", tot("d1")], ["Fluxo 7 dias", tot("d7")]];
+    if (temSplit) linhas.push(["  7 dias · moedas", tot("d7_mo")], ["  7 dias · stablecoins", tot("d7_st")]);
+    linhas.push(["Fluxo 30 dias", tot("d30")]);
+    box.append(card("Corretoras (" + D.cex.length + " maiores)", [span(usd(D.cex.reduce((a, x) => a + x.ativos, 0)))], linhas,
+      fora.length ? "⚠ Sem " + fora.join(", ") + " nas janelas com dado instável" : "Reservas publicadas e fluxo líquido"));
   }
   desenharCex(); desenharEtf();
 }
@@ -162,7 +172,7 @@ let ordCex = {col: "ativos", asc: false};
 function desenharCex(){
   const t = $("tabCex"); t.replaceChildren();
   if (!D.cex || !D.cex.length) { t.innerHTML = "<tr><td>Sem dados de corretoras nesta coleta.</td></tr>"; return; }
-  const cols = [["nome", "Corretora"], ["ativos", "Reservas"], ["d1", "Fluxo 24h"], ["d7", "Fluxo 7d"], ["d30", "Fluxo 30d"]];
+  const cols = [["nome", "Corretora"], ["ativos", "Reservas"], ["d1", "Fluxo 24h"], ["d7", "Fluxo 7d"], ["d7_mo", "7d · moedas"], ["d7_st", "7d · stablecoins"], ["d30", "Fluxo 30d"]];
   const cab = document.createElement("tr");
   for (const [k, n] of cols) {
     const th = document.createElement("th"); th.textContent = n;
@@ -180,7 +190,13 @@ function desenharCex(){
     const nm = span(x.nome); tdN.append(nm);
     if (x.composicao) tdN.title = "Maiores reservas: " + x.composicao.map(([s, v]) => s + " " + usd(v)).join(", ");
     tr.append(tdN);
-    for (const k of ["ativos", "d1", "d7", "d30"]) { const td = document.createElement("td"); td.textContent = usd(x[k], k !== "ativos"); if (k !== "ativos") td.className = cls(x[k]); tr.append(td); }
+    for (const k of ["ativos", "d1", "d7", "d7_mo", "d7_st", "d30"]) {
+      const td = document.createElement("td"); td.textContent = usd(x[k], k !== "ativos");
+      if (k !== "ativos") td.className = cls(x[k]);
+      const janela = k.split("_")[0], motivo = x.instavel && x.instavel[janela];
+      if (motivo && k !== "ativos") { td.className = "k"; td.textContent += " ⚠"; td.title = "Dado instável: " + motivo + ". Fica fora da soma do card."; }
+      tr.append(td);
+    }
     t.append(tr);
   });
 }
