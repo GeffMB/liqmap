@@ -251,7 +251,8 @@ async function atualizar(addr, completo){
     d.st = await info({type: "clearinghouseState", user: addr});
     if (completo || !d.ordens) {
       d.ordens = await info({type: "frontendOpenOrders", user: addr}).catch(() => d.ordens || []);
-      d.fills = await info({type: "userFillsByTime", user: addr, startTime: Date.now() - 7 * 864e5, aggregateByTime: true}).catch(() => d.fills || []);
+      // os 2.000 negócios MAIS RECENTES (userFillsByTime devolvia os mais antigos da janela, por isso a lista vinha atrasada)
+      d.fills = await info({type: "userFills", user: addr, aggregateByTime: true}).then(f => f.sort((a, b) => b.time - a.time)).catch(() => d.fills || []);
     }
     d.t = Date.now(); d.erro = null;
     detectar(addr, d.st);
@@ -316,17 +317,25 @@ function montar(){
         <td>${usd(p.val)}<small>${qtd(p.szi)} ${p.coin}</small></td><td>${pr(p.entrada)}</td><td>${pr(mark)}</td>
         <td class="${p.pnl >= 0 ? "up" : "down"}">${usd(p.pnl, true)}<small>${pct(p.roe)} sobre a margem</small></td>
         <td>${p.liq ? pr(p.liq) + `<small>${pct((p.liq / mark - 1) * 100)} do preço</small>` : "—"}</td><td>${tpsl(p.coin)}</td></tr>`; }).join("");
-    const fills = (d.fills || []).slice(-6).reverse().map(f => { const dir = {"Open Long": "Abriu long", "Close Long": "Fechou long", "Open Short": "Abriu short", "Close Short": "Fechou short", "Long > Short": "Virou p/ short", "Short > Long": "Virou p/ long"}[f.dir] || f.dir;
-      return `<tr><td>${hora(f.time)}</td><td style="text-align:left"><b>${f.coin}</b> ${dir}</td><td>${usd(+f.px * +f.sz)}</td><td>${pr(+f.px)}</td><td class="${+f.closedPnl > 0 ? "up" : +f.closedPnl < 0 ? "down" : "k"}">${+f.closedPnl ? usd(+f.closedPnl, true) : "—"}</td></tr>`; }).join("");
+    const DIRS = {"Open Long": "Abriu long", "Close Long": "Fechou long", "Open Short": "Abriu short", "Close Short": "Fechou short", "Long > Short": "Virou p/ short", "Short > Long": "Virou p/ long", "Liquidated Isolated Long": "Liquidado (long)", "Liquidated Isolated Short": "Liquidado (short)", "Liquidated Cross Long": "Liquidado (long)", "Liquidated Cross Short": "Liquidado (short)"};
+    const fills = (d.fills || []).slice(0, 10).map(f => { const dir = DIRS[f.dir] || f.dir, res = +f.closedPnl - (+f.fee || 0), fecha = +f.closedPnl !== 0 || /Close|>|Liquid/.test(f.dir);
+      const base = +f.px * +f.sz;
+      return `<tr><td>${hora(f.time)}</td><td style="text-align:left"><b>${f.coin}</b> ${dir}${f.liquidation ? ' <span class="chip short">LIQUIDADO</span>' : ""}</td><td>${usd(base)}</td><td>${pr(+f.px)}</td>
+        <td class="${fecha ? (res > 0 ? "up" : res < 0 ? "down" : "k") : "k"}">${fecha ? `<b>${res > 0 ? "Ganho " : res < 0 ? "Perda " : ""}${usd(res, true)}</b>` : "abertura"}</td></tr>`; }).join("");
+    // resultado realizado nos últimos 7 dias (já descontadas as taxas)
+    const sete = (d.fills || []).filter(f => f.time >= Date.now() - 7 * 864e5 && (+f.closedPnl !== 0));
+    const real7 = sete.reduce((a, f) => a + +f.closedPnl - (+f.fee || 0), 0), ganhos = sete.filter(f => +f.closedPnl > 0).length;
+    const cobre = d.fills && d.fills.length >= 2000 ? " (últimos 2.000 negócios)" : "";
     return `<div class="cart">
       <div class="cab"><span class="nome">${esc(c.nome || "Sem apelido")}</span><a class="end" href="https://app.hyperliquid.xyz/explorer/address/${c.addr}" target="_blank" rel="noopener">${abrev(c.addr)}</a>
-        <span class="num"><span>Conta <b>${conta == null ? "…" : usd(conta)}</b></span><span>Exposição <b>${exp == null ? "…" : usd(exp)}</b></span><span>PnL aberto <b class="${pnl >= 0 ? "up" : "down"}">${ps.length ? usd(pnl, true) : "—"}</b></span></span>
+        <span class="num"><span>Conta <b>${conta == null ? "…" : usd(conta)}</b></span><span>Exposição <b>${exp == null ? "…" : usd(exp)}</b></span><span>PnL aberto <b class="${pnl >= 0 ? "up" : "down"}">${ps.length ? usd(pnl, true) : "—"}</b></span>
+          <span title="Soma dos fechamentos dos últimos 7 dias, já descontadas as taxas${cobre}">Realizado 7d <b class="${real7 >= 0 ? "up" : "down"}">${d.fills ? usd(real7, true) : "…"}</b>${sete.length ? ` <small style="display:inline">(${sete.length} fech., ${Math.round(ganhos / sete.length * 100)}% no lucro)</small>` : ""}</span></span>
         <span class="acoes"><label class="toggle" title="Aviso no navegador do PC (com a página aberta)"><input type="checkbox" data-pc="${c.addr}" ${c.pc !== false ? "checked" : ""}>💻 PC</label>
           <label class="toggle" title="Aviso no celular pelo vigia 24h (mesmo com a página fechada)"><input type="checkbox" data-notif="${c.addr}" ${c.notif ? "checked" : ""}>📱 celular</label>
           <button class="sec" data-nome="${c.addr}">Apelido</button><button class="sec" data-del="${c.addr}">Remover</button></span></div>
       <div class="corpo">${d.erro ? `<div class="vazio down">Erro ao ler: ${esc(d.erro)}</div>` : !st ? `<div class="vazio">carregando…</div>` : ps.length ? `<div class="rolar"><table>
         <tr><th>Posição</th><th>Tamanho</th><th>Entrada</th><th>Preço</th><th>PnL</th><th>Liquidação</th><th>TP / SL</th></tr>${linhas}</table></div>` : `<div class="vazio">Sem posição aberta agora.</div>`}
-        ${fills ? `<div class="rolar"><table style="margin-top:4px"><tr><th>Últimos negócios (7 dias)</th><th style="text-align:left">Ação</th><th>Valor</th><th>Preço</th><th>Resultado</th></tr>${fills}</table></div>` : ""}</div></div>`; }).join("")
+        ${fills ? `<div class="rolar"><table style="margin-top:4px"><tr><th>Últimos negócios</th><th style="text-align:left">Ação</th><th>Valor</th><th>Preço</th><th>Ganho / perda</th></tr>${fills}</table></div>` : ""}</div></div>`; }).join("")
     : `<div class="vazio">Nenhuma carteira rastreada ainda. Cole um endereço acima, use “Sugestões do ranking” ou o ⭐ na página Ordens HL.</div>`;
 
   $("feed").innerHTML = feed.length ? feed.slice(0, 80).map(e => `<div><span class="h">${hora(e.t)}</span>🐋 <b>${esc(e.quem)}</b> ${esc(e.txt)}${e.preco ? ` <span class="k">· ${e.coin} a ${pr(e.preco)}</span>` : ""}</div>`).join("")
@@ -366,7 +375,7 @@ async function ciclo(){
   try { mids = await info({type: "allMids"}); } catch (e) {}
   const at = ativas();
   giro++;
-  for (const c of at) { await atualizar(c.addr, giro % 4 === 1); await new Promise(r => setTimeout(r, 250)); }
+  for (const c of at) { await atualizar(c.addr, giro % 2 === 1); await new Promise(r => setTimeout(r, 250)); }
   setTimeout(ciclo, 15000);
 }
 montar(); estado();
