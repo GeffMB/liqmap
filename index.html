@@ -1110,6 +1110,7 @@ function criarGrafico(){
   sVol = chart.addHistogramSeries({priceScaleId: "vol", priceFormat: {type: "custom", formatter: usd}, lastValueVisible: false, priceLineVisible: false});
   chart.priceScale("vol").applyOptions({scaleMargins: {top: 0.82, bottom: 0}, visible: false});
   sVwap = chart.addLineSeries({color: "#2962ff", lineWidth: 2, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false});
+  sFuturo = novaSerieFutura(chart);
   chart.subscribeCrosshairMove(p => { if (!p || !p.point || p.sourceEvent) cursorY = p && p.point ? p.point.y : null; atualizarContagem(); atualizarLegenda(p); espelharCursor(chart, p); });
   chart.timeScale().subscribeVisibleLogicalRangeChange(r => espelharFaixa(chart, r));
   aplicarIndicadores();
@@ -1149,6 +1150,7 @@ function criarPainel(id){
   ch.subscribeCrosshairMove(p => { atualizarLegenda(p); espelharCursor(ch, p); });
   ch.timeScale().subscribeVisibleLogicalRangeChange(r => espelharFaixa(ch, r));
   paineis[id] = {div, chart: ch, serie: s, serie2: s2, rot};
+  futuroDe = "";   // painel novo também recebe os horários futuros
 }
 function removerPainel(id){
   const p = paineis[id]; if (!p) return;
@@ -1192,6 +1194,30 @@ function aplicarVelas(){
   if (!serie || !velas.length) return;
   serie.applyOptions({borderVisible: cfg.ind.hv});
   serie.setData(velas.map(vela));
+  preencherFuturo();
+}
+// ---------- horários futuros (área à direita do último candle) ----------
+// uma série invisível com pontos vazios nos próximos 500 candles: assim o eixo de tempo e a mira
+// mostram data e hora também onde o gráfico ainda não chegou (como na TradingView)
+let sFuturo = null, futuroDe = "";
+function novaSerieFutura(ch){
+  const s = ch.addLineSeries({color: "rgba(0,0,0,0)", lineWidth: 1, priceScaleId: "futuro", lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false});
+  ch.priceScale("futuro").applyOptions({visible: false});
+  return s;
+}
+function pontosFuturos(){
+  const pts = []; let t = velas[velas.length - 1].time * 1000;
+  for (let k = 0; k < 500; k++) { t = proximoFechamento(t); pts.push({time: Math.floor(t / 1000)}); }
+  return pts;
+}
+function preencherFuturo(){
+  if (!velas.length) return;
+  const chave = cfg.tf + ":" + velas[velas.length - 1].time;
+  if (chave === futuroDe) return;
+  futuroDe = chave;
+  const pts = pontosFuturos();
+  if (sFuturo) sFuturo.setData(pts);
+  for (const p of Object.values(paineis)) { if (!p.futuro) p.futuro = novaSerieFutura(p.chart); p.futuro.setData(pts); }
 }
 // mostra/oculta indicadores e monta os painéis na ordem
 // painéis dividem no máximo ~45% da altura, para o gráfico principal (e o mapa) não ficar espremido
@@ -1223,6 +1249,7 @@ function aplicarIndicadores(){
   ordem.forEach((id, i) => paineis[id].chart.timeScale().applyOptions({visible: i === ordem.length - 1}));
   ajustarPaineis();
   preencherSeries();
+  preencherFuturo();
   const r = faixaAntes || chart.timeScale().getVisibleLogicalRange();
   if (r) { espelhando = true; for (const c of todos()) c.timeScale().setVisibleLogicalRange(r); espelhando = false; }
   assinatura = "";
@@ -1644,6 +1671,7 @@ function agendarTick(comIndicadores){
   requestAnimationFrame(() => {
     tickPendente = false;
     const v = velas[velas.length - 1];
+    preencherFuturo();   // candle novo: empurra os horários futuros
     if (recalcInd) {
       recalcInd = false;
       ind = calcIndicadores(velas, oiPorT);
