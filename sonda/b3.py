@@ -1,22 +1,27 @@
-import urllib.request, urllib.error, json, re
+import urllib.request, urllib.error, io, zipfile, re
 UA = {"User-Agent": "Mozilla/5.0 (b3_opcoes.py; uso pessoal)"}
 def nota(s): print("::notice::" + s.replace("\n", " ⏎ ")[:1800])
 def ver(url):
     try:
-        r = urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=60); return r.status, r.read()
+        r = urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=180); return r.status, r.read()
     except urllib.error.HTTPError as e: return e.code, e.read()
     except Exception as e: return "ERR", str(e).encode()
-B = "https://arquivos.b3.com.br/api/download"
-st, b = ver(f"{B}/requestname?fileName=DerivativesOpenPositionFile&date=2026-11-25"); nota(f"json completo: {b[:600]!r}")
-for data in ("2026-11-25", "2026-11-24", "2026-11-21", "2026-11-20", "2026-11-19", "2026-11-13"):
-    st, b = ver(f"{B}/requestname?fileName=InstrumentsConsolidatedFile&date={data}"); nota(f"Instr {data}: {st}")
-for nome in ("InstrumentsEquitiesFile", "EquitiesInstrumentsFile", "InstrumentsConsolidatedFileV2", "DerivativesInstrumentsFile", "OptionsInstrumentsFile", "InstrumentsFile", "EquityOptionsFile", "ListedOptionsFile"):
-    st, b = ver(f"{B}/requestname?fileName={nome}&date=2026-11-25"); nota(f"{nome}: {st} {b[:80]!r}")
-st, h = ver("https://arquivos.b3.com.br/")
-srcs = re.findall(rb'src="([^"]+\.js)"', h); nota(f"scripts {srcs}")
-for s in srcs:
-    u = s.decode(); u = u if u.startswith("http") else "https://arquivos.b3.com.br/" + u.lstrip("/")
-    st, j = ver(u)
-    for m in sorted(set(re.findall(rb'["\'`](/?api/[A-Za-z0-9_/{}$.?=&-]+)', j)))[:40]: nota(f"API {u.rsplit('/',1)[-1]}: {m.decode()}")
-for u in ("https://arquivos.b3.com.br/api/channels", "https://arquivos.b3.com.br/api/channels/34dcaaeb-0306-4f45-a83e-4f66a23b42fa/subchannels/9c1e4a35-e4d0-4cc3-9bf0-a5a2b2cdb7c0/publications?&lang=pt"):
-    st, b = ver(u); nota(f"{u[-60:]}: {st} {b[:500]!r}")
+for nome in ("IN261125.zip", "IN261124.zip"):
+    st, b = ver(f"https://www.b3.com.br/pesquisapregao/download?filelist={nome}")
+    nota(f"{nome}: {st} {len(b)} bytes {b[:20]!r}")
+    if st != 200 or not b.startswith(b"PK"): continue
+    z = zipfile.ZipFile(io.BytesIO(b)); nota(f"zip: {[(i.filename, i.file_size) for i in z.infolist()]}")
+    for inner in z.namelist():
+        data = z.read(inner)
+        if data.startswith(b"PK"):
+            z2 = zipfile.ZipFile(io.BytesIO(data)); nota(f"  interno {inner}: {[(i.filename, i.file_size) for i in z2.infolist()][:8]}")
+            for f in z2.namelist()[:6]:
+                x = z2.read(f)
+                i = x.find(b"BBASS")
+                if i < 0: i = x.find(b"BBAS")
+                nota(f"   {f} {len(x)}: cab {x[:300]!r}")
+                j = x.find(b"<OptnOnEqtsInf")
+                if j > 0:
+                    k = x.rfind(b"<Instrm>", 0, j); nota(f"   OPCAO exemplo: {x[k if k>0 else j-1500:j+900]!r}")
+                    break
+    break
