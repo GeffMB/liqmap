@@ -1,0 +1,8 @@
+name: sonda-b3
+on: { push: { branches: [sondagem-b3] } }
+jobs:
+  s:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 sonda/b3.py
