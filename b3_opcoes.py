@@ -4,7 +4,9 @@ b3_opcoes.py - Mapa de posicoes em aberto de opcoes da B3 (uso pessoal)
 
 Baixa os arquivos publicos e gratuitos da B3 (arquivos.b3.com.br), cruza:
   - DerivativesOpenPositionFile   -> posicoes em aberto por serie (TtlPos)
-  - InstrumentsConsolidatedFile   -> strike, vencimento e tipo (call/put) de cada serie
+  - Cadastro de instrumentos (BVBG.028, pacote IN<aammdd>.zip da "Pesquisa por pregao")
+                                    -> strike, vencimento e tipo (call/put) de cada serie
+    (o CSV InstrumentsConsolidatedFile deixou de ser publicado em nov/2026; ainda e tentado primeiro)
   - TradeInformationConsolidatedFile -> preco de fechamento do ativo
 e gera o arquivo opcoes.json lido pela pagina opcoes.html.
 
@@ -17,6 +19,9 @@ Uso:
 """
 import argparse
 import datetime
+import io
+import zipfile
+import xml.etree.ElementTree as ET
 import json
 import os
 import sys
@@ -62,6 +67,59 @@ def baixar(nome, data):
     if not conteudo:
         return None
     return conteudo.decode("latin-1")
+
+
+def series_do_csv(texto, alvo):
+    series = {}
+    for r in ler_csv(texto):
+        if r.get("SctyCtgyNm") == "OPTION ON EQUITIES" and r.get("Asst") in alvo:
+            series[r["TckrSymb"]] = {
+                "ativo": r["Asst"],
+                "tipo": "call" if r.get("OptnTp", "").lower().startswith("c") else "put",
+                "k": round(num(r.get("ExrcPric")), 2),
+                "venc": r.get("XprtnDt", ""),
+            }
+    return series
+
+
+def series_do_bvbg028(data, alvo):
+    """Le o cadastro de instrumentos em XML (BVBG.028) do pacote IN<aammdd>.zip da B3 e devolve as series de opcoes
+    sobre as acoes pedidas. O XML tem ~400 MB, entao e lido em fluxo, sem carregar tudo na memoria."""
+    d = datetime.date.fromisoformat(data)
+    bruto = _abrir(f"https://www.b3.com.br/pesquisapregao/download?filelist=IN{d:%y%m%d}.zip")
+    if not bruto or not bruto.startswith(b"PK"):
+        return None
+    externo = zipfile.ZipFile(io.BytesIO(bruto))
+    acoes, opcoes = {}, []          # id do instrumento -> ticker da acao; opcoes com o id do ativo-objeto
+    for nome_int in externo.namelist():
+        conteudo = externo.read(nome_int)
+        pacotes = [zipfile.ZipFile(io.BytesIO(conteudo))] if conteudo.startswith(b"PK") else []
+        for z in pacotes:
+            for nome_xml in z.namelist():
+                if not nome_xml.lower().endswith(".xml"):
+                    continue
+                with z.open(nome_xml) as f:
+                    for _, el in ET.iterparse(f, events=("end",)):
+                        if not el.tag.endswith("}Instrm"):
+                            continue
+                        idi = el.findtext(".//{*}FinInstrmId/{*}OthrId/{*}Id")
+                        eq = el.find(".//{*}EqtyInf")
+                        op = el.find(".//{*}OptnOnEqtsInf")
+                        if eq is not None:
+                            tk = eq.findtext("{*}TckrSymb")
+                            if tk in alvo and idi:
+                                acoes[idi] = tk
+                        elif op is not None:
+                            opcoes.append((op.findtext("{*}TckrSymb"), op.findtext(".//{*}UndrlygInstrmId/{*}OthrId/{*}Id"),
+                                           op.findtext("{*}OptnTp") or "", op.findtext("{*}ExrcPric"), op.findtext("{*}XprtnDt") or ""))
+                        el.clear()
+    series = {}
+    for tk, und, tp, k, venc in opcoes:
+        ativo = acoes.get(und)
+        if ativo and tk and tk not in series:
+            series[tk] = {"ativo": ativo, "tipo": "call" if tp.upper().startswith("C") else "put",
+                          "k": round(num(k), 2), "venc": venc}
+    return series
 
 
 def ler_csv(texto):
@@ -122,22 +180,20 @@ def processar(data, ativos):
     t_oi = baixar("DerivativesOpenPositionFile", data)
     if not t_oi:
         return None
-    t_inst = baixar("InstrumentsConsolidatedFile", data)
     t_neg = baixar("TradeInformationConsolidatedFile", data)
-    if not t_inst or not t_neg:
+    if not t_neg:
         return None
 
     alvo = set(ativos)
-    # cadastro das series de opcoes dos ativos pedidos
-    series = {}
-    for r in ler_csv(t_inst):
-        if r.get("SctyCtgyNm") == "OPTION ON EQUITIES" and r.get("Asst") in alvo:
-            series[r["TckrSymb"]] = {
-                "ativo": r["Asst"],
-                "tipo": "call" if r.get("OptnTp", "").lower().startswith("c") else "put",
-                "k": round(num(r.get("ExrcPric")), 2),
-                "venc": r.get("XprtnDt", ""),
-            }
+    # cadastro das series de opcoes dos ativos pedidos: CSV antigo, se ainda existir; senao o XML BVBG.028
+    t_inst = baixar("InstrumentsConsolidatedFile", data)
+    series = series_do_csv(t_inst, alvo) if t_inst else {}
+    if not series:
+        print("  cadastro em CSV indisponivel; lendo o BVBG.028 (XML)...")
+        series = series_do_bvbg028(data, alvo)
+        if series is None:
+            return None
+    print(f"  {len(series)} series de opcoes encontradas")
 
     # precos de fechamento
     precos = {}

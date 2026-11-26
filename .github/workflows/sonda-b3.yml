@@ -5,4 +5,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: python3 sonda/b3.py
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: |
+          /usr/bin/time -v python b3_opcoes.py --ativos BBAS3 AZEV3 --saida /tmp/o.json 2>&1 | tee /tmp/log.txt
+          python3 -c "
+          import json;d=json.load(open('/tmp/o.json'))
+          print('::notice::data', d['data'])
+          for a,v in d['ativos'].items(): print('::notice::',a,v['preco'],len(v['vencimentos']),[ (x['venc'],len(x['strikes'])) for x in v['vencimentos']][:6])
+          "
+          grep -E "Maximum resident|Elapsed|series|preco" /tmp/log.txt | sed 's/^/::notice::/'
