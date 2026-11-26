@@ -251,6 +251,7 @@ button,select,input{font:inherit;color:inherit}
   <label>Alavancagem (×) <input id="alav" type="number" min="1" max="125" step="1" value="10"></label>
   <label>Baleia: negócio mínimo (US$, 0 = automático) <input id="baleiaMin" type="number" min="0" step="50000" value="0" style="width:110px"></label>
   <label>IFR / RSI (períodos) <input id="rsiPer" type="number" min="2" max="100" step="1" value="14"></label>
+  <label>MACD (rápida, lenta, sinal) <input id="macdPer" type="text" value="12, 26, 9" style="width:110px"></label>
   <label>Recalcular mapa a cada <select id="auto"><option value="0">desligado</option><option value="5">5 min</option><option value="15" selected>15 min</option><option value="60">60 min</option></select></label>
   <label style="margin-top:10px">Pesos de alavancagem</label>
   <div class="pesos" id="pesos"></div>
@@ -353,7 +354,8 @@ const INDICADORES = [
   {id: "mm",    nome: "Médias móveis (MM)",     desc: "períodos e tipo em Ajustes",         padrao: false},
   {id: "agr",   nome: "Agressão de mercado",    desc: "volume de compra × venda agressiva por candle", padrao: false},
   {id: "mvrv",  nome: "MVRV (on-chain)",        desc: "valor de mercado ÷ valor realizado · diário (CoinMetrics)", padrao: false},
-  {id: "rsi",   nome: "IFR / RSI",              desc: "força relativa: 70 sobrecompra, 30 sobrevenda", padrao: false}
+  {id: "rsi",   nome: "IFR / RSI",              desc: "força relativa: 70 sobrecompra, 30 sobrevenda", padrao: false},
+  {id: "macd",  nome: "MACD",                   desc: "cruzamento de médias: força e virada de tendência", padrao: false}
 ];
 
 // ---------- preferências (só neste navegador) ----------
@@ -365,7 +367,7 @@ if (cfgSalva.mmTipo && cfgSalva.mmsPer === undefined) {
   if (cfgSalva.mmTipo === "s") { cfgSalva.mmsPer = cfgSalva.mmPer; cfgSalva.mmPer = "9, 21"; } else cfgSalva.mmsPer = "";
   delete cfgSalva.mmTipo;
 }
-const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, mapaNivel: "forte", baleiaMin: 0, conta: 1000, riscoPct: 1, alav: 10, lado: false, mmPer: "9, 21", mmsPer: "200", rsiPer: 14, pesos: PESOS_PADRAO.slice(), heat: true}, cfgSalva);
+const cfg = Object.assign({simbolo: "BTCUSDT", tf: "15m", barras: 1000, filtro: 1, auto: 15, mediaVol: 610, mapaNivel: "forte", baleiaMin: 0, conta: 1000, riscoPct: 1, alav: 10, lado: false, mmPer: "9, 21", mmsPer: "200", rsiPer: 14, macdPer: "12, 26, 9", pesos: PESOS_PADRAO.slice(), heat: true}, cfgSalva);
 if (!SIMBOLOS.includes(cfg.simbolo)) cfg.simbolo = "BTCUSDT";
 if (cfg.derivMin === undefined) cfg.derivMin = matchMedia("(max-width: 760px)").matches;   // celular: painel de derivativos começa recolhido
 if (!TFS.includes(cfg.tf)) cfg.tf = "15m";
@@ -537,8 +539,9 @@ function calcIndicadores(v, oiPorT){
   const mms = cfg.ind.mm ? [...periodosMM(cfg.mmPer).map(n => ({n, tipo: "e"})), ...periodosMM(cfg.mmsPer).map(n => ({n, tipo: "s"}))]
     .slice(0, 6).map((m, i) => Object.assign(m, {cor: CORES_MM[i], dados: calcMM(v, m.n, m.tipo)})) : [];
   const rsi = cfg.ind.rsi ? calcRSI(v, cfg.rsiPer) : [];
+  const macd = cfg.ind.macd ? calcMACD(v, ...periodosMACD(cfg.macdPer)) : {h: [], m: [], s: []};
   const agr = v.map(k => ({time: k.time, value: k.b})), agrV = v.map(k => ({time: k.time, value: -(k.q - k.b)}));
-  return {vol, delta, cvd, vwap, oi, z, nivel, mms, rsi, agr, agrV, mvrv: serieMVRV(v)};
+  return {vol, delta, cvd, vwap, oi, z, nivel, mms, rsi, agr, agrV, mvrv: serieMVRV(v), macd: macd.h, macdV: macd.m, macdS: macd.s};
 }
 // ---------- POCs nuas diárias e semanais ----------
 // perfil de volume de cada dia/semana (UTC) com candles de 30 min dos últimos ~60 dias;
@@ -1055,6 +1058,33 @@ function calcMM(v, n, tipo){
   }
   return out;
 }
+// MACD (como na TradingView): linha = MME rápida − MME lenta; sinal = MME da linha; histograma = linha − sinal
+function periodosMACD(txt){
+  const n = String(txt).split(/[^0-9]+/).map(Number).filter(x => x >= 1 && x <= 500);
+  return n.length >= 3 ? n.slice(0, 3) : [12, 26, 9];
+}
+function calcMACD(v, rap, len, sin){
+  const h = [], m = [], s = [];
+  const kR = 2 / (rap + 1), kL = 2 / (len + 1), kS = 2 / (sin + 1);
+  let eR = null, eL = null, eS = null, somaR = 0, somaL = 0, somaS = 0, nS = 0;
+  for (let i = 0; i < v.length; i++) {
+    const c = v[i].close;
+    // as médias começam pela média simples dos primeiros períodos (igual à TradingView)
+    if (i < rap) { somaR += c; if (i === rap - 1) eR = somaR / rap; } else eR = c * kR + eR * (1 - kR);
+    if (i < len) { somaL += c; if (i === len - 1) eL = somaL / len; } else eL = c * kL + eL * (1 - kL);
+    if (eL == null || eR == null) continue;
+    const linha = eR - eL;
+    if (nS < sin) { somaS += linha; nS++; if (nS === sin) eS = somaS / sin; } else eS = linha * kS + eS * (1 - kS);
+    m.push({time: v[i].time, value: linha});
+    if (eS == null) continue;
+    const hist = linha - eS, ant = h.length ? h[h.length - 1].value : 0;
+    // verde/vermelho forte quando o histograma cresce em força, claro quando perde força
+    const cor = hist >= 0 ? (hist >= ant ? "#26a69a" : "#b2dfdb") : (hist <= ant ? "#ef5350" : "#ffcdd2");
+    h.push({time: v[i].time, value: hist, color: cor});
+    s.push({time: v[i].time, value: eS});
+  }
+  return {h, m, s};
+}
 function calcRSI(v, n){   // IFR de Wilder (o mesmo da TradingView)
   const out = []; let ganho = 0, perda = 0;
   for (let i = 1; i < v.length; i++) {
@@ -1127,7 +1157,7 @@ function criarPainel(id){
   op.layout.attributionLogo = false;
   const ch = LWC.createChart(c, op);
   const fmt = {type: "custom", formatter: usd, minMove: 1};
-  let s, s2 = null;
+  let s, s2 = null, s3 = null;
   if (id === "agr") {
     s = ch.addHistogramSeries({color: "rgba(8,153,129,0.75)", priceFormat: {type: "custom", formatter: x => usd(Math.abs(x)), minMove: 1}, priceLineVisible: false, lastValueVisible: false});
     s2 = ch.addHistogramSeries({color: "rgba(242,54,69,0.75)", priceFormat: {type: "custom", formatter: x => usd(Math.abs(x)), minMove: 1}, priceLineVisible: false, lastValueVisible: false});
@@ -1136,6 +1166,12 @@ function criarPainel(id){
       priceFormat: {type: "custom", formatter: x => x.toFixed(2).replace(".", ","), minMove: 0.01}});
     for (const [nv, cor] of [[1, "#1565c0"], [3.5, "#e65100"]])
       s.createPriceLine({price: nv, color: cor, lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, axisLabelColor: cor, axisLabelTextColor: "#ffffff"});
+  } else if (id === "macd") {
+    const fm = {type: "custom", formatter: x => (Math.abs(x) >= 100 ? x.toFixed(1) : Math.abs(x) >= 1 ? x.toFixed(2) : x.toFixed(4)).replace(".", ","), minMove: 0.0001};
+    s = ch.addHistogramSeries({priceFormat: fm, priceLineVisible: false, lastValueVisible: false});
+    s2 = ch.addLineSeries({color: "#2962ff", lineWidth: 1.5, priceFormat: fm, priceLineVisible: false, crosshairMarkerVisible: false});
+    s3 = ch.addLineSeries({color: "#ff6d00", lineWidth: 1.5, priceFormat: fm, priceLineVisible: false, crosshairMarkerVisible: false});
+    s.createPriceLine({price: 0, color: "#b2b5be", lineWidth: 1, lineStyle: LWC.LineStyle.Dotted, axisLabelVisible: false});
   } else if (id === "rsi") {
     s = ch.addLineSeries({color: "#7e57c2", lineWidth: 2, priceLineVisible: false, crosshairMarkerVisible: true,
       priceFormat: {type: "custom", formatter: x => x.toFixed(1).replace(".", ","), minMove: 0.1},
@@ -1149,7 +1185,7 @@ function criarPainel(id){
   if (id === "cvd") s.createPriceLine({price: 0, color: "#b2b5be", lineWidth: 1, lineStyle: LWC.LineStyle.Dotted, axisLabelVisible: false});
   ch.subscribeCrosshairMove(p => { atualizarLegenda(p); espelharCursor(ch, p); });
   ch.timeScale().subscribeVisibleLogicalRangeChange(r => espelharFaixa(ch, r));
-  paineis[id] = {div, chart: ch, serie: s, serie2: s2, rot};
+  paineis[id] = {div, chart: ch, serie: s, serie2: s2, serie3: s3, rot};
   futuroDe = "";   // painel novo também recebe os horários futuros
 }
 function removerPainel(id){
@@ -1238,12 +1274,12 @@ function aplicarIndicadores(){
   sVol.applyOptions({visible: cfg.ind.vol});
   if (velas.length) { ind = calcIndicadores(velas, oiPorT); aplicarVelas(); }
   sVwap.applyOptions({visible: cfg.ind.vwap});
-  for (const id of ["delta", "agr", "cvd", "oi", "rsi", "mvrv"]) {
+  for (const id of ["delta", "agr", "cvd", "oi", "rsi", "macd", "mvrv"]) {
     if (cfg.ind[id] && !paineis[id]) criarPainel(id);
     if (!cfg.ind[id] && paineis[id]) removerPainel(id);
   }
   // só o painel mais baixo mostra o eixo de tempo
-  const ordem = ["delta", "agr", "cvd", "oi", "rsi", "mvrv"].filter(id => paineis[id]);
+  const ordem = ["delta", "agr", "cvd", "oi", "rsi", "macd", "mvrv"].filter(id => paineis[id]);
   ordem.forEach(id => $("graf").append(paineis[id].div));
   chart.timeScale().applyOptions({visible: ordem.length === 0});
   ordem.forEach((id, i) => paineis[id].chart.timeScale().applyOptions({visible: i === ordem.length - 1}));
@@ -1274,7 +1310,7 @@ function preencherSeries(){
   preencherMM();
   // todos os painéis recebem um ponto por candle (vazio onde não há dado), senão a sincronia por índice
   // desalinha os gráficos — ex.: Open Interest só tem ~30 dias e puxava o gráfico para candles antigos
-  for (const [id, p] of Object.entries(paineis)) { p.serie.setData(completar(ind[id])); if (p.serie2) p.serie2.setData(completar(ind[id + "V"])); }
+  for (const [id, p] of Object.entries(paineis)) { p.serie.setData(completar(ind[id])); if (p.serie2) p.serie2.setData(completar(ind[id + "V"])); if (p.serie3) p.serie3.setData(completar(ind[id + "S"])); }
 }
 
 // redesenha mapa e perfil de volume quando zoom, rolagem, escala ou tamanho mudam
@@ -1499,6 +1535,13 @@ function atualizarLegenda(param){
       if (!MVRV_ATIVO[cfg.simbolo]) p.rot.replaceChildren(el("span", {class: "v"}, "MVRV  só para BTC e ETH"));
       else if (!pt) p.rot.replaceChildren(el("span", {class: "v"}, "MVRV  " + (c && c.erro ? "fonte indisponível agora (CoinMetrics)" : c && c.carregando ? "carregando…" : "—")));
       else p.rot.replaceChildren(el("span", {class: "v"}, "MVRV (diário)  "), el("b", {style: "color:#00897b"}, pt.value.toFixed(2).replace(".", ",")), el("span", {class: "v"}, "  " + zonaMVRV(pt.value)));
+    } else if (id === "macd") {
+      const f = x => x == null ? "—" : (Math.abs(x) >= 100 ? x.toFixed(1) : Math.abs(x) >= 1 ? x.toFixed(2) : x.toFixed(4)).replace(".", ",");
+      const lm = (ind.macdV || []).find(x => x.time === k.time), ls = (ind.macdS || []).find(x => x.time === k.time);
+      const leitura = pt && lm ? (lm.value >= (ls ? ls.value : 0) ? "  acima do sinal (força compradora)" : "  abaixo do sinal (força vendedora)") : "";
+      p.rot.replaceChildren(el("span", {class: "v"}, "MACD " + periodosMACD(cfg.macdPer).join(" ") + "  "), el("b", {style: "color:#2962ff"}, f(lm && lm.value)),
+        el("span", {class: "v"}, "  sinal "), el("b", {style: "color:#ff6d00"}, f(ls && ls.value)),
+        el("span", {class: "v"}, "  hist. "), el("b", {class: pt && pt.value >= 0 ? "up" : "down"}, f(pt && pt.value)), el("span", {class: "v"}, leitura));
     } else if (id === "rsi") {
       const z = pt ? (pt.value >= 70 ? "  sobrecomprado" : pt.value <= 30 ? "  sobrevendido" : "") : "";
       p.rot.replaceChildren(el("span", {class: "v"}, nomes[id] + "  "), el("b", {style: "color:#7e57c2"}, pt ? pt.value.toFixed(1).replace(".", ",") : "—"), el("span", {class: "v"}, z));
@@ -1682,6 +1725,7 @@ function agendarTick(comIndicadores){
       for (const [id, p] of Object.entries(paineis)) {
         const a = ind[id]; if (a && a.length && a[a.length - 1].time === v.time) p.serie.update(ultimo(a));
         const b2 = ind[id + "V"]; if (p.serie2 && b2 && b2.length && b2[b2.length - 1].time === v.time) p.serie2.update(ultimo(b2));
+        const b3 = ind[id + "S"]; if (p.serie3 && b3 && b3.length && b3[b3.length - 1].time === v.time) p.serie3.update(ultimo(b3));
       }
     }
     serie.update(vela(v, velas.length - 1));
@@ -1827,7 +1871,7 @@ const pesosBox = $("pesos");
 LEVS.forEach((L, i) => pesosBox.append(el("label", {}, L + "×", el("input", {type: "number", min: "0", step: "1", id: "w" + i}))));
 $("bAjustes").addEventListener("click", e => {
   e.stopPropagation();
-  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto; $("mediaVol").value = cfg.mediaVol; $("mapaNivel").value = cfg.mapaNivel; $("mmPer").value = cfg.mmPer; $("mmsPer").value = cfg.mmsPer; $("rsiPer").value = cfg.rsiPer; $("baleiaMin").value = cfg.baleiaMin; $("conta").value = cfg.conta; $("riscoPct").value = cfg.riscoPct; $("alav").value = cfg.alav;
+  $("barras").value = cfg.barras; $("filtro").value = cfg.filtro; $("auto").value = cfg.auto; $("mediaVol").value = cfg.mediaVol; $("mapaNivel").value = cfg.mapaNivel; $("mmPer").value = cfg.mmPer; $("mmsPer").value = cfg.mmsPer; $("rsiPer").value = cfg.rsiPer; $("macdPer").value = cfg.macdPer; $("baleiaMin").value = cfg.baleiaMin; $("conta").value = cfg.conta; $("riscoPct").value = cfg.riscoPct; $("alav").value = cfg.alav;
   cfg.pesos.forEach((v, i) => $("w" + i).value = v);
   abrirPop("pop", "bAjustes");
 });
@@ -1842,6 +1886,7 @@ $("aplicar").addEventListener("click", () => {
           baleiaMin: Math.max(0, +$("baleiaMin").value || 0),
           conta: Math.max(1, +$("conta").value || 1000), riscoPct: Math.min(100, Math.max(0.1, +$("riscoPct").value || 1)), alav: Math.min(125, Math.max(1, Math.round(+$("alav").value || 10))),
           rsiPer: Math.min(100, Math.max(2, Math.round(+$("rsiPer").value || 14))),
+          macdPer: periodosMACD($("macdPer").value).join(", "),
           pesos: LEVS.map((_, i) => Math.max(0, +$("w" + i).value || 0))});
 });
 
