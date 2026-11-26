@@ -121,10 +121,17 @@ async function calcular(s){
     else { const v = +pts[pts.length - 1].CapMVRVCur; add({nome, valor: num(v), detalhe: "dado de " + new Date(pts[pts.length - 1].time).toLocaleDateString("pt-BR"), regra: "✅ ≤ 1,00 · ⚠️ ≤ 1,30", st: v <= 1 ? 2 : v <= 1.3 ? 1 : 0, porque}); } }
 
   // 2. Média de 200 semanas
-  { const nome = "Preço perto da média de 200 semanas", porque = "A média de ~4 anos (um ciclo inteiro) foi o piso de praticamente todos os fundos do BTC.";
+  { const nome = "Preço perto da média de 200 semanas", porque = s === "BTCUSDT"
+      ? "A média de ~4 anos (um ciclo inteiro) foi o piso de praticamente todos os fundos do BTC."
+      : "No ETH ela é uma referência mais fraca: foi rompida para baixo nos fundos de 2018 e 2022. Vale olhar junto com a do BTC (ao lado), que costuma puxar o mercado.";
     if (!W || W.length < 200 || !preco) falta(nome, porque, erro(kw) ? kw : null);
     else { const c = W.map(x => x.c), m = c.slice(-200).reduce((a, b) => a + b) / 200, d = (preco / m - 1) * 100;
-      add({nome, valor: pct(d) + " da média", detalhe: "média 200 sem. " + pr(m) + " · preço " + pr(preco), regra: "✅ até +5% · ⚠️ até +20%", st: d <= 5 ? 2 : d <= 20 ? 1 : 0, porque}); } }
+      let extra = "";
+      if (s !== "BTCUSDT") {   // mostra o BTC ao lado
+        try { const b = velasDe(await json("https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=1w&limit=200")).map(x => x.c);
+          if (b.length >= 200) extra = " · BTC: " + pct((b[b.length - 1] / (b.reduce((a, x) => a + x) / 200) - 1) * 100) + " da média dele"; } catch (e) {}
+      }
+      add({nome, valor: pct(d) + " da média", detalhe: "média 200 sem. " + pr(m) + " · preço " + pr(preco) + extra, regra: "✅ até +5% · ⚠️ até +20%", st: d <= 5 ? 2 : d <= 20 ? 1 : 0, porque}); } }
 
   // 3. RSI
   { const nome = "IFR (RSI) sobrevendido", porque = "Vendas esticadas demais: o diário abaixo de 30 ou o semanal abaixo de 35 marcam exaustão vendedora.";
@@ -177,11 +184,14 @@ async function calcular(s){
       add({nome, valor: pct(d, 2) + " em 7 dias", detalhe: "oferta total " + usd(b).replace("+", "") , regra: "✅ acima de +0,5% · ⚠️ acima de 0%", st: d > 0.5 ? 2 : d > 0 ? 1 : 0, porque}); } }
 
   // 10. Corretoras
-  { const nome = "Moedas saindo das corretoras", porque = "Saída líquida das corretoras = gente tirando para guardar (acumulação), menos oferta disponível para venda.";
-    const cx = !erro(flx) && flx.cex ? flx.cex.filter(c => c.d7 != null) : [];
+  { const nome = "Moedas saindo das corretoras", porque = "Saída líquida de moedas (BTC, ETH…) das corretoras = gente tirando para guardar (acumulação), menos oferta disponível para venda. Stablecoins ficam de fora: dólar digital entrando é dinheiro para comprar, sinal positivo.";
+    // só a parte de moedas (d7_mo); arquivos antigos sem essa divisão caem no total
+    const cx = !erro(flx) && flx.cex ? flx.cex.filter(c => (c.d7_mo ?? c.d7) != null) : [];
     if (!cx.length) falta(nome, porque, erro(flx) ? flx : null);
-    else { const s7 = cx.reduce((a, c) => a + c.d7, 0), s1 = cx.reduce((a, c) => a + (c.d1 || 0), 0);
-      add({nome, valor: usd(s7) + " em 7 dias", detalhe: cx.length + " maiores corretoras, todas as moedas · 24h: " + usd(s1), regra: "✅ saída em 7 dias · ⚠️ saída só nas últimas 24h", st: s7 < 0 ? 2 : s1 < 0 ? 1 : 0, porque}); } }
+    else { const s7 = cx.reduce((a, c) => a + (c.d7_mo ?? c.d7), 0), s1 = cx.reduce((a, c) => a + (c.d1_mo ?? c.d1 ?? 0), 0);
+      const st7 = cx.reduce((a, c) => a + (c.d7_st || 0), 0), temDiv = cx.some(c => c.d7_mo != null);
+      add({nome, valor: usd(s7) + " em 7 dias", detalhe: cx.length + " maiores corretoras, " + (temDiv ? "só moedas · stablecoins à parte: " + usd(st7) : "todas as moedas") + " · 24h: " + usd(s1),
+           regra: "✅ saída de moedas em 7 dias · ⚠️ saída só nas últimas 24h", st: s7 < 0 ? 2 : s1 < 0 ? 1 : 0, porque}); } }
 
   return {out, preco};
 }
