@@ -114,10 +114,17 @@ def candles(simb, desde_ms):
             for k in req("https://data-api.binance.vision/api/v3/klines?" + q)]
 
 
+TG = None   # Telegram do usuário (bot próprio), lido dos ajustes sincronizados
+
+
 def ntfy(topico, titulo, txt):
-    q = urllib.parse.urlencode({"title": titulo, "priority": "high", "tags": "bell,chart_with_upwards_trend",
-                                "click": "https://geffmb.github.io/liqmap/"})
-    req(f"https://ntfy.sh/{urllib.parse.quote(topico)}?{q}", "POST", txt.encode())
+    if topico:
+        q = urllib.parse.urlencode({"title": titulo, "priority": "high", "tags": "bell,chart_with_upwards_trend",
+                                    "click": "https://geffmb.github.io/liqmap/"})
+        req(f"https://ntfy.sh/{urllib.parse.quote(topico)}?{q}", "POST", txt.encode())
+    if TG:
+        req(f"https://api.telegram.org/bot{TG['token']}/sendMessage", "POST",
+            {"chat_id": TG["chat"], "text": "🔔 " + titulo + "\n" + txt, "disable_web_page_preview": True})
 
 
 def hl(corpo):
@@ -187,7 +194,7 @@ def carteiras(g, dados, topico, agora):
             if t:
                 msg = f"🐋 {quem} {t}"
                 print("CARTEIRA:", msg)
-                if topico:
+                if topico or TG:
                     try:
                         ntfy(topico, "LiqMap — carteira rastreada", msg)
                     except Exception as e:
@@ -299,6 +306,9 @@ def main():
     except Exception:
         cfg = {}
     topico = cfg.get("ntfy") or ""
+    global TG
+    t = cfg.get("telegram") or {}
+    TG = t if t.get("token") and t.get("chat") else None
     agora = time.time()
     # olha desde a última execução DESTE vigia (as do GitHub atrasam horas; o "ultimo" do Cloudflare não serve aqui)
     ultimo = (conteudo(g, ARQ_GH) or {}).get("ultimo") or (agora - 600)
@@ -353,7 +363,7 @@ def main():
 
     for a in avisos:
         print("ALERTA:", a)
-        if topico:
+        if topico or TG:
             try:
                 ntfy(topico, "LiqMap — alerta 24h", a)
             except Exception as e:

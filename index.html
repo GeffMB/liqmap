@@ -283,6 +283,24 @@ button,select,input{font:inherit;color:inherit}
       <button class="sec" id="ntfyDesligar">Desligar alertas no celular</button>
       <div id="ntfyStatus" class="v" style="margin-top:4px"></div>
       <div id="vigiaStatus" class="v" style="margin-top:4px"></div>
+      <div id="tgBox" style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
+        <b>Telegram</b> <span class="v">(mais confiável no iPhone)</span>
+        <div id="tgOff">
+          <ol style="margin:6px 0;padding-left:18px">
+            <li>No Telegram, crie um bot com o <b>@BotFather</b> (<code>/newbot</code>) e copie o token.</li>
+            <li>Abra o seu bot e mande qualquer mensagem para ele (ex.: “oi”).</li>
+            <li>Cole o token aqui e clique em Conectar.</li>
+          </ol>
+          <input id="tgToken" type="password" autocomplete="off" placeholder="token do bot" style="width:100%;margin-bottom:6px">
+          <button class="ok" id="tgConectar">Conectar Telegram</button>
+        </div>
+        <div id="tgOn" style="display:none">
+          <div class="v">Conectado ao bot <b id="tgNome"></b>: os alertas também vão para o Telegram.</div>
+          <button class="ok" id="tgTestar">Enviar teste no Telegram</button>
+          <button class="sec" id="tgDesligar">Desligar Telegram</button>
+        </div>
+        <div id="tgStatus" class="v" style="margin-top:4px"></div>
+      </div>
       <div id="avEvBox" style="margin-top:10px">
         <b>Eventos econômicos (EUA)</b>
         <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="avEvV"> Alto impacto: aviso na véspera, às 20h</label>
@@ -789,9 +807,26 @@ function somAlerta(){
 }
 // envio para o celular pelo ntfy.sh (requisição simples, sem cadastro; o canal é um nome aleatório só seu)
 function enviarCelular(titulo, txt){
-  if (!cfg.ntfy) return Promise.resolve(false);
-  const url = "https://ntfy.sh/" + encodeURIComponent(cfg.ntfy) + "?" + new URLSearchParams({title: titulo, priority: "high", tags: "bell,chart_with_upwards_trend", click: "https://geffmb.github.io/liqmap/"});
-  return fetch(url, {method: "POST", body: txt}).then(r => r.ok).catch(() => false);
+  const envios = [];
+  if (cfg.ntfy) {
+    const url = "https://ntfy.sh/" + encodeURIComponent(cfg.ntfy) + "?" + new URLSearchParams({title: titulo, priority: "high", tags: "bell,chart_with_upwards_trend", click: "https://geffmb.github.io/liqmap/"});
+    envios.push(fetch(url, {method: "POST", body: txt}).then(r => r.ok).catch(() => false));
+  }
+  if (cfg.telegram && cfg.telegram.token && cfg.telegram.chat) envios.push(enviarTelegram(titulo, txt));
+  if (!envios.length) return Promise.resolve(false);
+  return Promise.all(envios).then(r => r.some(Boolean));
+}
+// ---------- Telegram (bot do próprio usuário) ----------
+function enviarTelegram(titulo, txt){
+  const t = cfg.telegram;
+  return fetch("https://api.telegram.org/bot" + t.token + "/sendMessage", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({chat_id: t.chat, text: "🔔 " + titulo + "\n" + txt, disable_web_page_preview: true})}).then(r => r.ok).catch(() => false);
+}
+function mostrarTelegram(msg){
+  const t = cfg.telegram;
+  $("tgOff").style.display = t && t.chat ? "none" : ""; $("tgOn").style.display = t && t.chat ? "" : "none";
+  if (t && t.chat) $("tgNome").textContent = "@" + (t.bot || "bot");
+  if (msg != null) $("tgStatus").textContent = msg;
 }
 let vigiaInfo = null;
 function mostrarNtfy(msg){
@@ -818,6 +853,26 @@ $("ntfyTestar").addEventListener("click", async () => {
 });
 $("ntfyDesligar").addEventListener("click", () => { cfg.ntfy = ""; salvarPrefs(); mostrarNtfy(""); });
 mostrarNtfy();
+$("tgConectar").addEventListener("click", async () => {
+  const token = $("tgToken").value.trim();
+  if (!/^\d+:[\w-]{20,}$/.test(token)) { mostrarTelegram("Token inválido: ele tem o formato 123456789:ABC…"); return; }
+  mostrarTelegram("Conectando…");
+  try {
+    const me = await (await fetch("https://api.telegram.org/bot" + token + "/getMe")).json();
+    if (!me.ok) throw new Error("o Telegram recusou o token");
+    const up = await (await fetch("https://api.telegram.org/bot" + token + "/getUpdates")).json();
+    const msgs = (up.result || []).map(u => u.message || u.edited_message).filter(m => m && m.chat && m.chat.type === "private");
+    if (!msgs.length) { mostrarTelegram("Token ok, mas o bot ainda não recebeu mensagem sua. Abra @" + me.result.username + " no Telegram, mande “oi” e clique em Conectar de novo."); return; }
+    const chat = msgs[msgs.length - 1].chat;
+    cfg.telegram = {token, chat: chat.id, bot: me.result.username};
+    salvarPrefs(); $("tgToken").value = "";
+    const ok = await enviarTelegram("LiqMap conectado", "A partir de agora os alertas das suas linhas chegam aqui. ✅");
+    mostrarTelegram(ok ? "Conectado! Confira a mensagem no Telegram." : "Conectado, mas o teste não foi enviado.");
+  } catch (e) { mostrarTelegram("Não foi possível conectar: " + e.message); }
+});
+$("tgTestar").addEventListener("click", async () => { mostrarTelegram("Enviando…"); const ok = await enviarTelegram("LiqMap — teste", "Se você recebeu isto, os alertas vão chegar no Telegram. 🔔"); mostrarTelegram(ok ? "Enviado! Confira o Telegram." : "Não foi possível enviar."); });
+$("tgDesligar").addEventListener("click", () => { cfg.telegram = null; salvarPrefs(); mostrarTelegram("Telegram desligado."); });
+mostrarTelegram();
 // avisos de eventos econômicos no celular (lidos pelo vigia 24h; opção ausente = ligada)
 if (!cfg.avEv || typeof cfg.avEv !== "object") cfg.avEv = {v: true, a: true, r: true, m: true};
 for (const [id, k] of [["avEvV", "v"], ["avEvA", "a"], ["avEvR", "r"], ["avEvM", "m"]]) {

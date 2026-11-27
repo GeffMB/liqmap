@@ -131,9 +131,17 @@ async function candles(simb, desde) {
   throw new Error(erros.join("; "));
 }
 
+// Telegram do usuário (bot próprio), lido dos ajustes sincronizados; vale para todos os avisos
+let TG = null;
 async function ntfy(topico, titulo, txt, link = "https://geffmb.github.io/liqmap/", tags = "bell,chart_with_upwards_trend") {
-  const q = new URLSearchParams({title: titulo, priority: "high", tags, click: link});
-  await fetch("https://ntfy.sh/" + encodeURIComponent(topico) + "?" + q, {method: "POST", body: txt});
+  const envios = [];
+  if (topico) {
+    const q = new URLSearchParams({title: titulo, priority: "high", tags, click: link});
+    envios.push(fetch("https://ntfy.sh/" + encodeURIComponent(topico) + "?" + q, {method: "POST", body: txt}));
+  }
+  if (TG) envios.push(fetch("https://api.telegram.org/bot" + TG.token + "/sendMessage", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({chat_id: TG.chat, text: "🔔 " + titulo + "\n" + txt, disable_web_page_preview: true})}));
+  await Promise.all(envios);
 }
 
 async function vigiar(env, quando, forcarStatus = false) {
@@ -146,6 +154,7 @@ async function vigiar(env, quando, forcarStatus = false) {
   const dados = pac.dados || {};
   let cfg = {};
   try { cfg = JSON.parse(dados.liqmap2 || "{}"); } catch (e) {}
+  TG = cfg.telegram && cfg.telegram.token && cfg.telegram.chat ? cfg.telegram : null;
   const agora = Date.now() / 1000;
   const disparados = {};
   for (const [k, v] of Object.entries(estado.disparados || {})) if (agora - v < 30 * 86400) disparados[k] = v;
@@ -189,7 +198,7 @@ async function vigiar(env, quando, forcarStatus = false) {
 
   for (const a of avisos) {
     console.log("ALERTA:", a);
-    if (cfg.ntfy) await ntfy(cfg.ntfy, "LiqMap — alerta 24h", a).catch(e => console.log("ntfy", e.message));
+    if (cfg.ntfy || TG) await ntfy(cfg.ntfy, "LiqMap — alerta 24h", a).catch(e => console.log("ntfy", e.message));
   }
 
   // ---------- carteiras rastreadas (Hyperliquid) ----------
@@ -218,13 +227,13 @@ async function vigiar(env, quando, forcarStatus = false) {
   }
   for (const a of avisosCart) {
     console.log("CARTEIRA:", a);
-    if (cfg.ntfy) await ntfy(cfg.ntfy, "LiqMap — carteira rastreada", a, "https://geffmb.github.io/liqmap/carteiras.html", "whale").catch(e => console.log("ntfy", e.message));
+    if (cfg.ntfy || TG) await ntfy(cfg.ntfy, "LiqMap — carteira rastreada", a, "https://geffmb.github.io/liqmap/carteiras.html", "whale").catch(e => console.log("ntfy", e.message));
   }
   const mudouCart = JSON.stringify(novosSnaps) !== JSON.stringify(snaps);
 
   // ---------- eventos econômicos (lê a agenda a cada 5 min) ----------
   let novoEv = null, avisosEv = [];
-  if (cfg.ntfy && (Math.floor(agora / 60) % 5 === 0 || forcarStatus)) {
+  if ((cfg.ntfy || TG) && (Math.floor(agora / 60) % 5 === 0 || forcarStatus)) {
     try {
       const evs = ((await (await fetch(URL_EVENTOS, {cf: {cacheTtl: 120}})).json()).eventos) || [];
       const ant = (await conteudo(g, ARQ_EV)) || {};
