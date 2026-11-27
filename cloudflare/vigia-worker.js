@@ -253,7 +253,7 @@ async function vigiar(env, quando, forcarStatus = false) {
   const arquivos = {};
   const minuto = Math.floor(agora / 60);
   if (mudouSync || forcarStatus || minuto % 10 === 0 || !estado.ultimo || agora - estado.ultimo > 900 || estado.ativos !== ativos || JSON.stringify(estado.errosPreco || {}) !== JSON.stringify(errosPreco))
-    arquivos[ARQ_VIGIA] = {content: JSON.stringify({ultimo: agora, disparados, ativos, fonte: "cloudflare", versao: 5, carteiras: Object.keys(novosSnaps).length, fontesPreco, errosPreco})};
+    arquivos[ARQ_VIGIA] = {content: JSON.stringify({ultimo: agora, disparados, ativos, fonte: "cloudflare", versao: 6, telegram: !!TG, carteiras: Object.keys(novosSnaps).length, fontesPreco, errosPreco})};
   if (mudouCart || (rastreadas.length && minuto % 10 === 0)) arquivos[ARQ_CART] = {content: JSON.stringify({ultimo: agora, fonte: "cloudflare", snaps: novosSnaps})};
   if (novoEv) arquivos[ARQ_EV] = {content: novoEv};
   if (mudouSync) {
@@ -261,7 +261,7 @@ async function vigiar(env, quando, forcarStatus = false) {
     arquivos[ARQ_SYNC] = {content: JSON.stringify(pac)};
   }
   if (Object.keys(arquivos).length) await gh(env, "/gists/" + gid, {method: "PATCH", body: {files: arquivos}});
-  return {ok: true, versao: 5, gist: gid, ativos, disparados: avisos, carteiras: rastreadas.length, avisosCarteiras: avisosCart, avisosEventos: avisosEv, fontesPreco, errosPreco, quando: quando.toISOString()};
+  return {ok: true, versao: 6, telegram: TG ? "conectado (@" + (TG.bot || "bot") + ")" : "desligado", gist: gid, ativos, disparados: avisos, carteiras: rastreadas.length, avisosCarteiras: avisosCart, avisosEventos: avisosEv, fontesPreco, errosPreco, quando: quando.toISOString()};
 }
 
 // ---------- eventos econômicos: mesma lógica do vigia.py (planejar_eventos) ----------
