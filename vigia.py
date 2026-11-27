@@ -4,6 +4,9 @@ Roda no GitHub Actions a cada ~5 minutos. Lê os desenhos com alerta ligado no G
 sincronização do usuário, confere os candles de 1 minuto desde a última verificação e,
 se o preço tocou o nível, manda a notificação para o celular (ntfy) e desliga o alerta.
 
+Também avisa os eventos econômicos dos EUA (eventos.json): véspera às 20h, 30 min antes e o resultado,
+conforme as opções do site (cfg.avEv). Se o vigia do Cloudflare (versão 5+) estiver ativo, ele cuida disso.
+
 Precisa do segredo GIST_TOKEN (token do GitHub só com a permissão "gist").
 Preço: candles do mercado à vista da Binance (data-api.binance.vision), que respondem de
 qualquer país; a diferença para o futuro (basis) costuma ser de poucos centésimos de %.
@@ -15,11 +18,16 @@ import sys
 import time
 import urllib.parse
 import urllib.request
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 ARQ_SYNC = "liqmap-sync.json"
 ARQ_VIGIA = "liqmap-vigia.json"
 ARQ_CART = "liqmap-carteiras-vigia.json"
 ARQ_GH = "liqmap-vigia-github.json"        # até onde ESTE vigia (GitHub) já olhou: o do Cloudflare não mexe nele   # última posição vista de cada carteira rastreada
+ARQ_EV = "liqmap-eventos-avisados.json"    # avisos de eventos econômicos já enviados (compartilhado com o Cloudflare)
+BRT = ZoneInfo("America/Sao_Paulo")
+DIAS_SEM = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"]
 MUDA_PCT, MUDA_USD = 0.10, 25000
 TOKEN = os.environ.get("GIST_TOKEN", "").strip()
 
@@ -188,6 +196,92 @@ def carteiras(g, dados, topico, agora):
     return json.dumps({"ultimo": agora, "fonte": "github", "snaps": novos}, separators=(",", ":"))
 
 
+# ---------- eventos econômicos ----------
+def ev_id(e):
+    return e.get("orig", e.get("titulo", "")) + "|" + datetime.fromtimestamp(e["t"] / 1000, timezone.utc).strftime("%Y-%m-%d")
+
+
+def ev_linha(e, com_hora=True):
+    t = datetime.fromtimestamp(e["t"] / 1000, BRT)
+    extra = []
+    if e.get("previsao"):
+        extra.append("previsão " + e["previsao"])
+    if e.get("anterior"):
+        extra.append("anterior " + e["anterior"])
+    return (t.strftime("%Hh%M") + " " if com_hora else "") + e["titulo"] + (" (" + ", ".join(extra) + ")" if extra else "")
+
+
+def planejar_eventos(evs, av, enviados, agora):
+    """Decide os avisos a mandar agora. av = opções do site (falta = ligado).
+    Devolve [(chaves, titulo, texto)]; as chaves vão para 'enviados' depois do envio."""
+    lig = lambda k: (av or {}).get(k) is not False
+    vespera, antes, result = {}, {}, {}
+    for e in evs:
+        imp, t = e.get("impacto"), e["t"] / 1000
+        if imp not in ("High", "Medium"):
+            continue
+        i = ev_id(e)
+        dia = datetime.fromtimestamp(t, BRT).replace(hour=0, minute=0, second=0, microsecond=0)
+        if imp == "High" and lig("v") and (dia - timedelta(hours=4)).timestamp() <= agora < t - 3600 and "v|" + i not in enviados:
+            vespera.setdefault(dia.strftime("%Y-%m-%d"), []).append(e)
+        if lig("a" if imp == "High" else "m") and t - 1800 <= agora < t + 600 and "a|" + i not in enviados:
+            antes.setdefault(e["t"], []).append(e)
+        if imp == "High" and lig("r") and e.get("atual") and t <= agora < t + 6 * 3600 and "r|" + i not in enviados:
+            result.setdefault(e["t"], []).append(e)
+    saida = []
+    for dia, lista in sorted(vespera.items()):
+        d = datetime.strptime(dia, "%Y-%m-%d")
+        txt = f"Amanhã ({DIAS_SEM[d.weekday()]}, {d.strftime('%d/%m')}), horário de Brasília:\n" + "\n".join("• " + ev_linha(e) for e in lista)
+        txt += "\nRegra: nada de posição nova 15 min antes; entrar só depois da primeira vela de 1h."
+        saida.append((["v|" + ev_id(e) for e in lista], "LiqMap — agenda de amanhã", txt))
+    for t, lista in sorted(antes.items()):
+        mins = round((t / 1000 - agora) / 60)
+        quando = f"Em {mins} min" if mins > 0 else "Saindo agora"
+        hora = datetime.fromtimestamp(t / 1000, BRT).strftime("%Hh%M")
+        txt = f"{quando} ({hora}): " + "; ".join(ev_linha(e, False) for e in lista)
+        if any(e.get("impacto") == "High" for e in lista):
+            txt += "\nSem posição nova até fechar a primeira vela de 1h."
+        saida.append((["a|" + ev_id(e) for e in lista], "LiqMap — " + quando.lower(), txt))
+    for t, lista in sorted(result.items()):
+        txt = "\n".join(f"{e['titulo']}: {e['atual']}" + ev_linha(dict(e, titulo=""), False) for e in lista)
+        saida.append((["r|" + ev_id(e) for e in lista], "LiqMap — resultado", txt))
+    return saida
+
+
+def avisos_eventos(g, cfg, topico, estado, agora):
+    """Manda os avisos de eventos pelo ntfy. Devolve o conteúdo novo de ARQ_EV ou None."""
+    if not topico:
+        return None
+    # o vigia do Cloudflare a partir da versão 5 cuida dos eventos (a cada minuto); este aqui é reserva
+    if estado.get("fonte") == "cloudflare" and (estado.get("versao") or 0) >= 5 and agora - (estado.get("ultimo") or 0) < 15 * 60:
+        print("Eventos: o vigia do Cloudflare está ativo, nada a fazer aqui.")
+        return None
+    try:
+        evs = json.load(open("eventos.json", encoding="utf-8")).get("eventos", [])
+    except Exception:
+        try:
+            evs = req("https://raw.githubusercontent.com/GeffMB/liqmap/main/eventos.json").get("eventos", [])
+        except Exception as e:
+            print("Eventos: não consegui ler eventos.json", e)
+            return None
+    ant = conteudo(g, ARQ_EV) or {}
+    enviados = {k: v for k, v in (ant.get("enviados") or {}).items() if agora - v < 20 * 86400}
+    novos = 0
+    for chaves, titulo, txt in planejar_eventos(evs, cfg.get("avEv"), enviados, agora):
+        print("EVENTO:", titulo, "|", txt.replace("\n", " / "))
+        try:
+            ntfy(topico, titulo, txt)
+        except Exception as e:
+            print("Falha no ntfy:", e)
+            continue
+        for k in chaves:
+            enviados[k] = agora
+        novos += 1
+    if not novos:
+        return None
+    return json.dumps({"ultimo": agora, "fonte": "github", "enviados": enviados}, separators=(",", ":"))
+
+
 def main():
     if not TOKEN:
         print("Sem GIST_TOKEN: configure o segredo no repositório para ligar o vigia 24h.")
@@ -271,6 +365,9 @@ def main():
     novo_cart = carteiras(g, dados, topico, agora)
     if novo_cart:
         arquivos[ARQ_CART] = {"content": novo_cart}
+    novo_ev = avisos_eventos(g, cfg, topico, estado, agora)
+    if novo_ev:
+        arquivos[ARQ_EV] = {"content": novo_ev}
     if mudou_sync:
         pac["dados"] = dados
         pac["atualizado"] = int(agora * 1000)

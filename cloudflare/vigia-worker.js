@@ -6,6 +6,9 @@
 // Também confere as carteiras da Hyperliquid rastreadas no site (página Carteiras, com 🔔 ligado) e
 // avisa quando abrem, aumentam, reduzem, fecham ou viram uma posição.
 //
+// Avisa ainda os eventos econômicos dos EUA (eventos.json do repositório): na véspera às 20h, 30 min antes
+// e o resultado, conforme as opções do site (Ajustes → Alertas no celular). Versão 5.
+//
 // Configuração no painel do Cloudflare (Settings → Variables and Secrets):
 //   GIST_TOKEN  (Secret)  token do GitHub só com a permissão "gist" (o mesmo da sincronização)
 //   GIST_ID     (Text, opcional) id do Gist; sem ele o vigia procura o Gist sozinho a cada execução
@@ -19,6 +22,8 @@ const ARQ_VIGIA = "liqmap-vigia.json";
 const ARQ_CART = "liqmap-carteiras-vigia.json";   // última posição vista de cada carteira rastreada
 const MUDA_PCT = 0.10, MUDA_USD = 25000;          // "aumentou/reduziu": pelo menos 10% e US$ 25 mil
 const JANELA_MAX = 60;  // olha no máximo 60 min para trás (cobre execuções atrasadas ou falhas)
+const ARQ_EV = "liqmap-eventos-avisados.json";    // avisos de eventos já enviados (compartilhado com o vigia do GitHub)
+const URL_EVENTOS = "https://raw.githubusercontent.com/GeffMB/liqmap/main/eventos.json";
 
 export default {
   async scheduled(evento, env, ctx) {
@@ -217,18 +222,79 @@ async function vigiar(env, quando, forcarStatus = false) {
   }
   const mudouCart = JSON.stringify(novosSnaps) !== JSON.stringify(snaps);
 
+  // ---------- eventos econômicos (lê a agenda a cada 5 min) ----------
+  let novoEv = null, avisosEv = [];
+  if (cfg.ntfy && (Math.floor(agora / 60) % 5 === 0 || forcarStatus)) {
+    try {
+      const evs = ((await (await fetch(URL_EVENTOS, {cf: {cacheTtl: 120}})).json()).eventos) || [];
+      const ant = (await conteudo(g, ARQ_EV)) || {};
+      const enviados = {};
+      for (const [k, v] of Object.entries(ant.enviados || {})) if (agora - v < 20 * 86400) enviados[k] = v;
+      for (const [chaves, titulo, txt] of planejarEventos(evs, cfg.avEv, enviados, agora)) {
+        try { await ntfy(cfg.ntfy, titulo, txt, "https://geffmb.github.io/liqmap/", "calendar"); }
+        catch (e) { console.log("ntfy", e.message); continue; }
+        for (const k of chaves) enviados[k] = agora;
+        avisosEv.push(titulo + ": " + txt);
+      }
+      if (avisosEv.length) novoEv = JSON.stringify({ultimo: agora, fonte: "cloudflare", enviados});
+    } catch (e) { console.log("Eventos:", e.message); }
+  }
+
   // status para o site: grava a cada 10 min (ou quando algo mudou) para não encher o histórico do Gist
   const arquivos = {};
   const minuto = Math.floor(agora / 60);
   if (mudouSync || forcarStatus || minuto % 10 === 0 || !estado.ultimo || agora - estado.ultimo > 900 || estado.ativos !== ativos || JSON.stringify(estado.errosPreco || {}) !== JSON.stringify(errosPreco))
-    arquivos[ARQ_VIGIA] = {content: JSON.stringify({ultimo: agora, disparados, ativos, fonte: "cloudflare", versao: 4, carteiras: Object.keys(novosSnaps).length, fontesPreco, errosPreco})};
+    arquivos[ARQ_VIGIA] = {content: JSON.stringify({ultimo: agora, disparados, ativos, fonte: "cloudflare", versao: 5, carteiras: Object.keys(novosSnaps).length, fontesPreco, errosPreco})};
   if (mudouCart || (rastreadas.length && minuto % 10 === 0)) arquivos[ARQ_CART] = {content: JSON.stringify({ultimo: agora, fonte: "cloudflare", snaps: novosSnaps})};
+  if (novoEv) arquivos[ARQ_EV] = {content: novoEv};
   if (mudouSync) {
     pac.dados = dados; pac.atualizado = Date.now();
     arquivos[ARQ_SYNC] = {content: JSON.stringify(pac)};
   }
   if (Object.keys(arquivos).length) await gh(env, "/gists/" + gid, {method: "PATCH", body: {files: arquivos}});
-  return {ok: true, gist: gid, ativos, disparados: avisos, carteiras: rastreadas.length, avisosCarteiras: avisosCart, fontesPreco, errosPreco, quando: quando.toISOString()};
+  return {ok: true, versao: 5, gist: gid, ativos, disparados: avisos, carteiras: rastreadas.length, avisosCarteiras: avisosCart, avisosEventos: avisosEv, fontesPreco, errosPreco, quando: quando.toISOString()};
+}
+
+// ---------- eventos econômicos: mesma lógica do vigia.py (planejar_eventos) ----------
+const DIAS_SEM = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const partesBRT = s => Object.fromEntries(new Intl.DateTimeFormat("en-CA", {timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23", weekday: "short"})
+  .formatToParts(new Date(s * 1000)).map(p => [p.type, p.value]));
+const horaBRT = s => { const p = partesBRT(s); return p.hour + "h" + p.minute; };
+const evId = e => (e.orig || e.titulo || "") + "|" + new Date(e.t).toISOString().slice(0, 10);
+function evLinha(e, comHora = true) {
+  const extra = [e.previsao && "previsão " + e.previsao, e.anterior && "anterior " + e.anterior].filter(Boolean);
+  return (comHora ? horaBRT(e.t / 1000) + " " : "") + (e.titulo || "") + (extra.length ? " (" + extra.join(", ") + ")" : "");
+}
+// meia-noite (horário de Brasília, UTC−3 fixo) do dia do evento, em segundos
+const meiaNoiteBRT = s => { const p = partesBRT(s); return Date.UTC(+p.year, +p.month - 1, +p.day, 3) / 1000; };
+function planejarEventos(evs, av, enviados, agora) {
+  const lig = k => !av || av[k] !== false;
+  const vespera = new Map(), antes = new Map(), result = new Map();
+  const add = (m, k, e) => { if (!m.has(k)) m.set(k, []); m.get(k).push(e); };
+  for (const e of evs) {
+    const imp = e.impacto, t = e.t / 1000;
+    if (imp !== "High" && imp !== "Medium") continue;
+    const id = evId(e), dia = meiaNoiteBRT(t);
+    if (imp === "High" && lig("v") && dia - 4 * 3600 <= agora && agora < t - 3600 && !enviados["v|" + id]) add(vespera, dia, e);
+    if (lig(imp === "High" ? "a" : "m") && t - 1800 <= agora && agora < t + 600 && !enviados["a|" + id]) add(antes, e.t, e);
+    if (imp === "High" && lig("r") && e.atual && t <= agora && agora < t + 6 * 3600 && !enviados["r|" + id]) add(result, e.t, e);
+  }
+  const saida = [], ord = m => [...m.entries()].sort((a, b) => a[0] - b[0]);
+  for (const [dia, lista] of ord(vespera)) {
+    const p = partesBRT(dia + 3600), d = new Date(Date.UTC(+p.year, +p.month - 1, +p.day));
+    let txt = `Amanhã (${DIAS_SEM[d.getUTCDay()]}, ${p.day}/${p.month}), horário de Brasília:\n` + lista.map(e => "• " + evLinha(e)).join("\n");
+    txt += "\nRegra: nada de posição nova 15 min antes; entrar só depois da primeira vela de 1h.";
+    saida.push([lista.map(e => "v|" + evId(e)), "LiqMap — agenda de amanhã", txt]);
+  }
+  for (const [t, lista] of ord(antes)) {
+    const mins = Math.round((t / 1000 - agora) / 60), quando = mins > 0 ? `Em ${mins} min` : "Saindo agora";
+    let txt = `${quando} (${horaBRT(t / 1000)}): ` + lista.map(e => evLinha(e, false)).join("; ");
+    if (lista.some(e => e.impacto === "High")) txt += "\nSem posição nova até fechar a primeira vela de 1h.";
+    saida.push([lista.map(e => "a|" + evId(e)), "LiqMap — " + quando.toLowerCase(), txt]);
+  }
+  for (const [, lista] of ord(result))
+    saida.push([lista.map(e => "r|" + evId(e)), "LiqMap — resultado", lista.map(e => `${e.titulo}: ${e.atual}` + evLinha(Object.assign({}, e, {titulo: ""}), false)).join("\n")]);
+  return saida;
 }
 
 async function hl(corpo) {

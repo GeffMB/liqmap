@@ -283,6 +283,14 @@ button,select,input{font:inherit;color:inherit}
       <button class="sec" id="ntfyDesligar">Desligar alertas no celular</button>
       <div id="ntfyStatus" class="v" style="margin-top:4px"></div>
       <div id="vigiaStatus" class="v" style="margin-top:4px"></div>
+      <div id="avEvBox" style="margin-top:10px">
+        <b>Eventos econômicos (EUA)</b>
+        <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="avEvV"> Alto impacto: aviso na véspera, às 20h</label>
+        <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="avEvA"> Alto impacto: 30 min antes</label>
+        <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="avEvR"> Alto impacto: resultado (quando a fonte publicar)</label>
+        <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="avEvM"> Médio impacto (ISM, JOLTS…): 30 min antes</label>
+        <div class="v">Chegam pelo vigia 24h, mesmo com o site fechado (precisa da sincronização ligada).</div>
+      </div>
     </div>
   </div>
   <div class="sync">
@@ -810,6 +818,12 @@ $("ntfyTestar").addEventListener("click", async () => {
 });
 $("ntfyDesligar").addEventListener("click", () => { cfg.ntfy = ""; salvarPrefs(); mostrarNtfy(""); });
 mostrarNtfy();
+// avisos de eventos econômicos no celular (lidos pelo vigia 24h; opção ausente = ligada)
+if (!cfg.avEv || typeof cfg.avEv !== "object") cfg.avEv = {v: true, a: true, r: true, m: true};
+for (const [id, k] of [["avEvV", "v"], ["avEvA", "a"], ["avEvR", "r"], ["avEvM", "m"]]) {
+  const c = $(id); c.checked = cfg.avEv[k] !== false;
+  c.addEventListener("change", () => { cfg.avEv[k] = c.checked; salvarPrefs(); });
+}
 function dispararAlerta(txt){
   somAlerta();
   enviarCelular("LiqMap — alerta " + cfg.simbolo, txt);
