@@ -41,7 +41,7 @@ export default {
         const b = await base(env);
         if (!TG || seg !== await segredoTG(TG.token)) return;
         await atenderTelegram(env, upd, b);
-      })().catch(async e => { console.log("bot", e.message); try { if (TG) await enviar("⚠️ Erro ao responder: " + e.message); } catch (x) {} });
+      })().catch(async e => { console.log("bot", e.message); try { if (TG) await enviar("⚠️ Não consegui responder agora (" + e.message + "). Tente de novo em 1 minuto."); } catch (x) {} });
       // a análise por IA pode passar dos 30 s do segundo plano: nesse caso o Telegram espera a resposta
       const t = (upd.message && upd.message.text) || (upd.callback_query && upd.callback_query.data) || "";
       if (/^\/?an[aá]lise/i.test(t)) await job; else ctx.waitUntil(job);
@@ -432,12 +432,58 @@ const P = p => p == null || !isFinite(p) ? "—" : pr(p);
 const dataBRT = (ms, comHora = true) => new Date(ms).toLocaleString("pt-BR", Object.assign({timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit"}, comHora ? {hour: "2-digit", minute: "2-digit"} : {}));
 
 // ---------- dados de mercado ----------
+// velas com reserva: Kraken (spot) → OKX (spot) → Hyperliquid (perpétuo). Guarda por alguns minutos para não
+// repetir a mesma consulta (a Kraken recusa com "Too many requests" quando o Cloudflare pede demais).
+const MEMO_VELAS = new Map();
+const OKX_BAR = {60: "1H", 240: "4H", 1440: "1Dutc", 10080: "1Wutc"}, HL_BAR = {15: "15m", 60: "1h", 240: "4h", 1440: "1d", 10080: "1w"};
 async function kraken(m, intervalo){
-  const r = await fetch("https://api.kraken.com/0/public/OHLC?pair=" + MOEDAS_BOT[m].kr + "&interval=" + intervalo);
-  const j = await r.json();
-  if (j.error && j.error.length) throw new Error("Kraken " + j.error[0]);
-  const k = Object.keys(j.result).find(x => x !== "last");
-  return j.result[k].map(x => ({t: x[0] * 1000, o: +x[1], h: +x[2], l: +x[3], c: +x[4], v: +x[6]}));
+  const k = m + "|" + intervalo, ttl = intervalo <= 60 ? 45e3 : intervalo <= 240 ? 180e3 : 600e3, c = MEMO_VELAS.get(k);
+  if (c && Date.now() - c.t < ttl) return c.v;
+  if (c && c.p) return c.p;
+  const p = (async () => {
+    const erros = [];
+    const fontes = [
+      async () => {
+        for (let tent = 0; tent < 2; tent++) {
+          const j = await (await fetch("https://api.kraken.com/0/public/OHLC?pair=" + MOEDAS_BOT[m].kr + "&interval=" + intervalo)).json();
+          if (j.error && j.error.length) { if (/too many/i.test(j.error[0]) && !tent) { await new Promise(r => setTimeout(r, 1500)); continue; } throw new Error("Kraken " + j.error[0]); }
+          const kk = Object.keys(j.result).find(x => x !== "last");
+          return j.result[kk].map(x => ({t: x[0] * 1000, o: +x[1], h: +x[2], l: +x[3], c: +x[4], v: +x[6]}));
+        }
+      },
+      async () => {
+        if (!OKX_BAR[intervalo]) throw new Error("OKX sem esse tempo");
+        const j = await (await fetch("https://www.okx.com/api/v5/market/candles?instId=" + m + "-USDT&bar=" + OKX_BAR[intervalo] + "&limit=300")).json();
+        if (j.code !== "0" || !j.data || !j.data.length) throw new Error("OKX " + (j.msg || j.code));
+        return j.data.map(x => ({t: +x[0], o: +x[1], h: +x[2], l: +x[3], c: +x[4], v: +x[5]})).reverse();
+      },
+      async () => {
+        if (!MOEDAS_BOT[m].hl || !HL_BAR[intervalo]) throw new Error("Hyperliquid sem essa moeda");
+        const ks = await hl({type: "candleSnapshot", req: {coin: MOEDAS_BOT[m].hl, interval: HL_BAR[intervalo], startTime: Date.now() - 720 * intervalo * 6e4, endTime: Date.now()}});
+        if (!ks || !ks.length) throw new Error("Hyperliquid vazio");
+        return ks.map(x => ({t: x.t, o: +x.o, h: +x.h, l: +x.l, c: +x.c, v: +x.v}));
+      }];
+    for (const f of fontes) { try { const v = await f(); if (v && v.length) return v; } catch (e) { erros.push(e.message); } }
+    throw new Error("sem velas de " + m + " (" + erros.join("; ") + ")");
+  })();
+  MEMO_VELAS.set(k, {t: 0, p});
+  try { const v = await p; MEMO_VELAS.set(k, {t: Date.now(), v}); return v; }
+  catch (e) { MEMO_VELAS.delete(k); throw e; }
+}
+// funding (média de 3 dias, por 8h) e open interest de 30 dias em corretora centralizada (Gate → OKX), como o site faz com a Binance
+async function fundingCEX(m){
+  try { const j = await (await fetch("https://api.gateio.ws/api/v4/futures/usdt/funding_rate?contract=" + m + "_USDT&limit=9")).json();
+    if (Array.isArray(j) && j.length) return {v: j.reduce((a, x) => a + +x.r, 0) / j.length * 100, fonte: "Gate"}; } catch (e) {}
+  try { const j = await (await fetch("https://www.okx.com/api/v5/public/funding-rate-history?instId=" + m + "-USDT-SWAP&limit=9")).json();
+    if (j.data && j.data.length) return {v: j.data.reduce((a, x) => a + +x.realizedRate, 0) / j.data.length * 100, fonte: "OKX"}; } catch (e) {}
+  try { const f = await hl({type: "fundingHistory", coin: MOEDAS_BOT[m].hl, startTime: Date.now() - 3 * 864e5});
+    if (f && f.length) return {v: f.reduce((a, x) => a + +x.fundingRate, 0) / f.length * 100 * 8, fonte: "Hyperliquid"}; } catch (e) {}
+  return null;
+}
+async function oiCEX(m){
+  try { const j = await (await fetch("https://api.gateio.ws/api/v4/futures/usdt/contract_stats?contract=" + m + "_USDT&interval=1d&limit=30")).json();
+    if (Array.isArray(j) && j.length >= 7) { const s = j.map(x => +x.open_interest).filter(x => x > 0); if (s.length >= 7) return {pico: Math.max(...s), atual: s[s.length - 1], dias: s.length, fonte: "Gate"}; } } catch (e) {}
+  return null;
 }
 async function hlCtx(){
   const j = await hl({type: "metaAndAssetCtxs"}); const out = {};
@@ -525,9 +571,9 @@ async function calcFundo(m, comp = {}){
     comp.mvrv || pega(fetch("https://community-api.coinmetrics.io/v4/timeseries/asset-metrics?assets=btc,eth&metrics=CapMVRVCur&frequency=1d&page_size=40&start_time=" + new Date(Date.now() - 20 * 864e5).toISOString().slice(0, 10)).then(r => r.json())),
     comp.fng || pega(fetch("https://api.alternative.me/fng/?limit=7").then(r => r.json())),
     comp.flx || pega(fetch(URL_FLUXOS, {cf: {cacheTtl: 300}}).then(r => r.json())),
-    pega(hl({type: "fundingHistory", coin: M.hl, startTime: Date.now() - 3 * 864e5})),
-    comp.ctx || pega(hlCtx())
+    pega(fundingCEX(m)), pega(oiCEX(m))
   ]);
+  const oi = ctx;
   const out = [], add = (nome, valor, st) => out.push({nome, valor, st});
   const p = d1 ? d1[d1.length - 1].c : null;
   // 1 MVRV
@@ -544,10 +590,11 @@ async function calcFundo(m, comp = {}){
     add("MACD diário virando para cima", mm ? "hist. " + f2(mm.hist, 2) + (mm.linha < 0 ? " · abaixo de zero" : " · acima de zero") + (mm.cruz ? " · " + mm.cruz : mm.subindo ? " · subindo" : " · caindo") : "—", st); }
   else add("MACD diário virando para cima", "sem dado", -1);
   // 5 funding 3 dias (Hyperliquid, convertido para 8h)
-  if (fund && fund.length) { const v = fund.reduce((a, x) => a + +x.fundingRate, 0) / fund.length * 100 * 8; add("Funding neutro ou negativo", f2(v, 4) + "% (média 3 dias, Hyperliquid)", v <= 0 ? 2 : v <= 0.005 ? 1 : 0); }
+  if (fund) { const v = fund.v; add("Funding neutro ou negativo", f2(v, 4) + "% por 8h (média 3 dias, " + fund.fonte + ")", v <= 0 ? 2 : v <= 0.005 ? 1 : 0); }
   else add("Funding neutro ou negativo", "sem dado", -1);
   // 6 open interest vs pico (histórico guardado pelo próprio vigia)
-  add("Alavancagem limpa (OI caiu)", "—", -1);
+  if (oi) { const d = (oi.atual / oi.pico - 1) * 100; add("Alavancagem limpa (OI caiu)", pcB(d) + " do pico de " + oi.dias + " dias (" + oi.fonte + ")", d <= -15 ? 2 : d <= -8 ? 1 : 0); }
+  else add("Alavancagem limpa (OI caiu)", "—", -1);
   // 7 medo e ganância
   if (fng && fng.data) { const v = +fng.data[0].value; add("Medo extremo", v + "/100", v <= 25 ? 2 : v <= 40 ? 1 : 0); } else add("Medo extremo", "sem dado", -1);
   // 8 ETFs
@@ -568,6 +615,7 @@ async function calcFundo(m, comp = {}){
 function aplicarOI(f, m, bot){
   const h = (bot.oiHist || {})[m] || [];
   const item = f.out.find(x => x.nome.startsWith("Alavancagem"));
+  if (item && item.st !== -1) return;   // já veio da corretora
   if (!item || h.length < 7) { if (item) item.valor = "juntando histórico (" + h.length + " de 7 dias)"; return; }
   const pico = Math.max(...h.map(x => x[1])), atual = h[h.length - 1][1], d = (atual / pico - 1) * 100;
   item.valor = pcB(d) + " do pico de " + h.length + " dias (Hyperliquid)"; item.st = d <= -15 ? 2 : d <= -8 ? 1 : 0;
@@ -577,7 +625,8 @@ const faixaFundo = n => n >= 7 ? "sinais fortes de fundo" : n >= 4 ? "zona de at
 function textoFundo(m, f){
   return `🎯 Painel de fundo ${m}: ${f.n}/10 ✅${f.meio ? " (+" + f.meio + " ⚠️)" : ""} — ${faixaFundo(f.n)}\n` +
     f.out.map(x => `${x.st === 2 ? "✅" : x.st === 1 ? "⚠️" : x.st === 0 ? "✖" : "…"} ${x.nome}: ${x.valor}`).join("\n") +
-    `\n\n(No bot, preço e funding vêm da Kraken e Hyperliquid; pode diferir um pouco da página do site.)`;
+    (f.out.some(x => x.st === -1) ? `\n\n(… = fonte fora do ar agora; tente de novo em alguns minutos.)` : "") +
+    `\n\nFontes do bot: preço spot da Kraken (reserva: OKX), funding e OI da Gate. O site usa a Binance; diferenças pequenas são normais.`;
 }
 
 // ---------- relatório ----------
@@ -739,7 +788,7 @@ async function automaticosBot(env, b, agoraS){
         for (const m of ["BTC", "ETH"]) {
           const d1 = await pega(kraken(m, 1440)), w1 = await pega(kraken(m, 10080));
           const f = await calcFundo(m, {["d" + m]: Promise.resolve(d1), ["w" + m]: Promise.resolve(w1), flx, fng, ctx});
-          if (f) { aplicarOI(f, m, bot); bot.fundo = bot.fundo || {}; bot.fundo[m] = f.n; }
+          if (f) { aplicarOI(f, m, bot); if (!f.out.some(x => x.st === -1 && !x.nome.startsWith("Alavancagem"))) { bot.fundo = bot.fundo || {}; bot.fundo[m] = f.n; } }
           if (d1) { const c = d1.map(k => k.c), pp = c[c.length - 1], r = rsiB(c);
             L.push("", `${m}: ${P(pp)} (24h ${pcB((pp / c[c.length - 2] - 1) * 100)}, 7d ${pcB((pp / c[c.length - 8] - 1) * 100)}) · IFR diário ${f2(r, 0)}` + (f ? `\n🎯 Fundo ${f.n}/10 ✅ — ${faixaFundo(f.n)}` : "")); }
         }
@@ -771,6 +820,7 @@ async function automaticosBot(env, b, agoraS){
         bot.fundo = bot.fundo || {};
         for (const m of ["BTC", "ETH"]) {
           const f = await calcFundo(m, {flx, fng, ctx}); if (!f) continue; aplicarOI(f, m, bot);
+          if (f.out.some(x => x.st === -1 && !x.nome.startsWith("Alavancagem"))) continue;   // fonte fora do ar: não compara (evita aviso falso)
           const ant = bot.fundo[m], fx = n => n >= 7 ? 2 : n >= 4 ? 1 : 0;
           if (ant != null && fx(ant) !== fx(f.n)) { await enviar(`🎯 Painel de fundo ${m} mudou: ${ant}/10 → ${f.n}/10 ✅ — agora "${faixaFundo(f.n)}".\n\n` + textoFundo(m, f), atalhos(m)); feitos.push("fundo " + m); }
           if (ant !== f.n) { bot.fundo[m] = f.n; mudou = true; }
