@@ -52,6 +52,11 @@ const saldo = (v, n) => { let s = 0; for (const k of v.slice(-n)) s += 2 * k.b -
 async function gerar(){
   const s = cfg.simbolo, base = s.replace("USDT", ""), agora = Date.now();
   const fapi = "https://fapi.binance.com", spot = "https://data-api.binance.vision";
+  const [m1, oi5, oiD] = await Promise.all([
+    ok(J(`${fapi}/fapi/v1/klines?symbol=${s}&interval=1m&limit=1500`)),
+    ok(J(`${fapi}/futures/data/openInterestHist?symbol=${s}&period=5m&limit=300`)),
+    ok(J(`${fapi}/futures/data/openInterestHist?symbol=${s}&period=1d&limit=30`))
+  ]);
   const [h1, h4, d1, w1, prem, fund, oiAg, oiH, lsC, lsT, tk, spotP, fundo] = await Promise.all([
     ok(J(`${fapi}/fapi/v1/klines?symbol=${s}&interval=1h&limit=500`)), ok(J(`${fapi}/fapi/v1/klines?symbol=${s}&interval=4h&limit=500`)),
     ok(J(`${fapi}/fapi/v1/klines?symbol=${s}&interval=1d&limit=500`)), ok(J(`${spot}/api/v3/klines?symbol=${s}&interval=1w&limit=500`)),
@@ -129,6 +134,52 @@ async function gerar(){
     L.push(`- Open interest: ${us(q * mk)} (${f2(q, 0)} ${base}) · variação 24h em moedas ${pc(v24, 2)}`); }
   if (lsC && lsC[0]) L.push(`- Long/short de contas: ${f2(+lsC[0].longShortRatio, 2)} (${Math.round(+lsC[0].longAccount * 100)}% das contas compradas)` + (lsT && lsT[0] ? ` · top traders (posições): ${f2(+lsT[0].longShortRatio, 2)}` : ""));
   L.push("");
+
+  // 6b. futuros por período (mesma lógica da página Futuros) e alavancagem
+  const M1 = m1 && kl(m1), oiQ = oiAg ? +oiAg.openInterest : null;
+  const serieOI = oi5 ? oi5.map(x => ({t: +x.timestamp, q: +x.sumOpenInterest})).sort((a, b) => a.t - b.t) : [];
+  const oiEm = t => { let r = null; for (const x of serieOI) { if (x.t <= t) r = x; else break; } return r; };
+  const STATUS = (dp, doi, min) => { const lim = 0.025 * Math.sqrt(min / 5), p = dp > lim * 1.5 ? 1 : dp < -lim * 1.5 ? -1 : 0, o = doi > lim ? 1 : doi < -lim ? -1 : 0;
+    return p > 0 && o > 0 ? "Compradores entrando" : p < 0 && o > 0 ? "Vendedores entrando" : p > 0 && o < 0 ? "Shorts fechando" : p < 0 && o < 0 ? "Longs saindo"
+      : p > 0 ? "Alta sem alavancagem (spot puxando)" : p < 0 ? "Queda sem alavancagem (spot puxando)" : o > 0 ? "Posições acumulando" : o < 0 ? "Desalavancando" : "Neutro"; };
+  const statusDe = {};
+  let pctlAlav = null;
+  if (M1 && oiQ) {
+    L.push("6b) FUTUROS POR PERÍODO (status = preço × open interest; agressão = % do volume comprado a mercado)");
+    for (const [nome, min] of [["5m", 5], ["15m", 15], ["30m", 30], ["1h", 60], ["4h", 240], ["12h", 720], ["24h", 1440]]) {
+      const n = min, Lx = M1.length - 1; if (Lx - n < 0) continue;
+      const dp = (M1[Lx].c / M1[Lx - n].c - 1) * 100;
+      let vol = 0, comp = 0; for (let i = Lx - n + 1; i <= Lx; i++) { vol += M1[i].q; comp += M1[i].b; }
+      const ref = oiEm(Date.now() - min * 6e4), doi = ref ? (oiQ / ref.q - 1) * 100 : 0;
+      const st = STATUS(dp, doi, min); statusDe[nome] = st;
+      L.push(`- ${nome}: preço ${pc(dp, 2)} · open interest ${pc(doi, 2)} (${us(ref ? (oiQ - ref.q) * preco : null, true)}) · agressão ${f2(vol ? comp / vol * 100 : 50, 1)}% compradora · volume ${us(vol)} → ${st}`);
+    }
+    if (oiD && oiD.length) { const d = oiD.map(x => +x.sumOpenInterest); pctlAlav = d.filter(x => x <= oiQ).length / d.length * 100;
+      L.push(`- Alavancagem: open interest acima de ${Math.round(pctlAlav)}% das leituras dos últimos 30 dias → ${pctlAlav >= 85 ? "LOTADA (risco de cascata de liquidações)" : pctlAlav >= 50 ? "elevada" : "normal"}`); }
+    if (lsT && lsT[0]) L.push(`- Top traders comprados (por tamanho de posição): ${Math.round(+lsT[0].longAccount * 100)}%` + (lsC && lsC[0] ? ` · contas compradas: ${Math.round(+lsC[0].longAccount * 100)}%` : ""));
+    L.push("");
+  }
+
+  // 6c. o que mudou desde o último relatório desta moeda
+  const agoraSnap = {t: agora, preco, funding: prem ? +prem.lastFundingRate * 100 : null, alav: pctlAlav, top: lsT && lsT[0] ? +lsT[0].longAccount * 100 : null,
+    contas: lsC && lsC[0] ? +lsC[0].longAccount * 100 : null, oiUsd: oiQ && mk ? oiQ * mk : null, ag1h: statusDe["1h"] || null};
+  try {
+    const ant = JSON.parse(localStorage.getItem("liqmap-rel-ult-" + s) || "null");
+    if (ant && agora - ant.t > 3 * 6e4 && agora - ant.t < 7 * DIA) {
+      const hh = new Date(ant.t).toLocaleString("pt-BR", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"});
+      L.push(`6c) O QUE MUDOU DESDE O ÚLTIMO RELATÓRIO (${hh} → agora)`);
+      const lin = (nome, a, b, fmt, dif) => { if (a == null || b == null) return; L.push(`- ${nome}: ${fmt(a)} → ${fmt(b)}${dif ? " (" + dif(a, b) + ")" : ""}`); };
+      lin("Preço", ant.preco, agoraSnap.preco, P, (a, b) => pc((b / a - 1) * 100, 2));
+      lin("Alavancagem (percentil 30 dias)", ant.alav, agoraSnap.alav, x => Math.round(x) + "%", (a, b) => (b - a >= 0 ? "+" : "−") + Math.abs(Math.round(b - a)) + " p.p.");
+      lin("Funding", ant.funding, agoraSnap.funding, x => (x < 0 ? "−" : "+") + Math.abs(x).toFixed(4).replace(".", ",") + "%", (a, b) => b < 0 && a >= 0 ? "virou negativo: vendidos pagando" : b >= 0 && a < 0 ? "virou positivo: comprados pagando" : b > a ? "subiu" : "caiu");
+      lin("Top traders comprados", ant.top, agoraSnap.top, x => Math.round(x) + "%", (a, b) => b > a + 1 ? "grandes aumentando longs" : b < a - 1 ? "grandes reduzindo longs" : "estável");
+      lin("Contas compradas", ant.contas, agoraSnap.contas, x => Math.round(x) + "%");
+      lin("Open interest (Binance)", ant.oiUsd, agoraSnap.oiUsd, x => us(x), (a, b) => pc((b / a - 1) * 100, 1));
+      if (ant.ag1h && agoraSnap.ag1h) L.push(`- Status 1h: ${ant.ag1h} → ${agoraSnap.ag1h}`);
+      L.push("");
+    }
+    localStorage.setItem("liqmap-rel-ult-" + s, JSON.stringify(agoraSnap));
+  } catch (e) {}
 
   // 7. fluxo de dinheiro (ETFs, stablecoins e corretoras; os futuros estão na seção 5)
   const flx = await ok(J("fluxos.json?t=" + Math.floor(Date.now() / 6e5)));
