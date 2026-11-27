@@ -1782,7 +1782,7 @@ let timer = null, ocupado = false, pedido = 0;
 async function recalcular(manterZoom){
   if (ocupado) return;
   ocupado = true;
-  const meu = ++pedido;
+  const meu = ++pedido, simbCarga = cfg.simbolo;
   $("status").textContent = "Calculando…"; $("status").className = "status"; $("status2").textContent = "Calculando…";
   if (!manterZoom) $("carregando").style.display = "flex";
   try {
@@ -1802,6 +1802,7 @@ async function recalcular(manterZoom){
     }
     if (meu !== pedido) return;
     mapa = montarMapa(klBase && klBase.length ? klBase : kl, oi, base, cfg.filtro, cfg.pesos);
+    mapa.simb = simbCarga;   // de qual moeda é este mapa (o relatório espera o mapa da moeda certa)
     velas = kl.map(k => ({time: Math.floor(k.t / 1000), open: k.o, high: k.h, low: k.l, close: k.c, q: k.q, b: k.b}));
     oiPorT = new Map();
     for (const k of kl) { const o = oi.get(proximoFechamento(k.t)); if (o != null) oiPorT.set(Math.floor(k.t / 1000), o); }

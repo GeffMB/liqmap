@@ -163,13 +163,18 @@ function janela(){
   m.style.cssText = "position:fixed;inset:0;background:rgba(19,23,34,.45);z-index:50;display:flex;align-items:center;justify-content:center;padding:16px";
   m.innerHTML = `<div style="background:#fff;border-radius:10px;width:min(860px,100%);max-height:92vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.3)">
     <div style="display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid #e0e3eb"><b style="font-size:15px">📋 Relatório para a IA</b>
+      <select id="relMoeda" title="Moeda do relatório" style="padding:5px 8px;border:1px solid #e0e3eb;border-radius:6px;font:inherit;background:#f0f3fa;cursor:pointer"></select>
       <span id="relSt" style="color:#787b86;font-size:12px"></span><span style="flex:1"></span>
       <button id="relCopiar" style="background:#2962ff;color:#fff;border:0;border-radius:6px;padding:7px 14px;font:inherit;font-weight:600;cursor:pointer">Copiar</button>
       <button id="relBaixar" style="background:#f0f3fa;border:1px solid #e0e3eb;border-radius:6px;padding:6px 12px;font:inherit;cursor:pointer">Baixar .txt</button>
       <button id="relFechar" style="background:none;border:0;font-size:20px;cursor:pointer;color:#787b86">✕</button></div>
     <textarea id="relTxt" readonly style="flex:1;min-height:55vh;border:0;padding:14px 16px;font:12.5px/1.55 ui-monospace,Consolas,monospace;resize:none;outline:none;color:#131722"></textarea>
-    <div style="padding:8px 16px;color:#787b86;font-size:11.5px;border-top:1px solid #e0e3eb">Clique em Copiar e cole na conversa com a IA. O relatório usa a moeda aberta no gráfico; troque a moeda e gere de novo para outra.</div></div>`;
+    <div style="padding:8px 16px;color:#787b86;font-size:11.5px;border-top:1px solid #e0e3eb">Escolha a moeda (ou “Todas”) e clique em Copiar. Para montar o relatório de outra moeda o gráfico muda para ela, porque o mapa de liquidações e os níveis vêm do gráfico.</div></div>`;
   document.body.append(m);
+  const sel = m.querySelector("#relMoeda");
+  for (const sm of SIMBOLOS) sel.append(new Option(sm.replace("USDT", ""), sm));
+  sel.append(new Option("Todas as moedas", "todas"));
+  sel.addEventListener("change", () => window.abrirRelatorio(sel.value));
   m.addEventListener("click", e => { if (e.target === m) m.style.display = "none"; });
   m.querySelector("#relFechar").onclick = () => m.style.display = "none";
   m.querySelector("#relCopiar").onclick = async () => { const t = m.querySelector("#relTxt"); try { await navigator.clipboard.writeText(t.value); } catch (e) { t.select(); document.execCommand("copy"); } m.querySelector("#relSt").textContent = "copiado ✓"; };
@@ -177,11 +182,35 @@ function janela(){
     a.download = "liqmap-" + cfg.simbolo + "-" + new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-") + ".txt"; a.click(); };
   return m;
 }
-window.abrirRelatorio = async function(){
+// troca o gráfico para a moeda e espera o mapa dela ficar pronto
+async function irPara(s){
+  if (cfg.simbolo !== s) trocar({simbolo: s});
+  const ini = Date.now();
+  while (Date.now() - ini < 40000) {
+    if (cfg.simbolo === s && mapa && mapa.simb === s && velas.length && !ocupado) return true;
+    await new Promise(r => setTimeout(r, 300));
+  }
+  return cfg.simbolo === s;
+}
+let rodando = 0;
+window.abrirRelatorio = async function(qual){
   const m = janela(); m.style.display = "flex";
-  const st = m.querySelector("#relSt"), tx = m.querySelector("#relTxt");
-  st.textContent = "montando…"; tx.value = "Juntando os dados de " + cfg.simbolo + "…";
-  try { tx.value = await gerar(); st.textContent = "pronto · " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"}); }
-  catch (e) { tx.value = "Não foi possível montar o relatório: " + e.message; st.textContent = "erro"; }
+  const st = m.querySelector("#relSt"), tx = m.querySelector("#relTxt"), sel = m.querySelector("#relMoeda");
+  qual = qual || cfg.simbolo; sel.value = qual;
+  const eu = ++rodando, original = cfg.simbolo;
+  const lista = qual === "todas" ? SIMBOLOS.slice() : [qual];
+  const partes = [];
+  try {
+    for (const [i, s] of lista.entries()) {
+      st.textContent = lista.length > 1 ? `montando ${s.replace("USDT", "")} (${i + 1} de ${lista.length})…` : "montando…";
+      tx.value = (partes.length ? partes.join("\n\n" + "=".repeat(60) + "\n\n") + "\n\n" : "") + "Juntando os dados de " + s + "…";
+      await irPara(s);
+      if (eu !== rodando) return;   // outra escolha no meio do caminho
+      partes.push(await gerar());
+    }
+    tx.value = partes.join("\n\n" + "=".repeat(60) + "\n\n");
+    st.textContent = "pronto · " + new Date().toLocaleTimeString("pt-BR", {hour: "2-digit", minute: "2-digit"});
+    if (qual === "todas" && cfg.simbolo !== original) trocar({simbolo: original});   // volta para a moeda que estava aberta
+  } catch (e) { tx.value = "Não foi possível montar o relatório: " + e.message; st.textContent = "erro"; }
 };
 })();
