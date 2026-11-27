@@ -2640,7 +2640,7 @@ aplicarLado();
 $("bPainel").addEventListener("click", () => { cfg.lado = !cfg.lado; salvarPrefs(); aplicarLado(); });
 $("bRel").addEventListener("click", () => {
   if (window.abrirRelatorio) return window.abrirRelatorio();
-  const sc = document.createElement("script"); sc.src = "relatorio.js?v=2"; sc.onload = () => window.abrirRelatorio(); document.head.append(sc);
+  const sc = document.createElement("script"); sc.src = "relatorio.js?v=3"; sc.onload = () => window.abrirRelatorio(); document.head.append(sc);
 });
 $("bCheia").addEventListener("click", () => {
   if (document.fullscreenElement) document.exitFullscreen(); else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});

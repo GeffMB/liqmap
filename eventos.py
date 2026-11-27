@@ -2,7 +2,7 @@
 
 Roda no GitHub Actions algumas vezes por dia e grava eventos.json com:
   - os eventos de alto e médio impacto dos EUA da semana (ForexFactory), com previsão e anterior;
-  - as datas oficiais já conhecidas de FOMC (Fed) e CPI (BLS) dos próximos meses;
+  - as datas oficiais já conhecidas de FOMC (Fed), CPI, payroll, PPI e JOLTS (BLS) e do ISM (regra de dias úteis);
   - o histórico acumulado dos eventos já passados (para aparecerem nos candles antigos).
 O site lê o arquivo do próprio repositório (sem problema de CORS).
 """
@@ -22,6 +22,34 @@ FOMC = ["2026-01-28", "2026-03-18", "2026-04-29", "2026-06-17", "2026-07-29", "2
         "2027-01-27", "2027-03-17", "2027-04-28", "2027-06-09", "2027-07-28", "2027-09-15", "2027-10-27", "2027-12-08"]
 CPI = ["2026-11-10", "2026-12-10", "2027-01-13", "2027-02-11", "2027-03-10", "2027-04-13", "2027-05-12", "2027-06-10",
        "2027-07-14", "2027-08-11", "2027-09-14", "2027-10-14", "2027-11-10", "2027-12-10"]
+# BLS (bls.gov/schedule/news_release/empsit.htm e calendários mensais), 8h30 de Nova York.
+# O ForexFactory só publica a semana atual; sem estas datas, a agenda ficava vazia antes do payroll.
+PAYROLL = ["2026-12-04", "2027-01-08", "2027-02-05", "2027-03-05", "2027-04-02", "2027-05-07", "2027-06-04",
+           "2027-07-02", "2027-08-06", "2027-09-03", "2027-10-08", "2027-11-05", "2027-12-03"]
+PPI = ["2026-12-15", "2027-01-14", "2027-02-12", "2027-05-13", "2027-06-11", "2027-07-15", "2027-08-10",
+       "2027-09-10", "2027-12-15"]          # só as datas já confirmadas pelo BLS
+JOLTS = ["2026-12-01"]                      # 10h de Nova York
+# ISM: industrial no 1º dia útil do mês e serviços no 3º, às 10h de Nova York (regra fixa do ISM)
+FERIADOS_EUA = {"2026-12-25", "2027-01-01", "2027-01-18", "2027-02-15", "2027-05-31", "2027-06-18", "2027-07-05",
+                "2027-09-06", "2027-10-11", "2027-11-11", "2027-11-25", "2027-12-24"}
+
+
+def dias_uteis(ano, mes):
+    d = datetime(ano, mes, 1)
+    while d.month == mes:
+        if d.weekday() < 5 and d.strftime("%Y-%m-%d") not in FERIADOS_EUA:
+            yield d.strftime("%Y-%m-%d")
+        d = d.fromordinal(d.toordinal() + 1)
+
+
+def datas_ism(meses=14):
+    hoje = datetime.now(timezone.utc)
+    a, m = hoje.year, hoje.month
+    for _ in range(meses):
+        uteis = list(dias_uteis(a, m))
+        yield "ISM Manufacturing PMI", uteis[0]
+        yield "ISM Services PMI", uteis[2]
+        a, m = (a + 1, 1) if m == 12 else (a, m + 1)
 
 TRADUCAO = {
     "FOMC Statement": "Decisão de juros do Fed (FOMC)", "Federal Funds Rate": "Taxa de juros do Fed",
@@ -75,9 +103,14 @@ def main():
         t = datetime.fromisoformat(d + "T14:00").replace(tzinfo=NY)
         e = {"t": ms(t), "titulo": TRADUCAO["FOMC Statement"], "orig": "FOMC Statement", "impacto": "High", "fonte": "Fed"}
         eventos.setdefault(chave(e), e)
-    for d in CPI:
-        t = datetime.fromisoformat(d + "T08:30").replace(tzinfo=NY)
-        e = {"t": ms(t), "titulo": TRADUCAO["CPI m/m"], "orig": "CPI m/m", "impacto": "High", "fonte": "BLS"}
+    oficiais = [("CPI m/m", d, "08:30", "High", "BLS") for d in CPI]
+    oficiais += [("Non-Farm Employment Change", d, "08:30", "High", "BLS") for d in PAYROLL]
+    oficiais += [("PPI m/m", d, "08:30", "High", "BLS") for d in PPI]
+    oficiais += [("JOLTS Job Openings", d, "10:00", "Medium", "BLS") for d in JOLTS]
+    oficiais += [(orig, d, "10:00", "Medium", "ISM") for orig, d in datas_ism()]
+    for orig, d, hora, impacto, fonte in oficiais:
+        t = datetime.fromisoformat(d + "T" + hora).replace(tzinfo=NY)
+        e = {"t": ms(t), "titulo": TRADUCAO[orig], "orig": orig, "impacto": impacto, "fonte": fonte}
         eventos.setdefault(chave(e), e)
 
     # semana do ForexFactory (substitui/completa os oficiais com previsão e anterior)

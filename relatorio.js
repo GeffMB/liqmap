@@ -139,9 +139,17 @@ async function gerar(){
   }
 
   // 8. agenda
-  const prox = (typeof eventos !== "undefined" ? eventos : []).filter(e => e.t > agora && e.t < agora + 10 * DIA && e.impacto === "High").sort((a, b) => a.t - b.t).slice(0, 6);
-  L.push("8) AGENDA (eventos de alto impacto nos EUA, próximos 10 dias)");
-  L.push(prox.length ? prox.map(e => `- ${dataCurta(e.t)}: ${e.titulo}`).join("\n") : "- nenhum evento de alto impacto nos próximos 10 dias");
+  const evs = (typeof eventos !== "undefined" ? eventos : []).filter(e => e.t > agora).sort((a, b) => a.t - b.t);
+  const janela = evs.filter(e => e.t < agora + 10 * DIA);
+  const altos = janela.filter(e => e.impacto === "High").slice(0, 8), medios = janela.filter(e => e.impacto !== "High").slice(0, 6);
+  const fmtEv = e => `- ${dataCurta(e.t)}: ${e.titulo}` + (e.previsao ? ` (previsão ${e.previsao}` + (e.anterior ? `, anterior ${e.anterior}` : "") + ")" : "");
+  L.push("8) AGENDA (EUA, horário de Brasília)");
+  L.push("Alto impacto, próximos 10 dias:");
+  L.push(altos.length ? altos.map(fmtEv).join("\n") : (evs.length ? "- nenhum nos próximos 10 dias" : "- agenda indisponível (eventos.json não carregou)"));
+  if (medios.length) { L.push("Médio impacto, próximos 10 dias:"); L.push(medios.map(fmtEv).join("\n")); }
+  // a próxima decisão do Fed aparece sempre, mesmo fora da janela
+  const fomc = evs.find(e => e.orig === "FOMC Statement");
+  if (fomc && !altos.includes(fomc)) L.push(`Próxima decisão de juros do Fed (FOMC): ${dataCurta(fomc.t)} (em ${Math.ceil((fomc.t - agora) / DIA)} dias)`);
   L.push("");
   L.push("Observação: estimativas e indicadores técnicos; não é recomendação de investimento.");
   return L.join("\n");
