@@ -51,7 +51,7 @@ export default {
       try {
         const r = await vigiar(env, new Date(), true);
         if (TG) {   // registra o webhook do bot (só muda algo se o endereço/token mudou)
-          const b = await base(env), url = u.origin + "/tg", ass = url + "|" + (await segredoTG(TG.token)).slice(0, 8) + "|v8";
+          const b = await base(env), url = u.origin + "/tg", ass = url + "|" + (await segredoTG(TG.token)).slice(0, 8) + "|v8" + (IA ? "ia" : "");
           if (b.bot.webhook !== ass || u.searchParams.has("webhook")) { const w = await configurarWebhook(url); r.bot = w.ok ? "webhook registrado agora" : "erro no webhook: " + w.description; if (w.ok) { b.bot.webhook = ass; await salvarBot(env, b.gid, b.bot); } }
           else r.bot = "webhook ok";
           const info = await tg("getWebhookInfo", {}); if (info.ok) { r.botPendentes = info.result.pending_update_count; if (info.result.last_error_message) r.botUltimoErro = info.result.last_error_message; }
@@ -419,7 +419,7 @@ async function configurarWebhook(url){
     {command: "alertas", description: "Meus alertas"}, {command: "fundobtc", description: "Painel de fundo do BTC"},
     {command: "fundoeth", description: "Painel de fundo do ETH"}, {command: "operacoes", description: "Diário de operações"},
     {command: "carteiras", description: "Posições das baleias rastreadas"}, {command: "relatorioeth", description: "Relatório completo do ETH"},
-    {command: "analiseeth", description: "Análise por IA do ETH"}, {command: "ajuda", description: "Todos os comandos"}]});
+    ...(IA ? [{command: "analiseeth", description: "Análise por IA do ETH"}] : []), {command: "ajuda", description: "Todos os comandos"}]});
   return r;
 }
 
@@ -465,6 +465,7 @@ function linhaTF(nome, v){
 
 // ---------- base (Gist) ----------
 async function base(env){
+  IA = !!env.ANTHROPIC_API_KEY;
   const gid = await acharGist(env);
   const g = await gh(env, "/gists/" + gid);
   const pac = (await conteudo(g, ARQ_SYNC)) || {};
@@ -689,7 +690,7 @@ async function atenderTelegram(env, upd, b){
 async function comando(env, b, cmd, m, args){
   const alias = {help: "ajuda", start: "ajuda", grafico: "grafico", chart: "grafico", ops: "operacoes", operacao: "operacoes", posicoes: "operacoes", diario: "operacoes", compra: "comprei", comprar: "comprei", venda: "vendi", vender: "vendi", baleias: "carteiras", carteira: "carteiras", ia: "analise"};
   cmd = alias[cmd] || cmd;
-  if (cmd === "ajuda") return enviar(AJUDA, TECLADO);
+  if (cmd === "ajuda") return enviar(IA ? AJUDA : AJUDA.replace(/\n\/analiseETH[^\n]*/, ""), TECLADO);
   if (cmd === "silenciar" || cmd === "retomar") { b.bu.auto = cmd === "retomar"; await salvarBotU(env, b.gid, b.bu); return enviar(cmd === "retomar" ? "🔔 Avisos automáticos ligados." : "🔕 Avisos automáticos pausados. Os alertas de linha e de indicador continuam. Use /retomar para voltar."); }
   if (cmd === "alertas") { const l = await listarAlertas(b.dados, m, b.bu); return enviar(l.txt, l.extra || {}); }
   if (cmd === "carteiras") return enviar(await textoCarteiras(b.dados));
@@ -820,13 +821,14 @@ async function automaticosBot(env, b, agoraS){
 // separado do estado dos automáticos, para um não sobrescrever o outro.
 // =====================================================================================
 const ARQ_BOTU = "liqmap-bot-usuario.json";
+let IA = false;   // só mostra a análise por IA se a chave ANTHROPIC_API_KEY existir no Cloudflare
 const TFS = {"15m": 15, "1h": 60, "4h": 240, "1d": 1440, "d": 1440, "diario": 1440, "diário": 1440, "1w": 10080, "w": 10080, "semanal": 10080};
 const NOME_TF = {15: "15m", 60: "1h", 240: "4h", 1440: "diário", 10080: "semanal"};
 const lerTF = (t, pad = 1440) => TFS[String(t || "").toLowerCase()] || pad;
 async function salvarBotU(env, gid, bu){ await gh(env, "/gists/" + gid, {method: "PATCH", body: {files: {[ARQ_BOTU]: {content: JSON.stringify(bu)}}}}); }
 const atalhos = m => ({reply_markup: {inline_keyboard: [
   [{text: "📈 Gráfico " + m, callback_data: "grafico:" + m}, {text: "💰 Preço", callback_data: "preco:" + m}, {text: "🎯 Fundo", callback_data: "fundo:" + (MOEDAS_BOT[m].cm ? m : "BTC")}],
-  [{text: "📋 Relatório", callback_data: "relatorio:" + m}, {text: "🧠 Análise IA", callback_data: "analise:" + m}]]}});
+  [{text: "📋 Relatório", callback_data: "relatorio:" + m}].concat(IA ? [{text: "🧠 Análise IA", callback_data: "analise:" + m}] : [])]}});
 const TECLADO = {reply_markup: {keyboard: [["/precoBTC", "/precoETH"], ["/graficoBTC", "/graficoETH"], ["/fundoBTC", "/alertas"], ["/operacoes", "/carteiras"]], resize_keyboard: true, is_persistent: true}};
 function smaSerie(c, n){ const out = []; let s = 0; c.forEach((x, i) => { s += x; if (i >= n) s -= c[i - n]; out.push(i >= n - 1 ? s / n : null); }); return out; }
 
