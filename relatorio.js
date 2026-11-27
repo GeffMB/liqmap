@@ -130,20 +130,71 @@ async function gerar(){
   if (lsC && lsC[0]) L.push(`- Long/short de contas: ${f2(+lsC[0].longShortRatio, 2)} (${Math.round(+lsC[0].longAccount * 100)}% das contas compradas)` + (lsT && lsT[0] ? ` · top traders (posições): ${f2(+lsT[0].longShortRatio, 2)}` : ""));
   L.push("");
 
-  // 7. painel de fundo
+  // 7. fluxo de dinheiro (ETFs, stablecoins e corretoras; os futuros estão na seção 5)
+  const flx = await ok(J("fluxos.json?t=" + Math.floor(Date.now() / 6e5)));
+  if (flx) {
+    L.push("7) FLUXO DE DINHEIRO (dinheiro de verdade, fora os futuros: ETFs, stablecoins e corretoras)");
+    const dataBR = d => d.split("-").reverse().slice(0, 2).join("/");
+    const etf = {};
+    for (const [k, nome] of (s === "ETHUSDT" ? [["etfEth", "ETH"], ["etfBtc", "BTC"]] : [["etfBtc", "BTC"], ["etfEth", "ETH"]])) {
+      const e = flx[k] && flx[k].dias ? flx[k].dias.filter(x => x.total != null) : [];
+      if (e.length < 5) continue;
+      const ult = e[e.length - 1], s5 = e.slice(-5).reduce((a, x) => a + x.total, 0), s21 = e.slice(-21).reduce((a, x) => a + x.total, 0);
+      const pos = e.slice(-5).filter(x => x.total > 0).length;
+      const maior = Object.entries(ult.fundos || {}).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))[0];
+      etf[nome] = s5;
+      L.push(`- ETFs de ${nome} (EUA): último pregão (${dataBR(ult.data)}) ${us(ult.total * 1e6, true)} · 5 pregões ${us(s5 * 1e6, true)} (${pos} de 5 dias positivos) · 21 pregões ${us(s21 * 1e6, true)}`
+        + (maior && maior[1] ? ` · maior movimento no último pregão: ${maior[0]} ${us(maior[1] * 1e6, true)}` : ""));
+    }
+    const sr = (flx.stables && flx.stables.serie) || [];
+    let st7 = null;
+    if (sr.length >= 31) {
+      const b = sr[sr.length - 1][1], ant = n => sr[sr.length - 1 - n][1];
+      st7 = (b / ant(7) - 1) * 100;
+      L.push(`- Stablecoins (oferta total ${us(b)}): 24h ${us(b - ant(1), true)} · 7 dias ${us(b - ant(7), true)} (${pc(st7, 2)}) · 30 dias ${us(b - ant(30), true)} (${pc((b / ant(30) - 1) * 100, 1)})`);
+    }
+    const cx = flx.cex || [];
+    let exMoeda = null;
+    if (cx.length) {
+      // soma das corretoras, sem as janelas marcadas como instáveis (leitura incompleta do DefiLlama)
+      const soma = k => { const j = k.split("_")[0]; let t = 0; const fora = []; for (const c of cx) { if (c.instavel && c.instavel[j]) { fora.push(c.nome); continue; } t += c[k] || 0; } return [t, fora]; };
+      const qtd = (q, m) => (q > 0 ? "+" : q < 0 ? "−" : "") + Math.abs(q).toLocaleString("pt-BR", {maximumFractionDigits: 0}) + " " + m;
+      const porMoeda = cx.some(c => c.d7_btc_q != null);
+      for (const j of ["d7", "d1"]) {
+        const [mo, fora] = soma(j + "_mo"), [st] = soma(j + "_st");
+        let txt = `- Corretoras (${cx.length} maiores), ${j === "d7" ? "7 dias" : "24h"}: `;
+        if (porMoeda) {
+          const [bq] = soma(j + "_btc_q"), [bu] = soma(j + "_btc"), [eq] = soma(j + "_eth_q"), [eu] = soma(j + "_eth");
+          txt += `BTC ${qtd(bq, "BTC")} (${us(bu, true)}) · ETH ${qtd(eq, "ETH")} (${us(eu, true)}) · `;
+          if (j === "d7") exMoeda = s === "ETHUSDT" ? eq : bq;
+        } else if (j === "d7") exMoeda = mo;
+        L.push(txt + `todas as moedas ${us(mo, true)} · stablecoins ${us(st, true)}` + (fora.length ? ` [sem ${fora.join(", ")}: dado instável]` : ""));
+      }
+      L.push("  Leitura: moeda ENTRANDO na corretora = mais oferta para venda; SAINDO = gente guardando. Stablecoin entrando = dinheiro para comprar.");
+    }
+    // resumo: quantas fontes mostram dinheiro entrando no ativo do relatório
+    const sinais = [[etf[base], v => v > 0, "ETFs de " + base], [st7, v => v > 0, "stablecoins"], [exMoeda, v => v < 0, "corretoras (" + base + (exMoeda < 0 ? " saindo" : " entrando") + ")"]].filter(x => x[0] != null);
+    if (sinais.length) {
+      const sim = sinais.filter(x => x[1](x[0])).map(x => x[2]), nao = sinais.filter(x => !x[1](x[0])).map(x => x[2]);
+      L.push(`- Resumo: ${sim.length} de ${sinais.length} fontes mostram dinheiro entrando` + (sim.length ? ` (${sim.join(", ")})` : "") + (nao.length ? `; contra: ${nao.join(", ")}` : "") + ". Agressão nos futuros: ver seção 5.");
+    }
+    L.push("");
+  }
+
+  // 8. painel de fundo
   if (fundo && fundo.out) {
     const n = fundo.out.filter(x => x.st === 2).length, m = fundo.out.filter(x => x.st === 1).length;
-    L.push(`7) PAINEL DE FUNDO: ${n}/10 ✅` + (m ? ` (+${m} ⚠️ chegando perto)` : "") + ` — ${n >= 7 ? "sinais fortes de fundo" : n >= 4 ? "zona de atenção" : "longe de um fundo"}`);
+    L.push(`8) PAINEL DE FUNDO: ${n}/10 ✅` + (m ? ` (+${m} ⚠️ chegando perto)` : "") + ` — ${n >= 7 ? "sinais fortes de fundo" : n >= 4 ? "zona de atenção" : "longe de um fundo"}`);
     for (const x of fundo.out) L.push(`- ${x.st === 2 ? "✅" : x.st === 1 ? "⚠️" : x.st === 0 ? "✖" : "?"} ${x.nome}: ${x.valor} (${x.detalhe})`);
     L.push("");
   }
 
-  // 8. agenda
+  // 9. agenda
   const evs = (typeof eventos !== "undefined" ? eventos : []).filter(e => e.t > agora).sort((a, b) => a.t - b.t);
   const janela = evs.filter(e => e.t < agora + 10 * DIA);
   const altos = janela.filter(e => e.impacto === "High").slice(0, 8), medios = janela.filter(e => e.impacto !== "High").slice(0, 6);
   const fmtEv = e => `- ${dataCurta(e.t)}: ${e.titulo}` + (e.previsao ? ` (previsão ${e.previsao}` + (e.anterior ? `, anterior ${e.anterior}` : "") + ")" : "");
-  L.push("8) AGENDA (EUA, horário de Brasília)");
+  L.push("9) AGENDA (EUA, horário de Brasília)");
   L.push("Alto impacto, próximos 10 dias:");
   L.push(altos.length ? altos.map(fmtEv).join("\n") : (evs.length ? "- nenhum nos próximos 10 dias" : "- agenda indisponível (eventos.json não carregou)"));
   if (medios.length) { L.push("Médio impacto, próximos 10 dias:"); L.push(medios.map(fmtEv).join("\n")); }

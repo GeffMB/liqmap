@@ -48,10 +48,17 @@ def eh_stable(simbolo):
     return s in STABLES or (s.startswith("USD") and len(s) <= 6)
 
 
+# versões "embrulhadas" contam junto com a moeda (mesmo preço, mesma exposição)
+FAMILIAS = {"btc": {"BTC", "WBTC", "BTCB", "CBBTC"},
+            "eth": {"ETH", "WETH", "STETH", "WSTETH", "WBETH", "BETH", "CBETH"}}
+
+
 def fluxo_janela(ult_q, q0, preco, ult_u):
-    """Fluxo entre duas leituras usando só as moedas presentes nas duas (e com preço atual)."""
+    """Fluxo entre duas leituras usando só as moedas presentes nas duas (e com preço atual).
+    Devolve (moedas, stablecoins, valor coberto, {btc, eth em US$ e btc_q, eth_q em moedas})."""
     mo = st = 0.0
     coberto = 0.0
+    fam = {"btc": 0.0, "eth": 0.0, "btc_q": 0.0, "eth_q": 0.0}
     for s, q in ult_q.items():
         if s not in q0 or s not in preco:
             continue
@@ -60,8 +67,12 @@ def fluxo_janela(ult_q, q0, preco, ult_u):
             st += v
         else:
             mo += v
+        for f, membros in FAMILIAS.items():
+            if s.upper() in membros:
+                fam[f] += v
+                fam[f + "_q"] += q - q0[s]
         coberto += ult_u.get(s) or 0
-    return mo, st, coberto
+    return mo, st, coberto, fam
 
 
 def cex():
@@ -86,10 +97,12 @@ def cex():
                 if not ant:
                     linha[nome] = None
                     continue
-                mo, st, coberto = fluxo_janela(ult_q, ant["tokens"], preco, ult_u)
+                mo, st, coberto, fam = fluxo_janela(ult_q, ant["tokens"], preco, ult_u)
                 linha[nome] = mo + st
                 linha[nome + "_mo"] = mo
                 linha[nome + "_st"] = st
+                for f, v in fam.items():
+                    linha[nome + "_" + f] = round(v, 4) if f.endswith("_q") else v
                 cob = coberto / linha["ativos"] if linha["ativos"] else 0
                 motivo = None
                 if cob < COBERTURA_MIN:
