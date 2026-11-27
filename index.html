@@ -25,6 +25,22 @@ button,select,input{font:inherit;color:inherit}
 .sep{width:1px;height:24px;background:var(--line);margin:0 6px;flex:0 0 auto}
 .btn{background:transparent;border:0;border-radius:4px;padding:6px 8px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px;text-decoration:none;color:var(--txt)}
 .btn:hover{background:var(--hover)}
+.btn .ic{width:17px;height:17px;flex:0 0 auto;color:#4a4f5c}
+.btn:hover .ic{color:var(--txt)}
+.btn.ico{padding:6px 7px}
+.btn .seta{font-size:10px;color:var(--sub);margin-left:-2px}
+.grupo{display:flex;gap:0;margin-left:2px}
+.btn.destaque{border:1px solid var(--accent);color:var(--accent);font-weight:600;padding:5px 10px;margin-right:2px}
+.btn.destaque .ic{color:var(--accent)}
+.btn.destaque:hover{background:var(--accent);color:#fff}
+.btn.destaque:hover .ic{color:#fff}
+.popPag{width:310px;padding:8px}
+.popPag .pgGrupo{font-size:11px;font-weight:600;color:var(--sub);text-transform:uppercase;letter-spacing:.04em;padding:8px 8px 4px}
+.popPag .pg{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:6px;color:var(--txt);text-decoration:none}
+.popPag .pg:hover{background:var(--hover)}
+.popPag .pg .ic{width:20px;height:20px;color:var(--accent);flex:0 0 auto}
+.popPag .pg b{display:block;font-size:13px;font-weight:600}
+.popPag .pg small{display:block;color:var(--sub);font-size:11.5px}
 .btn[aria-pressed=true]{color:var(--accent)}
 .simbolo{font-weight:600;font-size:14px}
 .direita{margin-left:auto;display:flex;align-items:center;gap:8px;white-space:nowrap}
@@ -168,28 +184,24 @@ button,select,input{font:inherit;color:inherit}
   <div class="sep"></div>
   <button class="btn tfbtn" id="bTf" title="Tempo gráfico" aria-haspopup="true">15m ▾</button>
   <div class="sep"></div>
-  <button class="btn" id="bInd" title="Indicadores">ƒx<span class="txt"> Indicadores</span></button>
-  <button class="btn" id="bAjustes" title="Ajustes do modelo">⚙<span class="txt"> Ajustes</span></button>
-  <button class="btn" id="bAtualizar" title="Recalcular agora">⟳</button>
-  <button class="btn" id="bFoto" title="Salvar imagem do gráfico">📷</button>
-  <button class="btn" id="bCheia" title="Tela cheia (Esc para sair)">⛶</button>
-  <button class="btn" id="bRel" title="Relatório em texto com tudo que o LiqMap mostra, para colar na conversa com a IA">📋<span class="txt"> Relatório</span></button>
+  <button class="btn" id="bInd" title="Indicadores"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-6"/></svg><span class="txt">Indicadores</span></button>
+  <button class="btn" id="bAjustes" title="Ajustes do modelo"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span class="txt">Ajustes</span></button>
+  <div class="grupo">
+    <button class="btn ico" id="bAtualizar" title="Recalcular agora"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></button>
+    <button class="btn ico" id="bFoto" title="Salvar imagem do gráfico"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></button>
+    <button class="btn ico" id="bCheia" title="Tela cheia (Esc para sair)"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+  </div>
   <div class="sep"></div>
-  <a class="btn" href="retornos.html" title="Tabela de retornos históricos por mês, dia e ano">📅<span class="txt"> Retornos</span></a>
-  <a class="btn" href="livro.html" title="Livro de ofertas completo de várias corretoras">📚<span class="txt"> Livro de ofertas</span></a>
-  <a class="btn" href="heatmap.html" title="Heatmap do livro de ofertas: paredes de compra e venda ao longo do tempo">🔥<span class="txt"> Heatmap</span></a>
-  <a class="btn" href="fundo.html" title="Painel de fundo: checklist de 10 sinais de fundo de ciclo com placar">🎯<span class="txt"> Fundo</span></a>
-  <a class="btn" href="carteiras.html" title="Carteiras rastreadas: longs e shorts de baleias com aviso no celular">👛<span class="txt"> Carteiras</span></a>
-  <a class="btn" href="ordens-hl.html" title="Ordens grandes da Hyperliquid com TP e SL das baleias">🐋<span class="txt"> Ordens HL</span></a>
-  <a class="btn" href="futuros.html" title="Futuros por timeframe: open interest, funding, liquidações e quem está movendo o preço">📊<span class="txt"> Futuros</span></a>
-  <a class="btn" href="fluxos.html" title="Fluxo de dinheiro: corretoras, ETFs e stablecoins">💧<span class="txt"> Fluxos</span></a>
+  <button class="btn" id="bPag" title="Outras páginas do LiqMap" aria-haspopup="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span class="txt">Páginas</span> <span class="seta">▾</span></button>
   <div class="direita">
     <span class="status" id="status">Carregando…</span>
     <span class="ponto" id="ponto" title="Preço ao vivo"></span>
-    <button class="btn" id="bPainel" title="Mostrar/ocultar lista e zonas de liquidação">☰<span class="txt"> Lista e zonas</span></button>
+    <button class="btn destaque" id="bRel" title="Relatório em texto com tudo que o LiqMap mostra, para colar na conversa com a IA"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></svg><span class="txt">Relatório</span></button>
+    <button class="btn" id="bPainel" title="Mostrar/ocultar lista e zonas de liquidação"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span class="txt">Lista e zonas</span></button>
   </div>
 </div>
 
+<div class="pop popPag" id="popPag"><div class="pgGrupo">Análise</div><a class="pg" href="fundo.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg><span><b>Painel de fundo</b><small>Placar de 10 sinais de fundo de ciclo</small></span></a><a class="pg" href="futuros.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span><b>Futuros</b><small>Open interest, funding e quem move o preço</small></span></a><a class="pg" href="fluxos.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg><span><b>Fluxos</b><small>Corretoras, ETFs e stablecoins</small></span></a><a class="pg" href="retornos.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span><b>Retornos</b><small>Retorno histórico por mês e dia</small></span></a><div class="pgGrupo">Livro e ordens</div><a class="pg" href="livro.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M4 10h14M4 14h8M4 18h12"/></svg><span><b>Livro de ofertas</b><small>Livro completo de 6 corretoras</small></span></a><a class="pg" href="heatmap.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c1 4 5 5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-5.5 1-8.5z"/></svg><span><b>Heatmap do livro</b><small>Paredes de compra e venda no tempo</small></span></a><a class="pg" href="ordens-hl.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h12M3 12h18M3 17h8"/><circle cx="19" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></svg><span><b>Ordens HL</b><small>Ordens grandes e TP/SL na Hyperliquid</small></span></a><div class="pgGrupo">Baleias</div><a class="pg" href="carteiras.html"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><path d="M16 13h2M3 10h18M7 6V4h10v2"/></svg><span><b>Carteiras</b><small>Longs e shorts de carteiras rastreadas</small></span></a></div>
 <div class="area">
   <nav class="ferr" id="ferr" aria-label="Ferramentas de desenho"></nav>
   <div class="graf" id="graf">
@@ -1868,6 +1880,7 @@ $("bSimb").addEventListener("click", e => {
   abrirPop("popSimb", "bSimb");
 });
 $("bAtualizar").addEventListener("click", () => recalcular(true));
+$("bPag").addEventListener("click", e => { e.stopPropagation(); abrirPop("popPag", "bPag"); });
 $("bInd").addEventListener("click", e => { e.stopPropagation(); montarListaInd(); abrirPop("popInd", "bInd"); });
 const pesosBox = $("pesos");
 LEVS.forEach((L, i) => pesosBox.append(el("label", {}, L + "×", el("input", {type: "number", min: "0", step: "1", id: "w" + i}))));
