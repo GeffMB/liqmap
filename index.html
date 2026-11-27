@@ -173,6 +173,7 @@ button,select,input{font:inherit;color:inherit}
   <button class="btn" id="bAtualizar" title="Recalcular agora">⟳</button>
   <button class="btn" id="bFoto" title="Salvar imagem do gráfico">📷</button>
   <button class="btn" id="bCheia" title="Tela cheia (Esc para sair)">⛶</button>
+  <button class="btn" id="bRel" title="Relatório em texto com tudo que o LiqMap mostra, para colar na conversa com a IA">📋<span class="txt"> Relatório</span></button>
   <div class="sep"></div>
   <a class="btn" href="retornos.html" title="Tabela de retornos históricos por mês, dia e ano">📅<span class="txt"> Retornos</span></a>
   <a class="btn" href="livro.html" title="Livro de ofertas completo de várias corretoras">📚<span class="txt"> Livro de ofertas</span></a>
@@ -2624,6 +2625,10 @@ $("bFoto").addEventListener("click", () => {
 function aplicarLado(){ document.body.classList.toggle("sem-lado", !cfg.lado); $("bPainel").setAttribute("aria-pressed", String(cfg.lado)); setTimeout(ajustarPaineis, 50); }
 aplicarLado();
 $("bPainel").addEventListener("click", () => { cfg.lado = !cfg.lado; salvarPrefs(); aplicarLado(); });
+$("bRel").addEventListener("click", () => {
+  if (window.abrirRelatorio) return window.abrirRelatorio();
+  const sc = document.createElement("script"); sc.src = "relatorio.js?v=1"; sc.onload = () => window.abrirRelatorio(); document.head.append(sc);
+});
 $("bCheia").addEventListener("click", () => {
   if (document.fullscreenElement) document.exitFullscreen(); else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
 });
