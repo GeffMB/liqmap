@@ -37,18 +37,21 @@ export default {
       // mensagens do Telegram: confere o segredo, responde 200 na hora e processa em segundo plano
       let upd; try { upd = await req.json(); } catch (e) { return new Response("ok"); }
       const seg = req.headers.get("X-Telegram-Bot-Api-Secret-Token") || "";
-      ctx.waitUntil((async () => {
+      const job = (async () => {
         const b = await base(env);
         if (!TG || seg !== await segredoTG(TG.token)) return;
         await atenderTelegram(env, upd, b);
-      })().catch(async e => { console.log("bot", e.message); try { if (TG) await enviar("⚠️ Erro ao responder: " + e.message); } catch (x) {} }));
+      })().catch(async e => { console.log("bot", e.message); try { if (TG) await enviar("⚠️ Erro ao responder: " + e.message); } catch (x) {} });
+      // a análise por IA pode passar dos 30 s do segundo plano: nesse caso o Telegram espera a resposta
+      const t = (upd.message && upd.message.text) || (upd.callback_query && upd.callback_query.data) || "";
+      if (/^\/?an[aá]lise/i.test(t)) await job; else ctx.waitUntil(job);
       return new Response("ok");
     }
     if (u.pathname === "/rodar") {
       try {
         const r = await vigiar(env, new Date(), true);
         if (TG) {   // registra o webhook do bot (só muda algo se o endereço/token mudou)
-          const b = await base(env), url = u.origin + "/tg", ass = url + "|" + (await segredoTG(TG.token)).slice(0, 8);
+          const b = await base(env), url = u.origin + "/tg", ass = url + "|" + (await segredoTG(TG.token)).slice(0, 8) + "|v8";
           if (b.bot.webhook !== ass || u.searchParams.has("webhook")) { const w = await configurarWebhook(url); r.bot = w.ok ? "webhook registrado agora" : "erro no webhook: " + w.description; if (w.ok) { b.bot.webhook = ass; await salvarBot(env, b.gid, b.bot); } }
           else r.bot = "webhook ok";
           const info = await tg("getWebhookInfo", {}); if (info.ok) { r.botPendentes = info.result.pending_update_count; if (info.result.last_error_message) r.botUltimoErro = info.result.last_error_message; }
@@ -274,7 +277,7 @@ async function vigiar(env, quando, forcarStatus = false) {
   const arquivos = {};
   const minuto = Math.floor(agora / 60);
   if (mudouSync || forcarStatus || minuto % 10 === 0 || !estado.ultimo || agora - estado.ultimo > 900 || estado.ativos !== ativos || JSON.stringify(estado.errosPreco || {}) !== JSON.stringify(errosPreco))
-    arquivos[ARQ_VIGIA] = {content: JSON.stringify({ultimo: agora, disparados, ativos, fonte: "cloudflare", versao: 7, telegram: !!TG, carteiras: Object.keys(novosSnaps).length, fontesPreco, errosPreco})};
+    arquivos[ARQ_VIGIA] = {content: JSON.stringify({ultimo: agora, disparados, ativos, fonte: "cloudflare", versao: 8, telegram: !!TG, carteiras: Object.keys(novosSnaps).length, fontesPreco, errosPreco})};
   if (mudouCart || (rastreadas.length && minuto % 10 === 0)) arquivos[ARQ_CART] = {content: JSON.stringify({ultimo: agora, fonte: "cloudflare", snaps: novosSnaps})};
   if (novoEv) arquivos[ARQ_EV] = {content: novoEv};
   if (mudouSync) {
@@ -282,7 +285,7 @@ async function vigiar(env, quando, forcarStatus = false) {
     arquivos[ARQ_SYNC] = {content: JSON.stringify(pac)};
   }
   if (Object.keys(arquivos).length) await gh(env, "/gists/" + gid, {method: "PATCH", body: {files: arquivos}});
-  return {ok: true, versao: 7, telegram: TG ? "conectado (@" + (TG.bot || "bot") + ")" : "desligado", gist: gid, ativos, disparados: avisos, carteiras: rastreadas.length, avisosCarteiras: avisosCart, avisosEventos: avisosEv, fontesPreco, errosPreco, quando: quando.toISOString()};
+  return {ok: true, versao: 8, telegram: TG ? "conectado (@" + (TG.bot || "bot") + ")" : "desligado", gist: gid, ativos, disparados: avisos, carteiras: rastreadas.length, avisosCarteiras: avisosCart, avisosEventos: avisosEv, fontesPreco, errosPreco, quando: quando.toISOString()};
 }
 
 // ---------- eventos econômicos: mesma lógica do vigia.py (planejar_eventos) ----------
@@ -363,16 +366,33 @@ const MOEDAS_BOT = {
 const ARQ_BOT = "liqmap-bot.json";
 const URL_FLUXOS = "https://geffmb.github.io/liqmap/fluxos.json";
 const SITE = "https://geffmb.github.io/liqmap/";
-const AJUDA = `🤖 LiqMap — comandos
+const AJUDA = `🤖 LiqMap — comandos (troque ETH por BTC, SOL, XRP ou QNT)
 
-/precoBTC — preço, tendência e derivativos (troque BTC por ETH, SOL, XRP ou QNT)
-/alertaETH 1700 — cria uma linha com alerta em 1.700 no gráfico (pode pôr uma nota: /alertaETH 1700 suporte)
-/alertas — suas linhas com alerta, com botões para desligar ou apagar
-/fundoBTC — placar do Painel de fundo (BTC ou ETH)
-/relatorioETH — relatório completo em texto, pronto para colar na IA
-/silenciar e /retomar — pausa ou volta os avisos automáticos (os alertas de linha continuam)
+💰 Mercado
+/precoETH — preço, tendência e derivativos
+/graficoETH 4h — gráfico em imagem (1h, 4h, diário, semanal) com suas linhas
+/fundoETH — Painel de fundo (BTC ou ETH)
+/relatorioETH — relatório completo em texto
+/analiseETH — análise por IA com cenários
+/carteiras — posições das baleias que você rastreia
 
-Avisos automáticos: resumo às 8h, Painel de fundo mudando de faixa, movimentos bruscos (≥2% em 15 min) e fluxo diário dos ETFs.`;
+🔔 Alertas
+/alertaETH 1700 suporte — linha de preço no gráfico (com nota)
+/alertaETH -5% — linha 5% abaixo do preço atual (ou +5%)
+/alertaETH fecha 1800 diário — só se a vela FECHAR além do nível
+/alertaETH ifr 30 diário — IFR chegar em 30
+/alertaETH macd 4h — MACD cruzar
+/alertaETH mms200 diário — preço perder/recuperar a MMS200 (ou mme21)
+/alertas — lista, desliga ou apaga
+
+💼 Diário de operações
+/compreiETH 1700 0.5 stop 1600 alvo 1900 — registra a compra e cria stop e alvo no gráfico
+/vendiETH 1850 — fecha a posição (ou /vendiETH 1850 0.2 parcial; sem posição, abre short)
+/operacoes — posições abertas, resultado e mês
+
+⚙️ /silenciar e /retomar — pausa ou volta os avisos automáticos
+
+Automáticos: resumo às 8h, fechamento da semana (domingo 21h), Painel de fundo mudando de faixa, movimentos bruscos, funding e open interest extremos e fluxo diário dos ETFs.`;
 
 // ---------- Telegram ----------
 async function segredoTG(token){
@@ -395,9 +415,11 @@ async function configurarWebhook(url){
   const r = await tg("setWebhook", {url, secret_token: s, allowed_updates: ["message", "callback_query"], drop_pending_updates: true});
   await tg("setMyCommands", {commands: [
     {command: "precobtc", description: "Preço e tendência do BTC"}, {command: "precoeth", description: "Preço e tendência do ETH"},
-    {command: "alertas", description: "Minhas linhas com alerta"}, {command: "fundobtc", description: "Painel de fundo do BTC"},
-    {command: "relatoriobtc", description: "Relatório completo do BTC"}, {command: "relatorioeth", description: "Relatório completo do ETH"},
-    {command: "ajuda", description: "Todos os comandos"}]});
+    {command: "graficobtc", description: "Gráfico do BTC (imagem)"}, {command: "graficoeth", description: "Gráfico do ETH (imagem)"},
+    {command: "alertas", description: "Meus alertas"}, {command: "fundobtc", description: "Painel de fundo do BTC"},
+    {command: "fundoeth", description: "Painel de fundo do ETH"}, {command: "operacoes", description: "Diário de operações"},
+    {command: "carteiras", description: "Posições das baleias rastreadas"}, {command: "relatorioeth", description: "Relatório completo do ETH"},
+    {command: "analiseeth", description: "Análise por IA do ETH"}, {command: "ajuda", description: "Todos os comandos"}]});
   return r;
 }
 
@@ -450,7 +472,9 @@ async function base(env){
   let cfg = {}; try { cfg = JSON.parse(dados.liqmap2 || "{}"); } catch (e) {}
   TG = cfg.telegram && cfg.telegram.token && cfg.telegram.chat ? cfg.telegram : null;
   const bot = (await conteudo(g, ARQ_BOT)) || {};
-  return {gid, g, pac, dados, cfg, bot};
+  const bu = (await conteudo(g, ARQ_BOTU)) || {};
+  if (bu.auto == null && bot.auto != null) bu.auto = bot.auto;
+  return {gid, g, pac, dados, cfg, bot, bu};
 }
 async function salvarBot(env, gid, bot){ await gh(env, "/gists/" + gid, {method: "PATCH", body: {files: {[ARQ_BOT]: {content: JSON.stringify(bot)}}}}); }
 function linhasDe(dados, m){
@@ -610,7 +634,8 @@ async function criarAlerta(env, m, args){
   const M = MOEDAS_BOT[m];
   const h1 = await pega(kraken(m, 60)); const ref = h1 ? h1[h1.length - 1].c : null;
   const [ptxt, ...resto] = args.split(/\s+/);
-  const p = lerPrecoTxt(ptxt, ref);
+  const pc = ptxt.match(/^([+-]?\d+(?:[.,]\d+)?)%$/);
+  const p = pc ? (ref ? ref * (1 + parseFloat(pc[1].replace(",", ".")) / 100) : null) : lerPrecoTxt(ptxt, ref);
   if (!p || !isFinite(p) || p <= 0) return `Faltou o preço. Exemplo: /alerta${m} ${ref ? Math.round(ref) : 1000}`;
   if (ref && Math.abs(p / ref - 1) > 0.6) return `${P(p)} está muito longe do preço atual de ${m} (${P(ref)}). Confira o valor.`;
   const nota = resto.join(" ").slice(0, 40);
@@ -618,8 +643,10 @@ async function criarAlerta(env, m, args){
   await mexerDesenhos(env, M.s, ds => { ds.push(Object.assign({id: "t" + agora.toString(36), tipo: "horizontal", pts: [{t: Math.floor(agora / 1000), p}], alerta: true, alertaDesde: agora, mod: agora}, nota ? {nota} : {})); });
   return `✅ Alerta criado: ${m} em ${P(p)}${ref ? " (" + pcB((p / ref - 1) * 100) + " do preço atual " + P(ref) + ")" : ""}${nota ? ' — "' + nota + '"' : ""}\nA linha aparece no gráfico do site e o aviso chega aqui quando o preço tocar.`;
 }
-async function listarAlertas(dados, filtro){
+async function listarAlertas(dados, filtro, bu = {}){
   const linhas = [], botoes = [];
+  for (const a of bu.ind || []) { if (filtro && filtro !== a.m) continue;
+    linhas.push(`📊 ${a.m} ${descInd(a)}`); botoes.push([{text: "🗑 " + a.m + " " + a.tipo.toUpperCase() + " " + NOME_TF[a.iv], callback_data: "deli:" + a.m + ":" + a.id}]); }
   for (const m of Object.keys(MOEDAS_BOT)) {
     if (filtro && filtro !== m) continue;
     for (const d of linhasDe(dados, m)) {
@@ -629,8 +656,8 @@ async function listarAlertas(dados, filtro){
       if (d.id) botoes.push([{text: "🔕 " + m + " " + desc, callback_data: "off:" + m + ":" + d.id}, {text: "🗑 apagar", callback_data: "del:" + m + ":" + d.id}]);
     }
   }
-  if (!linhas.length) return {txt: "Nenhuma linha com alerta ligado" + (filtro ? " em " + filtro : "") + ". Crie com /alertaBTC 60000"};
-  return {txt: "Suas linhas com alerta (🔕 desliga o alerta e mantém a linha; 🗑 apaga a linha):\n\n" + linhas.join("\n"), extra: {reply_markup: {inline_keyboard: botoes.slice(0, 40)}}};
+  if (!linhas.length) return {txt: "Nenhum alerta ligado" + (filtro ? " em " + filtro : "") + ". Crie com /alertaBTC 60000 ou /alertaBTC ifr 30 diário"};
+  return {txt: "Seus alertas (🔕 desliga o alerta e mantém a linha; 🗑 apaga):\n\n" + linhas.join("\n"), extra: {reply_markup: {inline_keyboard: botoes.slice(0, 40)}}};
 }
 
 // ---------- recebe as mensagens do Telegram ----------
@@ -647,26 +674,39 @@ async function atenderTelegram(env, upd, b){
         if (acao === "del") ds.splice(i, 1); else { ds[i].alerta = false; ds[i].mod = Date.now(); } return true; });
       return enviar(ok ? (acao === "del" ? "🗑 Linha apagada." : "🔕 Alerta desligado (a linha continua no gráfico).") : "Não achei essa linha (talvez já tenha sido apagada).");
     }
+    if (acao === "deli") { const n = (b.bu.ind || []).length; b.bu.ind = (b.bu.ind || []).filter(a => a.id !== id);
+      if (b.bu.ind.length === n) return enviar("Esse alerta já não existe."); await salvarBotU(env, b.gid, b.bu); return enviar("🗑 Alerta de indicador apagado."); }
     if (MOEDAS_BOT[m]) return comando(env, b, acao, m, "");
     return;
   }
   const txt = (msg && msg.text || "").trim();
-  const r = txt.match(/^\/([a-zçã]+?)(btc|eth|sol|xrp|qnt)?(?:@\w+)?(?:\s+([\s\S]*))?$/i);
+  const r = txt.match(/^\/([^\s@\d]+?)(btc|eth|sol|xrp|qnt)?(?:@\w+)?(?:\s+([\s\S]*))?$/i);
   if (!r) return enviar("Não entendi. Envie /ajuda para ver os comandos.");
-  let cmd = r[1].toLowerCase(), m = r[2] ? r[2].toUpperCase() : null, args = (r[3] || "").trim();
+  let cmd = r[1].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""), m = r[2] ? r[2].toUpperCase() : null, args = (r[3] || "").trim();
   if (!m && args) { const t = args.split(/\s+/)[0].toUpperCase(); if (MOEDAS_BOT[t]) { m = t; args = args.slice(t.length).trim(); } }
   return comando(env, b, cmd, m, args);
 }
 async function comando(env, b, cmd, m, args){
-  if (cmd === "start" || cmd === "ajuda" || cmd === "help") return enviar(AJUDA);
-  if (cmd === "silenciar" || cmd === "retomar") { b.bot.auto = cmd === "retomar"; await salvarBot(env, b.gid, b.bot); return enviar(cmd === "retomar" ? "🔔 Avisos automáticos ligados." : "🔕 Avisos automáticos pausados. Os alertas das suas linhas continuam. Use /retomar para voltar."); }
-  if (cmd === "alertas") { const l = await listarAlertas(b.dados, m); return enviar(l.txt, l.extra || {}); }
-  const precisa = {preco: "preço", alerta: "alerta", fundo: "painel de fundo", relatorio: "relatório"}[cmd];
+  const alias = {help: "ajuda", start: "ajuda", grafico: "grafico", chart: "grafico", ops: "operacoes", operacao: "operacoes", posicoes: "operacoes", diario: "operacoes", compra: "comprei", comprar: "comprei", venda: "vendi", vender: "vendi", baleias: "carteiras", carteira: "carteiras", ia: "analise"};
+  cmd = alias[cmd] || cmd;
+  if (cmd === "ajuda") return enviar(AJUDA, TECLADO);
+  if (cmd === "silenciar" || cmd === "retomar") { b.bu.auto = cmd === "retomar"; await salvarBotU(env, b.gid, b.bu); return enviar(cmd === "retomar" ? "🔔 Avisos automáticos ligados." : "🔕 Avisos automáticos pausados. Os alertas de linha e de indicador continuam. Use /retomar para voltar."); }
+  if (cmd === "alertas") { const l = await listarAlertas(b.dados, m, b.bu); return enviar(l.txt, l.extra || {}); }
+  if (cmd === "carteiras") return enviar(await textoCarteiras(b.dados));
+  if (cmd === "operacoes") return enviar(await textoOps(b.bu));
+  if (cmd === "zerardiario") { if (args.toLowerCase() !== "sim") return enviar("Isso apaga todas as operações registradas. Para confirmar, envie: /zerardiario sim");
+    b.bu.ops = {pos: {}, hist: []}; await salvarBotU(env, b.gid, b.bu); return enviar("🗑 Diário de operações zerado (as linhas do gráfico continuam)."); }
+  const precisa = {preco: "preço", alerta: "alerta", fundo: "painel de fundo", relatorio: "relatório", grafico: "gráfico", analise: "análise", comprei: "registro de compra", vendi: "registro de venda"}[cmd];
   if (!precisa) return enviar("Comando desconhecido. Envie /ajuda para ver os comandos.");
-  if (!m) return enviar("Escolha a moeda para o " + precisa + (cmd === "alerta" ? " (depois envie, por exemplo, /alertaETH 1700)" : "") + ":", botoesMoeda(cmd, cmd === "fundo" ? ["BTC", "ETH"] : undefined));
-  if (cmd === "preco") return enviar(await textoPreco(m, b.dados));
+  if (!m) return enviar("Escolha a moeda para o " + precisa + (cmd === "alerta" ? " (depois envie, por exemplo, /alertaETH 1700)" : cmd === "comprei" || cmd === "vendi" ? " (depois envie, por exemplo, /" + cmd + "ETH 1700 0.5)" : "") + ":", botoesMoeda(cmd === "comprei" || cmd === "vendi" ? "preco" : cmd, cmd === "fundo" ? ["BTC", "ETH"] : undefined));
+  if (cmd === "preco") return enviar(await textoPreco(m, b.dados), atalhos(m));
+  if (cmd === "grafico") return enviarGrafico(m, args, b.dados);
+  if (cmd === "analise") return enviar(await analiseIA(env, m, b.dados, b.bot));
+  if (cmd === "comprei" || cmd === "vendi") return enviar(await operar(env, b, m, cmd === "comprei" ? 1 : -1, args));
   if (cmd === "alerta") {
-    if (!args) { const h = await pega(kraken(m, 60)), p = h ? h[h.length - 1].c : null; return enviar(`${m} está em ${P(p)}. Envie o preço do alerta assim:\n/alerta${m} ${p ? (+p.toPrecision(3)) : 1000}\n(pode acrescentar uma nota depois do preço)`); }
+    if (!args) { const h = await pega(kraken(m, 60)), p = h ? h[h.length - 1].c : null; return enviar(`${m} está em ${P(p)}. Exemplos:\n/alerta${m} ${p ? (+p.toPrecision(3)) : 1000} — linha de preço\n/alerta${m} -5% — 5% abaixo\n/alerta${m} fecha ${p ? (+p.toPrecision(2)) : 1000} diário — fechamento\n/alerta${m} ifr 30 diário · /alerta${m} macd 4h · /alerta${m} mms200 diário`); }
+    const partes = args.split(/\s+/);
+    if (/^(ifr|rsi|macd|mms200|mme21|fecha|fechar|fechamento)$/i.test(partes[0])) { if (/^rsi$/i.test(partes[0])) partes[0] = "ifr"; return enviar(await criarAlertaInd(env, b, m, partes)); }
     return enviar(await criarAlerta(env, m, args));
   }
   if (cmd === "fundo") { if (!MOEDAS_BOT[m].cm) return enviar("O Painel de fundo existe para BTC e ETH."); const f = await calcFundo(m); aplicarOI(f, m, b.bot); return enviar(textoFundo(m, f)); }
@@ -676,7 +716,7 @@ async function comando(env, b, cmd, m, args){
 // ---------- avisos automáticos (chamado pelo vigia a cada minuto) ----------
 async function automaticosBot(env, b, agoraS){
   if (!TG) return [];
-  const {gid, dados, bot} = b;
+  const {gid, dados, bot, bu} = b;
   const feitos = []; let mudou = false;
   const p = partesBRT(agoraS), hoje = p.year + "-" + p.month + "-" + p.day, min = Math.floor(agoraS / 60);
   // foto diária do open interest (Hyperliquid) para o critério de alavancagem do painel de fundo
@@ -685,8 +725,11 @@ async function automaticosBot(env, b, agoraS){
       for (const m of ["BTC", "ETH"]) { const h = bot.oiHist[m] || []; h.push([hoje, +ctx[m].openInterest]); bot.oiHist[m] = h.slice(-30); }
       bot.oiDia = hoje; mudou = true; } catch (e) {}
   }
-  let pesado = false;   // o plano grátis do Cloudflare limita as consultas por minuto: tarefa pesada pula o "brusco" daquele minuto
-  if (bot.auto !== false) {
+  // (pesado declarado acima) o plano grátis do Cloudflare limita as consultas por minuto: tarefa pesada pula o "brusco" daquele minuto
+  let pesado = false;
+  // alertas de indicador e de fechamento (são pedidos seus: rodam mesmo com /silenciar), a cada 5 min
+  if (min % 5 === 4) { try { const f = await verificarInd(env, b, agoraS); feitos.push(...f); if ((bu.ind || []).length > 2) pesado = true; } catch (e) { console.log("ind", e.message); } }
+  if (bu.auto !== false) {
     // 1) resumo da manhã, a partir das 8h (horário de Brasília)
     if (bot.resumo !== hoje && +p.hour >= 8 && +p.hour < 12) {
       try {
@@ -705,8 +748,19 @@ async function automaticosBot(env, b, agoraS){
           L.push("", evs.length ? "📅 Hoje (EUA): " + evs.map(e => horaBRT(e.t / 1000) + " " + e.titulo).join(" · ") : "📅 Sem evento de alto impacto nos EUA hoje."); } catch (e) {}
         let n = 0; for (const m of Object.keys(MOEDAS_BOT)) n += linhasDe(dados, m).filter(d => d.alerta).length;
         L.push(`🔔 ${n} alerta(s) de linha ligado(s). /alertas para ver.`);
-        await enviar(L.join("\n")); bot.resumo = hoje; mudou = true; pesado = true; feitos.push("resumo");
+        if (p.day === "01") { const t = textoMes(bu, agoraS); if (t) L.push("", t); }
+        const ab = Object.entries(((bu.ops || {}).pos) || {}).filter(([, x]) => x.q).length; if (ab) L.push(`💼 ${ab} posição(ões) aberta(s) no diário. /operacoes`);
+        await enviar(L.join("\n"), atalhos("BTC")); bot.resumo = hoje; mudou = true; pesado = true; feitos.push("resumo");
       } catch (e) { console.log("resumo", e.message); }
+    }
+    // 1b) fechamento da semana: domingo a partir das 21h (horário de Brasília)
+    else if (p.weekday === "Sun" && +p.hour >= 21 && bot.semana !== hoje) {
+      pesado = true;
+      try { await enviar(await textoSemana(bot, bu, agoraS), atalhos("BTC")); bot.semana = hoje; mudou = true; feitos.push("semana"); } catch (e) { console.log("semana", e.message); }
+    }
+    // 1c) funding e open interest extremos (a cada 5 min)
+    else if (min % 5 === 1) {
+      try { const ctx = await hlCtx(); for (const t of extremos(ctx, bot, agoraS)) { await enviar(t); feitos.push("extremo"); } mudou = true; } catch (e) { console.log("extremos", e.message); }
     }
     // 2) painel de fundo mudou de faixa (a cada 30 min)
     else if (min % 30 === 7) {
@@ -717,7 +771,7 @@ async function automaticosBot(env, b, agoraS){
         for (const m of ["BTC", "ETH"]) {
           const f = await calcFundo(m, {flx, fng, ctx}); if (!f) continue; aplicarOI(f, m, bot);
           const ant = bot.fundo[m], fx = n => n >= 7 ? 2 : n >= 4 ? 1 : 0;
-          if (ant != null && fx(ant) !== fx(f.n)) { await enviar(`🎯 Painel de fundo ${m} mudou: ${ant}/10 → ${f.n}/10 ✅ — agora "${faixaFundo(f.n)}".\n\n` + textoFundo(m, f)); feitos.push("fundo " + m); }
+          if (ant != null && fx(ant) !== fx(f.n)) { await enviar(`🎯 Painel de fundo ${m} mudou: ${ant}/10 → ${f.n}/10 ✅ — agora "${faixaFundo(f.n)}".\n\n` + textoFundo(m, f), atalhos(m)); feitos.push("fundo " + m); }
           if (ant !== f.n) { bot.fundo[m] = f.n; mudou = true; }
         }
       } catch (e) { console.log("fundo", e.message); }
@@ -749,7 +803,7 @@ async function automaticosBot(env, b, agoraS){
         const lado = d > 0 ? "alta" : "queda", k = m + lado;
         if (Math.abs(d) >= MOEDAS_BOT[m].brusco && agoraS - (bot.brusco[k] || 0) > 3600) {
           const mx = Math.max(...ks.map(x => +x.h)), mn = Math.min(...ks.map(x => +x.l));
-          await enviar(`⚡ ${m} ${d > 0 ? "subiu" : "caiu"} ${pcB(d)} em 15 min (${P(ini)} → ${P(fim)}; máx ${P(mx)}, mín ${P(mn)}).\nMovimento brusco: provável cascata de liquidações de ${d > 0 ? "shorts" : "longs"}. Veja o mapa no site.`);
+          await enviar(`⚡ ${m} ${d > 0 ? "subiu" : "caiu"} ${pcB(d)} em 15 min (${P(ini)} → ${P(fim)}; máx ${P(mx)}, mín ${P(mn)}).\nMovimento brusco: provável cascata de liquidações de ${d > 0 ? "shorts" : "longs"}. Veja o mapa no site.`, atalhos(m));
           bot.brusco[k] = agoraS; mudou = true; feitos.push("brusco " + m);
         }
       }
@@ -757,4 +811,272 @@ async function automaticosBot(env, b, agoraS){
   }
   if (mudou) await salvarBot(env, gid, bot);
   return feitos;
+}
+
+// =====================================================================================
+// BOT — parte 2: alertas de indicador e de fechamento, funding/OI extremos, gráfico em imagem,
+// fechamento semanal, /carteiras, diário de operações (com stop e alvo) e análise por IA.
+// Dados do usuário (alertas de indicador, operações, silenciar) ficam em liqmap-bot-usuario.json,
+// separado do estado dos automáticos, para um não sobrescrever o outro.
+// =====================================================================================
+const ARQ_BOTU = "liqmap-bot-usuario.json";
+const TFS = {"15m": 15, "1h": 60, "4h": 240, "1d": 1440, "d": 1440, "diario": 1440, "diário": 1440, "1w": 10080, "w": 10080, "semanal": 10080};
+const NOME_TF = {15: "15m", 60: "1h", 240: "4h", 1440: "diário", 10080: "semanal"};
+const lerTF = (t, pad = 1440) => TFS[String(t || "").toLowerCase()] || pad;
+async function salvarBotU(env, gid, bu){ await gh(env, "/gists/" + gid, {method: "PATCH", body: {files: {[ARQ_BOTU]: {content: JSON.stringify(bu)}}}}); }
+const atalhos = m => ({reply_markup: {inline_keyboard: [
+  [{text: "📈 Gráfico " + m, callback_data: "grafico:" + m}, {text: "💰 Preço", callback_data: "preco:" + m}, {text: "🎯 Fundo", callback_data: "fundo:" + (MOEDAS_BOT[m].cm ? m : "BTC")}],
+  [{text: "📋 Relatório", callback_data: "relatorio:" + m}, {text: "🧠 Análise IA", callback_data: "analise:" + m}]]}});
+const TECLADO = {reply_markup: {keyboard: [["/precoBTC", "/precoETH"], ["/graficoBTC", "/graficoETH"], ["/fundoBTC", "/alertas"], ["/operacoes", "/carteiras"]], resize_keyboard: true, is_persistent: true}};
+function smaSerie(c, n){ const out = []; let s = 0; c.forEach((x, i) => { s += x; if (i >= n) s -= c[i - n]; out.push(i >= n - 1 ? s / n : null); }); return out; }
+
+// ---------- 1 e 2) alertas de indicador e de fechamento ----------
+function estadoInd(a, v){
+  const c = v.map(x => x.c);
+  if (a.tipo === "ifr") return rsiB(c);
+  if (a.tipo === "macd") { const m = macdB(c); return m ? Math.sign(m.hist) : null; }
+  if (a.tipo === "mms200" || a.tipo === "mme21") { const ma = a.tipo === "mms200" ? smaB(c, 200) : emaB(c, 21).pop(); return ma ? Math.sign(c[c.length - 1] - ma) : null; }
+  return null;
+}
+const descInd = a => a.tipo === "ifr" ? `IFR ${NOME_TF[a.iv]} ${a.dir > 0 ? "acima de" : "abaixo de"} ${a.lim}`
+  : a.tipo === "macd" ? `MACD ${NOME_TF[a.iv]} cruzar (${a.ant > 0 ? "para baixo" : "para cima"})`
+  : a.tipo === "fecha" ? `vela ${NOME_TF[a.iv]} fechar ${a.dir > 0 ? "acima de" : "abaixo de"} ${P(a.lim)}`
+  : `preço ${a.ant > 0 ? "perder" : "recuperar"} a ${a.tipo === "mms200" ? "MMS200" : "MME21"} ${NOME_TF[a.iv]}`;
+async function criarAlertaInd(env, b, m, partes){
+  const tipo = partes[0].toLowerCase();
+  const v1 = await kraken(m, 60); const ref = v1[v1.length - 1].c;
+  let a = {id: "i" + Date.now().toString(36), m, tipo, criado: Date.now()};
+  if (tipo === "ifr") {
+    const lim = parseFloat(String(partes[1] || "").replace(",", "."));
+    if (!(lim > 0 && lim < 100)) return "Exemplo: /alerta" + m + " ifr 30 diário (avisa quando o IFR diário chegar em 30)";
+    a.lim = lim; a.iv = lerTF(partes[2]);
+    const v = await kraken(m, a.iv), atual = rsiB(v.map(x => x.c)); a.dir = atual > lim ? -1 : 1;
+    a.txtAtual = "IFR " + NOME_TF[a.iv] + " agora: " + f2(atual, 1);
+  } else if (tipo === "macd" || tipo === "mms200" || tipo === "mme21") {
+    a.iv = lerTF(partes[1]);
+    const v = await kraken(m, a.iv); a.ant = estadoInd(a, v);
+    if (a.ant == null || a.ant === 0) return "Não consegui calcular esse indicador agora.";
+    a.txtAtual = tipo === "macd" ? "MACD " + NOME_TF[a.iv] + " agora " + (a.ant > 0 ? "positivo" : "negativo") : "Preço agora " + (a.ant > 0 ? "acima" : "abaixo") + " da média";
+  } else if (tipo === "fecha" || tipo === "fechar" || tipo === "fechamento") {
+    a.tipo = "fecha"; a.lim = lerPrecoTxt(partes[1] || "", ref); a.iv = lerTF(partes[2]);
+    if (!a.lim) return "Exemplo: /alerta" + m + " fecha 1800 diário (avisa só se a vela diária FECHAR além de 1.800)";
+    a.dir = a.lim > ref ? 1 : -1; a.txtAtual = "Preço agora: " + P(ref);
+  } else return null;
+  b.bu.ind = (b.bu.ind || []).concat(a).slice(-30);
+  await salvarBotU(env, b.gid, b.bu);
+  return `✅ Alerta criado: ${m} — ${descInd(a)}.\n${a.txtAtual}. Confiro a cada 5 minutos.`;
+}
+async function verificarInd(env, b, agoraS){
+  const lista = b.bu.ind || []; if (!lista.length) return [];
+  const pares = [...new Set(lista.map(a => a.m + "|" + a.iv))].slice(0, 6), velas = {};
+  for (const k of pares) { const [m, iv] = k.split("|"); velas[k] = await pega(kraken(m, +iv)); }
+  const ficam = [], feitos = [];
+  for (const a of lista) {
+    const v = velas[a.m + "|" + a.iv]; if (!v) { ficam.push(a); continue; }
+    let disparou = null; const p = v[v.length - 1].c;
+    if (a.tipo === "ifr") { const r = rsiB(v.map(x => x.c)); if (a.dir > 0 ? r >= a.lim : r <= a.lim) disparou = `IFR ${NOME_TF[a.iv]} chegou em ${f2(r, 1)}`; }
+    else if (a.tipo === "fecha") { const k = v[v.length - 2]; if (k && k.t + a.iv * 6e4 > a.criado && (a.dir > 0 ? k.c > a.lim : k.c < a.lim)) disparou = `vela ${NOME_TF[a.iv]} fechou em ${P(k.c)}, ${a.dir > 0 ? "acima" : "abaixo"} de ${P(a.lim)}`; }
+    else { const e = estadoInd(a, v); if (e && e !== a.ant) disparou = a.tipo === "macd" ? `MACD ${NOME_TF[a.iv]} cruzou para ${e > 0 ? "cima" : "baixo"}` : `preço ${e > 0 ? "recuperou" : "perdeu"} a ${a.tipo === "mms200" ? "MMS200" : "MME21"} ${NOME_TF[a.iv]}`; }
+    if (disparou) { await enviar(`🔔 ${a.m}: ${disparou} (preço ${P(p)}).`, atalhos(a.m)); feitos.push(a.m + " " + a.tipo); }
+    else ficam.push(a);
+  }
+  if (feitos.length) { b.bu.ind = ficam; await salvarBotU(env, b.gid, b.bu); }
+  return feitos;
+}
+
+// ---------- 4) funding e open interest extremos (a cada 5 min) ----------
+function extremos(ctx, bot, agoraS){
+  const msgs = []; bot.ext = bot.ext || {}; bot.oiR = bot.oiR || {};
+  const pode = (k, h) => agoraS - (bot.ext[k] || 0) > h * 3600 ? (bot.ext[k] = agoraS, true) : false;
+  for (const m of ["BTC", "ETH"]) {
+    const x = ctx[m]; if (!x) continue;
+    const f8 = +x.funding * 800, oi = +x.openInterest;
+    if (f8 >= 0.05 && pode(m + "fAlto", 8)) msgs.push(`🔥 ${m}: funding alto, ${f2(f8, 4)}% por 8h. Comprados pagando caro: mercado alavancado na alta, risco de "long squeeze" (queda rápida).`);
+    if (f8 <= -0.03 && pode(m + "fBaixo", 8)) msgs.push(`🧊 ${m}: funding negativo forte, ${f2(f8, 4)}% por 8h. Vendidos pagando: combustível para "short squeeze" (repique rápido).`);
+    const h = (bot.oiR[m] || []).filter(([t]) => agoraS - t < 66 * 60); h.push([agoraS, oi]); bot.oiR[m] = h;
+    const velho = h.find(([t]) => agoraS - t >= 50 * 60);
+    if (velho) { const d = (oi / velho[1] - 1) * 100, lim = m === "BTC" ? 5 : 7;
+      if (d >= lim && pode(m + "oiSobe", 3)) msgs.push(`📈 ${m}: open interest subiu ${pcB(d)} em 1h (Hyperliquid). Alavancagem entrando forte: tende a aumentar a volatilidade e o risco de liquidações.`);
+      if (d <= -lim && pode(m + "oiCai", 3)) msgs.push(`📉 ${m}: open interest caiu ${pcB(d)} em 1h (Hyperliquid). Desalavancagem: posições fechadas ou liquidadas.`); }
+  }
+  return msgs;
+}
+
+// ---------- 5) gráfico em imagem (QuickChart) ----------
+async function enviarGrafico(m, args, dados){
+  const iv = lerTF((args || "").split(/\s+/)[0], 240), v = await kraken(m, iv), n = 90, u = v.slice(-n);
+  const c = v.map(x => x.c), e21 = emaB(c, 21).slice(-n), s200 = smaSerie(c, 200).slice(-n);
+  const lab = u.map(x => { const q = partesBRT(x.t / 1000); return iv >= 1440 ? q.day + "/" + q.month : q.day + " " + q.hour + "h"; });
+  const cor = u.map(x => x.c >= x.o ? "#26a69a" : "#ef5350");
+  const mx = Math.max(...u.map(x => x.h)), mn = Math.min(...u.map(x => x.l)), fx = (mx - mn) * 0.002;
+  const linhas = linhasDe(dados, m).filter(d => (d.tipo === "horizontal" || d.tipo === "raioH") && d.pts && d.pts[0]);
+  const vis = linhas.filter(d => d.pts[0].p >= mn * 0.9 && d.pts[0].p <= mx * 1.1), fora = linhas.length - vis.length;
+  const ds = [
+    {type: "bar", data: u.map(x => [x.l, x.h]), backgroundColor: cor, barPercentage: 0.15, categoryPercentage: 1},
+    {type: "bar", data: u.map(x => [Math.min(x.o, x.c), Math.max(x.o, x.c) + (x.o === x.c ? fx : 0)]), backgroundColor: cor, barPercentage: 0.75, categoryPercentage: 1},
+    {type: "line", label: "MME21", data: e21, borderColor: "#ff9800", borderWidth: 1.5, pointRadius: 0, fill: false},
+  ];
+  if (s200.some(x => x != null)) ds.push({type: "line", label: "MMS200", data: s200, borderColor: "#2962ff", borderWidth: 1.5, pointRadius: 0, fill: false, borderDash: [6, 3]});
+  vis.slice(0, 8).forEach(d => ds.push({type: "line", label: (d.alerta ? "alerta " : "linha ") + pr(d.pts[0].p) + (d.nota ? " " + d.nota : ""), data: u.map(() => d.pts[0].p),
+    borderColor: d.alerta ? "#ffd600" : "#9e9e9e", borderWidth: 1, pointRadius: 0, fill: false, borderDash: [4, 4]}));
+  const cfg = {type: "bar", data: {labels: lab, datasets: ds}, options: {
+    legend: {labels: {fontColor: "#d1d4dc", boxWidth: 12, filter: "__FILTRO__"}},
+    title: {display: true, text: `${m}/USD ${NOME_TF[iv]} — ${pr(c[c.length - 1])} (Kraken) · LiqMap`, fontColor: "#ffffff", fontSize: 15},
+    scales: {xAxes: [{stacked: true, ticks: {fontColor: "#9598a1", maxTicksLimit: 8, maxRotation: 0}, gridLines: {color: "rgba(255,255,255,0.06)"}}],
+      yAxes: [{position: "right", stacked: false, ticks: {fontColor: "#9598a1"}, gridLines: {color: "rgba(255,255,255,0.06)"}}]}}};
+  const r = await fetch("https://quickchart.io/chart", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({version: "2.9.4", width: 900, height: 520, devicePixelRatio: 2, format: "png", backgroundColor: "#131722",
+      chart: JSON.stringify(cfg).replace('"__FILTRO__"', "function(it){return it.text!=null&&it.text!=='undefined'&&it.text!==''}")})});
+  if (!r.ok) throw new Error("gerador de gráfico HTTP " + r.status);
+  const fd = new FormData();
+  fd.append("chat_id", String(TG.chat));
+  fd.append("caption", `${m} ${NOME_TF[iv]}: laranja = MME21, azul tracejada = MMS200, amarelas = suas linhas com alerta${fora ? ` (${fora} linha(s) fora da tela)` : ""}.\nOutros tempos: /grafico${m} 1h · 4h · diário · semanal`);
+  fd.append("reply_markup", JSON.stringify(atalhos(m).reply_markup));
+  fd.append("photo", new Blob([await r.arrayBuffer()], {type: "image/png"}), "grafico.png");
+  const t = await (await fetch("https://api.telegram.org/bot" + TG.token + "/sendPhoto", {method: "POST", body: fd})).json();
+  if (!t.ok) throw new Error("Telegram: " + t.description);
+}
+
+// ---------- 7) fechamento semanal (domingo à noite) ----------
+async function textoSemana(bot, bu, agoraS){
+  const flx = pega(fetch(URL_FLUXOS).then(r => r.json())), fng = pega(fetch("https://api.alternative.me/fng/?limit=8").then(r => r.json())), ctx = pega(hlCtx());
+  const L = [`🗓 Fechamento da semana — ${dataBRT(agoraS * 1000, false)}`];
+  bot.fundo = bot.fundo || {};
+  for (const m of ["BTC", "ETH"]) {
+    const d1 = await pega(kraken(m, 1440)), w1 = await pega(kraken(m, 10080));
+    if (!d1) continue;
+    const seg = Date.UTC(...(() => { const d = new Date(agoraS * 1000 + 3600e3); const dia = (d.getUTCDay() + 6) % 7; return [d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - dia]; })());
+    const sem = d1.filter(k => k.t >= seg - 7 * 864e5 && k.t < seg);
+    const ab = sem.length ? sem[0].o : d1[d1.length - 8].c, fe = d1[d1.length - 1].c;
+    const f = await calcFundo(m, {["d" + m]: Promise.resolve(d1), ["w" + m]: Promise.resolve(w1), flx, fng, ctx});
+    if (f) aplicarOI(f, m, bot);
+    const ant = (bot.fundoSem || {})[m];
+    L.push("", `${m}: ${P(fe)} · semana ${pcB((fe / ab - 1) * 100)}` + (sem.length ? ` · máx ${P(Math.max(...sem.map(k => k.h)))} / mín ${P(Math.min(...sem.map(k => k.l)))}` : ""));
+    if (w1 && w1.length >= 200) { const ms = smaB(w1.map(k => k.c), 200); L.push(`Média de 200 semanas: ${P(ms)} (preço ${pcB((fe / ms - 1) * 100)}) · IFR semanal ${f2(rsiB(w1.map(k => k.c)), 1)}`); }
+    if (f) { L.push(`🎯 Fundo ${f.n}/10${ant != null ? ` (semana passada ${ant}/10)` : ""} — ${faixaFundo(f.n)}`); bot.fundoSem = bot.fundoSem || {}; bot.fundoSem[m] = f.n; }
+  }
+  const fl = await flx;
+  if (fl) {
+    const lim = new Date((agoraS - 7 * 86400) * 1000).toISOString().slice(0, 10);
+    for (const [k, nome] of [["etfBtc", "BTC"], ["etfEth", "ETH"]]) { const e = (fl[k] && fl[k].dias || []).filter(d => d.total != null && d.data > lim); if (e.length) L.push(`ETFs ${nome} na semana: ${usB(e.reduce((a, d) => a + d.total, 0) * 1e6, true)} (${e.length} pregões)`); }
+    const sr = fl.stables ? fl.stables.serie : []; if (sr.length >= 8) L.push(`Stablecoins: ${pcB((sr[sr.length - 1][1] / sr[sr.length - 8][1] - 1) * 100, 2)} na semana`);
+    const cx = fl.cex || []; if (cx.length) { const s7 = cx.reduce((a, c) => a + (c.d7_mo ?? c.d7 ?? 0), 0); L.push(`Corretoras (moedas): ${usB(s7, true)} ${s7 < 0 ? "saindo — acumulação" : "entrando — possível venda"}`); }
+  }
+  const fg = await fng; if (fg && fg.data && fg.data[7]) L.push(`Medo e Ganância: ${fg.data[0].value} (há 7 dias: ${fg.data[7].value})`);
+  try { const evs = ((await (await fetch(URL_EVENTOS)).json()).eventos || []).filter(e => e.t > agoraS * 1000 && e.t < agoraS * 1000 + 7 * 864e5 && e.impacto === "High");
+    L.push("", "📅 Semana que vem (EUA, alto impacto):", ...(evs.length ? evs.slice(0, 10).map(e => "• " + dataBRT(e.t) + " " + e.titulo) : ["• nada marcado ainda"])); } catch (e) {}
+  const r = resumoOps(bu, 7); if (r) L.push("", r);
+  return L.join("\n");
+}
+
+// ---------- 8) carteiras rastreadas sob demanda ----------
+async function textoCarteiras(dados){
+  let cs = []; try { cs = JSON.parse(dados["liqmap-carteiras"] || "[]").filter(c => !c.del && /^0x[0-9a-f]{40}$/.test(c.addr)); } catch (e) {}
+  if (!cs.length) return "Nenhuma carteira rastreada. Adicione na página Carteiras do site.";
+  const L = ["🐋 Carteiras rastreadas — posições agora (Hyperliquid)"];
+  for (const c of cs.slice(0, 10)) {
+    const quem = c.nome || (c.addr.slice(0, 6) + "…" + c.addr.slice(-4));
+    let st; try { st = await hl({type: "clearinghouseState", user: c.addr}); } catch (e) { L.push("", quem + ": não consegui ler agora"); continue; }
+    const ps = (st.assetPositions || []).map(p => p.position).filter(x => +x.szi).sort((a, b) => Math.abs(+b.positionValue) - Math.abs(+a.positionValue));
+    L.push("", `${quem} — conta ${usB(+(st.marginSummary || {}).accountValue)}`);
+    if (!ps.length) L.push("  sem posições abertas");
+    ps.slice(0, 6).forEach(x => L.push(`  ${+x.szi > 0 ? "🟢 LONG" : "🔴 SHORT"} ${x.coin} ${usB(Math.abs(+x.positionValue))} · entrada ${P(+x.entryPx)} · resultado ${usB(+x.unrealizedPnl, true)}${x.liquidationPx ? " · liquida em " + P(+x.liquidationPx) : ""}${x.leverage ? " · " + x.leverage.value + "x" : ""}`));
+    if (ps.length > 6) L.push(`  … e mais ${ps.length - 6}`);
+  }
+  if (cs.length > 10) L.push("", `(mostrando 10 de ${cs.length})`);
+  return L.join("\n");
+}
+
+// ---------- 9 e 10) diário de operações, com stop e alvo no gráfico ----------
+const numTxt = t => { const x = parseFloat(String(t).replace(",", ".")); return isFinite(x) ? x : null; };
+async function operar(env, b, m, lado, args){
+  const ex = lado > 0 ? "/compreiETH 1700 0.5 stop 1600 alvo 1900" : "/vendiETH 1850 (fecha tudo) ou /vendiETH 1850 0.2 (parcial)";
+  const t = args.split(/\s+/).filter(Boolean);
+  const v1 = await kraken(m, 60), ref = v1[v1.length - 1].c;
+  if (!t.length) return "Exemplo: " + ex.replace(/ETH/g, m);
+  const p = /^(agora|mercado|a)$/i.test(t[0]) ? ref : lerPrecoTxt(t[0], ref);
+  if (!p || Math.abs(p / ref - 1) > 0.6) return `Preço inválido. Exemplo: ${ex.replace(/ETH/g, m)}`;
+  let q = null, stop = null, alvo = null;
+  for (let i = 1; i < t.length; i++) { const w = t[i].toLowerCase();
+    if (w === "stop" || w === "sl") stop = lerPrecoTxt(t[++i] || "", ref); else if (w === "alvo" || w === "tp") alvo = lerPrecoTxt(t[++i] || "", ref); else if (q == null) q = numTxt(w); }
+  const ops = b.bu.ops = b.bu.ops || {pos: {}, hist: []}, pos = ops.pos[m] || {q: 0, pm: 0, ids: []}, agora = Date.now(), L = [];
+  if (q == null) { if (pos.q && Math.sign(pos.q) !== lado) q = Math.abs(pos.q); else return `Informe a quantidade de ${m}. Exemplo: ${ex.replace(/ETH/g, m)}`; }
+  if (!(q > 0)) return "Quantidade inválida.";
+  let resto = q;
+  if (pos.q && Math.sign(pos.q) !== lado) {   // fecha (total ou parcial) a posição contrária
+    const fecha = Math.min(resto, Math.abs(pos.q)), dir = Math.sign(pos.q), pnl = (p - pos.pm) * fecha * dir;
+    ops.hist.push({m, lado: dir > 0 ? "long" : "short", q: fecha, pe: pos.pm, ps: p, pnl, pct: (p / pos.pm - 1) * 100 * dir, te: pos.t, ts: agora});
+    ops.hist = ops.hist.slice(-300);
+    pos.q -= fecha * dir; resto -= fecha;
+    L.push(`${pnl >= 0 ? "✅" : "🔻"} Fechou ${f2(fecha, 4)} ${m} ${dir > 0 ? "long" : "short"}: entrada ${P(pos.pm)} → saída ${P(p)} = ${usB(pnl, true)} (${pcB((p / pos.pm - 1) * 100 * dir, 2)})`);
+    if (Math.abs(pos.q) < 1e-12) {
+      pos.q = 0;
+      if (pos.ids && pos.ids.length) { const ids = pos.ids; await mexerDesenhos(env, MOEDAS_BOT[m].s, ds => { for (let i = ds.length - 1; i >= 0; i--) if (ids.includes(ds[i].id)) ds.splice(i, 1); }); L.push("Linhas de stop/alvo dessa operação foram removidas do gráfico."); }
+      pos.ids = []; pos.stop = pos.alvo = null; pos.t = null;
+    } else L.push(`Ainda aberto: ${f2(Math.abs(pos.q), 4)} ${m} a ${P(pos.pm)}`);
+  }
+  if (resto > 1e-12) {   // abre ou aumenta na direção da ordem
+    const novo = Math.abs(pos.q) + resto; pos.pm = (pos.pm * Math.abs(pos.q) + p * resto) / novo; pos.q = novo * lado; pos.t = pos.t && Math.abs(pos.q) > resto ? pos.t : agora;
+    L.push(`📝 ${lado > 0 ? "🟢 Long" : "🔴 Short"} ${m}: ${f2(resto, 4)} a ${P(p)} · posição ${f2(novo, 4)} ${m} com preço médio ${P(pos.pm)} (${usB(novo * pos.pm)})`);
+  }
+  if (pos.q && (stop || alvo)) {
+    const novos = [];
+    await mexerDesenhos(env, MOEDAS_BOT[m].s, ds => {
+      if (pos.ids && pos.ids.length) for (let i = ds.length - 1; i >= 0; i--) if (pos.ids.includes(ds[i].id)) ds.splice(i, 1);   // troca stop/alvo antigos
+      for (const [val, nome] of [[stop, "stop"], [alvo, "alvo"]]) if (val) { const id = "o" + nome[0] + agora.toString(36); novos.push(id);
+        ds.push({id, tipo: "horizontal", pts: [{t: Math.floor(agora / 1000), p: val}], alerta: true, alertaDesde: agora, mod: agora, nota: nome + " " + (pos.q > 0 ? "long" : "short")}); }
+    });
+    pos.ids = novos; pos.stop = stop || null; pos.alvo = alvo || null;
+    const risco = stop ? Math.abs(pos.pm - stop) * Math.abs(pos.q) : null, ganho = alvo ? Math.abs(alvo - pos.pm) * Math.abs(pos.q) : null;
+    L.push(`Linhas com alerta criadas no gráfico:${stop ? " stop " + P(stop) + " (risco " + usB(-risco) + ")" : ""}${alvo ? " · alvo " + P(alvo) + " (ganho " + usB(ganho, true) + ")" : ""}${risco && ganho ? " · risco/retorno 1:" + f2(ganho / risco, 1) : ""}`);
+  }
+  ops.pos[m] = pos;
+  await salvarBotU(env, b.gid, b.bu);
+  return L.join("\n");
+}
+function resumoOps(bu, dias, ate = Date.now()){
+  const h = ((bu.ops || {}).hist || []).filter(x => x.ts > ate - dias * 864e5 && x.ts <= ate); if (!h.length) return "";
+  const tot = h.reduce((a, x) => a + x.pnl, 0), g = h.filter(x => x.pnl > 0).length;
+  return `💼 Suas operações (${dias} dias): ${h.length} fechada(s), ${g} com ganho · resultado ${usB(tot, true)}`;
+}
+async function textoOps(bu){
+  const ops = bu.ops || {pos: {}, hist: []}, abertas = Object.entries(ops.pos || {}).filter(([, p]) => p.q);
+  const L = ["💼 Suas operações"];
+  if (!abertas.length) L.push("", "Nenhuma posição aberta. Registre com /compreiETH 1700 0.5 stop 1600 alvo 1900");
+  let totA = 0;
+  for (const [m, p] of abertas) {
+    const v = await pega(kraken(m, 60)), at = v ? v[v.length - 1].c : null, dir = Math.sign(p.q);
+    const pnl = at ? (at - p.pm) * Math.abs(p.q) * dir : null; totA += pnl || 0;
+    L.push("", `${dir > 0 ? "🟢 LONG" : "🔴 SHORT"} ${f2(Math.abs(p.q), 4)} ${m} · médio ${P(p.pm)} · agora ${P(at)}`,
+      `   resultado ${usB(pnl, true)} (${pcB(at ? (at / p.pm - 1) * 100 * dir : null, 2)})${p.stop ? " · stop " + P(p.stop) + " (" + pcB((p.stop / at - 1) * 100) + ")" : ""}${p.alvo ? " · alvo " + P(p.alvo) + " (" + pcB((p.alvo / at - 1) * 100) + ")" : ""}`);
+  }
+  if (abertas.length > 1) L.push("", "Total em aberto: " + usB(totA, true));
+  const ini = (() => { const q = partesBRT(Date.now() / 1000); return Date.UTC(+q.year, +q.month - 1, 1, 3); })();
+  const mes = (ops.hist || []).filter(x => x.ts >= ini);
+  L.push("", `📅 Fechadas neste mês: ${mes.length}` + (mes.length ? ` · resultado ${usB(mes.reduce((a, x) => a + x.pnl, 0), true)} · acerto ${Math.round(mes.filter(x => x.pnl > 0).length / mes.length * 100)}%` : ""));
+  mes.slice(-8).reverse().forEach(x => L.push(`  ${x.pnl >= 0 ? "✅" : "🔻"} ${dataBRT(x.ts, false)} ${x.m} ${x.lado} ${P(x.pe)} → ${P(x.ps)}: ${usB(x.pnl, true)} (${pcB(x.pct, 2)})`));
+  L.push("", "Para apagar o diário: /zerardiario");
+  return L.join("\n");
+}
+function textoMes(bu, agoraS){
+  const q = partesBRT(agoraS), fim = Date.UTC(+q.year, +q.month - 1, 1, 3), ini = Date.UTC(+q.year, +q.month - 2, 1, 3);
+  const h = ((bu.ops || {}).hist || []).filter(x => x.ts >= ini && x.ts < fim); if (!h.length) return "";
+  const tot = h.reduce((a, x) => a + x.pnl, 0), g = h.filter(x => x.pnl > 0), p = h.filter(x => x.pnl <= 0);
+  const mg = g.length ? g.reduce((a, x) => a + x.pnl, 0) / g.length : 0, mp = p.length ? p.reduce((a, x) => a + x.pnl, 0) / p.length : 0;
+  return `💼 Mês passado: ${h.length} operações · resultado ${usB(tot, true)} · acerto ${Math.round(g.length / h.length * 100)}% · ganho médio ${g.length ? usB(mg, true) : "—"} · perda média ${p.length ? usB(mp, true) : "—"}`;
+}
+
+// ---------- 11) análise por IA (Claude) ----------
+async function analiseIA(env, m, dados, bot){
+  if (!env.ANTHROPIC_API_KEY) return "🧠 A análise por IA ainda não está ligada. Ela precisa de uma chave da API da Anthropic (paga por uso, centavos de dólar por análise):\n1) Crie a chave em console.anthropic.com → API Keys (sem mostrar a ninguém).\n2) No Cloudflare: liqmap-vigia → Settings → Variables and Secrets → Add → tipo Secret, nome ANTHROPIC_API_KEY, cole a chave → Deploy.\nDepois é só mandar /analise" + m + " de novo.";
+  await enviar(`🧠 Analisando ${m}… (uns 20 a 40 segundos)`);
+  const rel = await textoRelatorio(m, dados, bot);
+  const r = await fetch("https://api.anthropic.com/v1/messages", {method: "POST",
+    headers: {"x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+    body: JSON.stringify({model: env.IA_MODELO || "claude-sonnet-5-5", max_tokens: 1600,
+      system: "Você é um analista de mercado de criptomoedas, objetivo e quantitativo. Escreva em português do Brasil, em texto puro para o Telegram (sem markdown, sem asteriscos, sem tabelas), no máximo 2.800 caracteres. Estrutura: 1) Leitura geral em 2 ou 3 linhas. 2) Cenários pessimista, base e otimista, cada um com probabilidade em % (somando 100), gatilho que confirma e alvos de preço. 3) Níveis-chave de suporte e resistência. 4) O que observar nas próximas 24 a 72 horas. Use só os dados do relatório; se faltar algo, diga. Termine com: Não é recomendação de investimento.",
+      messages: [{role: "user", content: "Relatório do meu painel LiqMap:\n\n" + rel}]})});
+  const j = await r.json();
+  if (!r.ok) return "🧠 Erro na IA: " + ((j.error && j.error.message) || "HTTP " + r.status);
+  return `🧠 Análise IA — ${m}\n\n` + (j.content || []).filter(x => x.type === "text").map(x => x.text).join("\n").trim();
 }
