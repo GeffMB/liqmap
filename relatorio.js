@@ -105,9 +105,11 @@ async function gerar(){
   L.push("4) MAPA DE LIQUIDAÇÕES (estimativa do LiqMap a partir do open interest e da alavancagem)");
   if (mapa && mapa.shorts) {
     const fmt = z => `${P(z.preco)} (${pc(z.dist)}) ${us(z.valor)}`;
-    L.push("- Maiores zonas ACIMA do preço (liquidam SHORTS se o preço subir): " + (mapa.shorts.filter(z => z.dist > 0).map(fmt).join("; ") || "nenhuma relevante"));
-    L.push("- Maiores zonas ABAIXO do preço (liquidam LONGS se o preço cair): " + (mapa.longs.filter(z => z.dist < 0).map(fmt).join("; ") || "nenhuma relevante"));
-    L.push(`- Total estimado a até 5% do preço: shorts ${us(mapa.s5)} acima · longs ${us(mapa.l5)} abaixo → ${mapa.s5 > mapa.l5 * 1.15 ? "mais combustível para alta (short squeeze)" : mapa.l5 > mapa.s5 * 1.15 ? "mais combustível para queda (cascata de longs)" : "equilibrado"}`);
+    L.push("- Maiores zonas ACIMA do preço (liquidam SHORTS se o preço subir): " + (mapa.shorts.filter(z => z.dist > 0 && z.dist <= 25).map(fmt).join("; ") || "nenhuma relevante até +25%"));
+    L.push("- Maiores zonas ABAIXO do preço (liquidam LONGS se o preço cair): " + (mapa.longs.filter(z => z.dist < 0 && z.dist >= -25).map(fmt).join("; ") || "nenhuma relevante até −25%"));
+    L.push(mapa.s5 + mapa.l5 > 0
+      ? `- Total estimado a até 5% do preço: shorts ${us(mapa.s5)} acima · longs ${us(mapa.l5)} abaixo → ${mapa.s5 > mapa.l5 * 1.15 ? "mais combustível para alta (short squeeze)" : mapa.l5 > mapa.s5 * 1.15 ? "mais combustível para queda (cascata de longs)" : "equilibrado"}`
+      : "- A até 5% do preço não há zona de liquidação relevante (já foram limpas): o preço está numa área sem combustível próximo de nenhum dos lados");
   } else L.push("- mapa ainda não calculado nesta tela (ligue o mapa de liquidação no gráfico)");
   L.push("");
 
