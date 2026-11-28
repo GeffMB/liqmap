@@ -51,7 +51,7 @@ export default {
       try {
         const r = await vigiar(env, new Date(), true);
         if (TG) {   // registra o webhook do bot (só muda algo se o endereço/token mudou)
-          const b = await base(env), url = u.origin + "/tg", ass = url + "|" + (await segredoTG(TG.token)).slice(0, 8) + "|v8" + (IA ? "ia" : "");
+          const b = await base(env), url = u.origin + "/tg", ass = url + "|" + (await segredoTG(TG.token)).slice(0, 8) + "|v9" + (IA ? "ia" : "");
           if (b.bot.webhook !== ass || u.searchParams.has("webhook")) { const w = await configurarWebhook(url); r.bot = w.ok ? "webhook registrado agora" : "erro no webhook: " + w.description; if (w.ok) { b.bot.webhook = ass; await salvarBot(env, b.gid, b.bot); } }
           else r.bot = "webhook ok";
           const info = await tg("getWebhookInfo", {}); if (info.ok) { r.botPendentes = info.result.pending_update_count; if (info.result.last_error_message) r.botUltimoErro = info.result.last_error_message; }
@@ -402,6 +402,7 @@ const AJUDA = `🤖 LiqMap — comandos (troque ETH por BTC, SOL, XRP ou QNT)
 /operacoes — posições abertas, resultado e mês
 
 ⚙️ /silenciar e /retomar — pausa ou volta os avisos automáticos
+👥 /convidar — link para outra pessoa usar o bot · /convidados — lista e remover
 
 Automáticos: resumo às 8h, fechamento da semana (domingo 21h), Painel de fundo mudando de faixa, movimentos bruscos, funding e open interest extremos e fluxo diário dos ETFs.`;
 
@@ -415,22 +416,26 @@ async function tg(metodo, corpo){
   return r.json();
 }
 async function enviar(txt, extra = {}){
+  const chat = extra.chat_id || TG.chat; extra = Object.assign({}, extra); delete extra.chat_id;
   const partes = []; let resto = String(txt);
   while (resto.length > 3800) { let i = resto.lastIndexOf("\n", 3800); if (i < 1000) i = 3800; partes.push(resto.slice(0, i)); resto = resto.slice(i).replace(/^\n/, ""); }
   partes.push(resto);
-  for (let i = 0; i < partes.length; i++) await tg("sendMessage", Object.assign({chat_id: TG.chat, text: partes[i], disable_web_page_preview: true}, i === partes.length - 1 ? extra : {}));
+  for (let i = 0; i < partes.length; i++) await tg("sendMessage", Object.assign({chat_id: chat, text: partes[i], disable_web_page_preview: true}, i === partes.length - 1 ? extra : {}));
 }
 const botoesMoeda = (cmd, quais = Object.keys(MOEDAS_BOT)) => ({reply_markup: {inline_keyboard: [quais.map(m => ({text: m, callback_data: cmd + ":" + m}))]}});
 async function configurarWebhook(url){
   const s = await segredoTG(TG.token);
   const r = await tg("setWebhook", {url, secret_token: s, allowed_updates: ["message", "callback_query"], drop_pending_updates: true});
-  await tg("setMyCommands", {commands: [
+  await tg("setMyCommands", {commands: CMDS_CONVIDADO});   // o que todo mundo vê (convidados)
+  await tg("setMyCommands", {scope: {type: "chat", chat_id: TG.chat}, commands: [
     {command: "precobtc", description: "Preço e tendência do BTC"}, {command: "precoeth", description: "Preço e tendência do ETH"},
     {command: "graficobtc", description: "Gráfico do BTC (imagem)"}, {command: "graficoeth", description: "Gráfico do ETH (imagem)"},
     {command: "alertas", description: "Meus alertas"}, {command: "fundobtc", description: "Painel de fundo do BTC"},
     {command: "fundoeth", description: "Painel de fundo do ETH"}, {command: "operacoes", description: "Diário de operações"},
     {command: "carteiras", description: "Posições das baleias rastreadas"}, {command: "relatorioeth", description: "Relatório completo do ETH"},
-    ...(IA ? [{command: "analiseeth", description: "Análise por IA do ETH"}] : []), {command: "ajuda", description: "Todos os comandos"}]});
+    ...(IA ? [{command: "analiseeth", description: "Análise por IA do ETH"}] : []),
+    {command: "convidar", description: "Convidar alguém para usar o bot"}, {command: "convidados", description: "Ver ou remover convidados"},
+    {command: "ajuda", description: "Todos os comandos"}]});
   return r;
 }
 
@@ -446,7 +451,7 @@ const dataBRT = (ms, comHora = true) => new Date(ms).toLocaleString("pt-BR", Obj
 // velas com reserva: Kraken (spot) → OKX (spot) → Hyperliquid (perpétuo). Guarda por alguns minutos para não
 // repetir a mesma consulta (a Kraken recusa com "Too many requests" quando o Cloudflare pede demais).
 const MEMO_VELAS = new Map();
-const OKX_BAR = {60: "1H", 240: "4H", 1440: "1Dutc", 10080: "1Wutc"}, HL_BAR = {15: "15m", 60: "1h", 240: "4h", 1440: "1d", 10080: "1w"};
+const OKX_BAR = {1: "1m", 60: "1H", 240: "4H", 1440: "1Dutc", 10080: "1Wutc"}, HL_BAR = {1: "1m", 15: "15m", 60: "1h", 240: "4h", 1440: "1d", 10080: "1w"};
 async function kraken(m, intervalo){
   const k = m + "|" + intervalo, ttl = intervalo <= 60 ? 45e3 : intervalo <= 240 ? 180e3 : 600e3, c = MEMO_VELAS.get(k);
   if (c && Date.now() - c.t < ttl) return c.v;
@@ -728,10 +733,20 @@ async function atenderTelegram(env, upd, b){
   if (!TG) return;
   const cq = upd.callback_query, msg = upd.message;
   const chat = cq ? cq.message && cq.message.chat && cq.message.chat.id : msg && msg.chat && msg.chat.id;
-  if (String(chat) !== String(TG.chat)) return;   // só o dono do bot
+  if (!chat) return;
+  const dono = String(chat) === String(TG.chat);
+  const conv = dono ? null : (b.bu.convidados || []).find(c => String(c.chat) === String(chat));
+  if (!dono && !conv) {   // desconhecido: só entra com convite (/start CÓDIGO vem do link)
+    const t = (msg && msg.text || "").trim(), mm = /^\/(entrar|start)(?:@\S+)?\s*(.*)$/i.exec(t);
+    if (mm && (mm[1].toLowerCase() === "entrar" || mm[2])) return entrarConvite(env, b, chat, msg.from, mm[2]);
+    if (mm) return enviar("Este bot é privado. Se você recebeu um convite, abra o link do convite ou envie /entrar seguido do código.", {chat_id: chat});
+    return;
+  }
+  if (conv) return atenderConvidado(env, b, conv, upd);
   if (cq) {
     await tg("answerCallbackQuery", {callback_query_id: cq.id});
     const [acao, m, id] = String(cq.data || "").split(":");
+    if (acao === "crm") return removerConvidado(env, b, m);
     if ((acao === "off" || acao === "del") && MOEDAS_BOT[m]) {
       const ok = await mexerDesenhos(env, MOEDAS_BOT[m].s, ds => { const i = ds.findIndex(d => d.id === id); if (i < 0) return false;
         if (acao === "del") { MARCAR_APAGADOS.push(ds[i].id); ds.splice(i, 1); } else { ds[i].alerta = false; ds[i].mod = Date.now(); } return true; });
@@ -753,6 +768,8 @@ async function comando(env, b, cmd, m, args){
   const alias = {help: "ajuda", start: "ajuda", grafico: "grafico", chart: "grafico", ops: "operacoes", operacao: "operacoes", posicoes: "operacoes", diario: "operacoes", compra: "comprei", comprar: "comprei", venda: "vendi", vender: "vendi", baleias: "carteiras", carteira: "carteiras", ia: "analise"};
   cmd = alias[cmd] || cmd;
   if (cmd === "ajuda") return enviar(IA ? AJUDA : AJUDA.replace(/\n\/analiseETH[^\n]*/, ""), TECLADO);
+  if (cmd === "convidar") return enviar(await criarConvite(env, b));
+  if (cmd === "convidados" || cmd === "remover") { const l = listaConvidados(b.bu); return enviar(l.txt, l.extra || {}); }
   if (cmd === "silenciar" || cmd === "retomar") { b.bu.auto = cmd === "retomar"; await salvarBotU(env, b.gid, b.bu); return enviar(cmd === "retomar" ? "🔔 Avisos automáticos ligados." : "🔕 Avisos automáticos pausados. Os alertas de linha e de indicador continuam. Use /retomar para voltar."); }
   if (cmd === "alertas") { const l = await listarAlertas(b.dados, m, b.bu); return enviar(l.txt, l.extra || {}); }
   if (cmd === "carteiras") return enviar(await textoCarteiras(b.dados));
@@ -792,7 +809,11 @@ async function automaticosBot(env, b, agoraS){
   let pesado = false;
   // alertas de indicador e de fechamento (são pedidos seus: rodam mesmo com /silenciar), a cada 5 min
   if (min % 5 === 4) { try { const f = await verificarInd(env, b, agoraS); feitos.push(...f); if ((bu.ind || []).length > 2) pesado = true; } catch (e) { console.log("ind", e.message); } }
-  if (bu.auto !== false) {
+  // alertas de preço dos convidados (a cada minuto)
+  try { feitos.push(...await verificarConvidados(env, b)); } catch (e) { console.log("convidados", e.message); }
+  const destinos = [...(bu.auto !== false ? [TG.chat] : []), ...(bu.convidados || []).filter(c => c.auto !== false).map(c => c.chat)];
+  const paraTodos = async (txt, extra = {}, soDono = "") => { for (const ch of destinos) { try { await enviar(String(ch) === String(TG.chat) && soDono ? txt + soDono : txt, Object.assign({}, extra, {chat_id: ch})); } catch (e) {} } };
+  if (destinos.length) {
     // 1) resumo da manhã, a partir das 8h (horário de Brasília)
     if (bot.resumo !== hoje && +p.hour >= 8 && +p.hour < 12) {
       try {
@@ -809,21 +830,22 @@ async function automaticosBot(env, b, agoraS){
         const fg = await fng; if (fg && fg.data) L.push(`Medo e Ganância: ${fg.data[0].value}/100 (${fg.data[0].value_classification})`);
         try { const evs = ((await (await fetch(URL_EVENTOS)).json()).eventos || []).filter(e => { const q = partesBRT(e.t / 1000); return q.year + "-" + q.month + "-" + q.day === hoje && e.impacto === "High"; });
           L.push("", evs.length ? "📅 Hoje (EUA): " + evs.map(e => horaBRT(e.t / 1000) + " " + e.titulo).join(" · ") : "📅 Sem evento de alto impacto nos EUA hoje."); } catch (e) {}
+        const D = [];   // linhas só para o dono
         let n = 0; for (const m of Object.keys(MOEDAS_BOT)) n += linhasDe(dados, m).filter(d => d.alerta).length;
-        L.push(`🔔 ${n} alerta(s) de linha ligado(s). /alertas para ver.`);
-        if (p.day === "01") { const t = textoMes(bu, agoraS); if (t) L.push("", t); }
-        const ab = Object.entries(((bu.ops || {}).pos) || {}).filter(([, x]) => x.q).length; if (ab) L.push(`💼 ${ab} posição(ões) aberta(s) no diário. /operacoes`);
-        await enviar(L.join("\n"), atalhos("BTC")); bot.resumo = hoje; mudou = true; pesado = true; feitos.push("resumo");
+        D.push(`🔔 ${n} alerta(s) de linha ligado(s). /alertas para ver.`);
+        if (p.day === "01") { const t = textoMes(bu, agoraS); if (t) D.push("", t); }
+        const ab = Object.entries(((bu.ops || {}).pos) || {}).filter(([, x]) => x.q).length; if (ab) D.push(`💼 ${ab} posição(ões) aberta(s) no diário. /operacoes`);
+        await paraTodos(L.join("\n"), atalhos("BTC"), "\n" + D.join("\n")); bot.resumo = hoje; mudou = true; pesado = true; feitos.push("resumo");
       } catch (e) { console.log("resumo", e.message); }
     }
     // 1b) fechamento da semana: domingo a partir das 21h (horário de Brasília)
     else if (p.weekday === "Sun" && +p.hour >= 21 && bot.semana !== hoje) {
       pesado = true;
-      try { await enviar(await textoSemana(bot, bu, agoraS), atalhos("BTC")); bot.semana = hoje; mudou = true; feitos.push("semana"); } catch (e) { console.log("semana", e.message); }
+      try { const t = await textoSemana(bot, bu, agoraS), r = resumoOps(bu, 7); await paraTodos(r ? t.replace("\n\n" + r, "") : t, atalhos("BTC"), r ? "\n\n" + r : ""); bot.semana = hoje; mudou = true; feitos.push("semana"); } catch (e) { console.log("semana", e.message); }
     }
     // 1c) funding e open interest extremos (a cada 5 min)
     else if (min % 5 === 1) {
-      try { const ctx = await hlCtx(); for (const t of extremos(ctx, bot, agoraS)) { await enviar(t); feitos.push("extremo"); } mudou = true; } catch (e) { console.log("extremos", e.message); }
+      try { const ctx = await hlCtx(); for (const t of extremos(ctx, bot, agoraS)) { await paraTodos(t); feitos.push("extremo"); } mudou = true; } catch (e) { console.log("extremos", e.message); }
     }
     // 2) painel de fundo mudou de faixa (a cada 30 min)
     else if (min % 30 === 7) {
@@ -835,7 +857,7 @@ async function automaticosBot(env, b, agoraS){
           const f = await calcFundo(m, {flx, fng, ctx}); if (!f) continue; aplicarOI(f, m, bot);
           if (f.out.some(x => x.st === -1 && !x.nome.startsWith("Alavancagem"))) continue;   // fonte fora do ar: não compara (evita aviso falso)
           const ant = bot.fundo[m], fx = n => n >= 7 ? 2 : n >= 4 ? 1 : 0;
-          if (ant != null && fx(ant) !== fx(f.n)) { await enviar(`🎯 Painel de fundo ${m} mudou: ${ant}/10 → ${f.n}/10 ✅ — agora "${faixaFundo(f.n)}".\n\n` + textoFundo(m, f), atalhos(m)); feitos.push("fundo " + m); }
+          if (ant != null && fx(ant) !== fx(f.n)) { await paraTodos(`🎯 Painel de fundo ${m} mudou: ${ant}/10 → ${f.n}/10 ✅ — agora "${faixaFundo(f.n)}".\n\n` + textoFundo(m, f), atalhos(m)); feitos.push("fundo " + m); }
           if (ant !== f.n) { bot.fundo[m] = f.n; mudou = true; }
         }
       } catch (e) { console.log("fundo", e.message); }
@@ -848,7 +870,7 @@ async function automaticosBot(env, b, agoraS){
         if (ub && bot.etfDia && ub.data > bot.etfDia) {
           const top = d => Object.entries(d.fundos || {}).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 2).map(([k, v]) => k + " " + usB(v * 1e6, true)).join(", ");
           const s5 = k => (flx[k].dias || []).filter(d => d.total != null).slice(-5).reduce((a, d) => a + d.total, 0);
-          await enviar(`📊 ETFs dos EUA — pregão de ${ub.data.split("-").reverse().slice(0, 2).join("/")}\nBTC: ${usB(ub.total * 1e6, true)} (${top(ub)}) · 5 dias ${usB(s5("etfBtc") * 1e6, true)}` +
+          await paraTodos(`📊 ETFs dos EUA — pregão de ${ub.data.split("-").reverse().slice(0, 2).join("/")}\nBTC: ${usB(ub.total * 1e6, true)} (${top(ub)}) · 5 dias ${usB(s5("etfBtc") * 1e6, true)}` +
             (ue ? `\nETH: ${usB(ue.total * 1e6, true)} (${top(ue)}) · 5 dias ${usB(s5("etfEth") * 1e6, true)}` : "") +
             `\n${ub.total > 0 ? "Instituições comprando." : "Instituições vendendo."}`);
           feitos.push("etf");
@@ -867,7 +889,7 @@ async function automaticosBot(env, b, agoraS){
         const lado = d > 0 ? "alta" : "queda", k = m + lado;
         if (Math.abs(d) >= MOEDAS_BOT[m].brusco && agoraS - (bot.brusco[k] || 0) > 3600) {
           const mx = Math.max(...ks.map(x => +x.h)), mn = Math.min(...ks.map(x => +x.l));
-          await enviar(`⚡ ${m} ${d > 0 ? "subiu" : "caiu"} ${pcB(d)} em 15 min (${P(ini)} → ${P(fim)}; máx ${P(mx)}, mín ${P(mn)}).\nMovimento brusco: provável cascata de liquidações de ${d > 0 ? "shorts" : "longs"}. Veja o mapa no site.`, atalhos(m));
+          await paraTodos(`⚡ ${m} ${d > 0 ? "subiu" : "caiu"} ${pcB(d)} em 15 min (${P(ini)} → ${P(fim)}; máx ${P(mx)}, mín ${P(mn)}).\nMovimento brusco: provável cascata de liquidações de ${d > 0 ? "shorts" : "longs"}. Veja o mapa no site.`, atalhos(m));
           bot.brusco[k] = agoraS; mudou = true; feitos.push("brusco " + m);
         }
       }
@@ -968,7 +990,7 @@ function extremos(ctx, bot, agoraS){
 }
 
 // ---------- 5) gráfico em imagem (QuickChart) ----------
-async function enviarGrafico(m, args, dados){
+async function enviarGrafico(m, args, dados, chat = TG.chat){
   const iv = lerTF((args || "").split(/\s+/)[0], 240), v = await kraken(m, iv), n = 90, u = v.slice(-n);
   const c = v.map(x => x.c), e21 = emaB(c, 21).slice(-n), s200 = smaSerie(c, 200).slice(-n);
   const lab = u.map(x => { const q = partesBRT(x.t / 1000); return iv >= 1440 ? q.day + "/" + q.month : q.day + " " + q.hour + "h"; });
@@ -994,7 +1016,7 @@ async function enviarGrafico(m, args, dados){
       chart: JSON.stringify(cfg).replace('"__FILTRO__"', "function(it){return it.text!=null&&it.text!=='undefined'&&it.text!==''}")})});
   if (!r.ok) throw new Error("gerador de gráfico HTTP " + r.status);
   const fd = new FormData();
-  fd.append("chat_id", String(TG.chat));
+  fd.append("chat_id", String(chat));
   fd.append("caption", `${m} ${NOME_TF[iv]}: laranja = MME21, azul tracejada = MMS200, amarelas = suas linhas com alerta${fora ? ` (${fora} linha(s) fora da tela)` : ""}.\nOutros tempos: /grafico${m} 1h · 4h · diário · semanal`);
   fd.append("reply_markup", JSON.stringify(atalhos(m).reply_markup));
   fd.append("photo", new Blob([await r.arrayBuffer()], {type: "image/png"}), "grafico.png");
@@ -1144,4 +1166,150 @@ async function analiseIA(env, m, dados, bot){
   const j = await r.json();
   if (!r.ok) return "🧠 Erro na IA: " + ((j.error && j.error.message) || "HTTP " + r.status);
   return `🧠 Análise IA — ${m}\n\n` + (j.content || []).filter(x => x.type === "text").map(x => x.text).join("\n").trim();
+}
+
+// =====================================================================================
+// CONVIDADOS: outras pessoas usam o bot com um link de convite (vale 24 h, uma pessoa).
+// Elas veem preço, gráfico, painel de fundo e relatório, recebem os avisos automáticos e têm os PRÓPRIOS
+// alertas de preço (não aparecem no seu gráfico). Seus desenhos, diário, carteiras e alertas continuam só seus.
+// =====================================================================================
+const AJUDA_CONVIDADO = `🤖 LiqMap — bem-vindo! (troque BTC por ETH, SOL, XRP ou QNT)
+
+💰 /precoBTC — preço, tendência e derivativos
+📈 /graficoBTC 4h — gráfico em imagem (1h, 4h, diário, semanal)
+🎯 /fundoBTC — Painel de fundo (BTC ou ETH): 10 sinais de fundo de ciclo
+📋 /relatorioBTC — relatório completo em texto
+
+🔔 /alertaBTC 60000 — aviso quando o preço chegar lá (ou /alertaBTC -5%)
+/alertas — seus alertas, com botão para apagar
+
+Avisos automáticos: resumo às 8h, fechamento da semana (domingo 21h), Painel de fundo mudando de faixa, movimentos bruscos, funding e open interest extremos e fluxo dos ETFs.
+/silenciar e /retomar — pausa ou volta os avisos automáticos
+/sair — deixar de usar o bot
+
+Não é recomendação de investimento.`;
+const CMDS_CONVIDADO = [
+  {command: "precobtc", description: "Preço e tendência do BTC"}, {command: "precoeth", description: "Preço e tendência do ETH"},
+  {command: "graficobtc", description: "Gráfico do BTC (imagem)"}, {command: "graficoeth", description: "Gráfico do ETH (imagem)"},
+  {command: "fundobtc", description: "Painel de fundo do BTC"}, {command: "relatoriobtc", description: "Relatório completo do BTC"},
+  {command: "alertas", description: "Meus alertas de preço"}, {command: "ajuda", description: "Todos os comandos"}];
+const TECLADO_CONVIDADO = {reply_markup: {keyboard: [["/precoBTC", "/precoETH"], ["/graficoBTC", "/graficoETH"], ["/fundoBTC", "/alertas"]], resize_keyboard: true, is_persistent: true}};
+// os alertas do convidado no formato de desenhos, para preço/gráfico/relatório mostrarem os dele (e não os seus)
+function dadosConvidado(c){
+  const d = {};
+  for (const a of c.alertas || []) { const k = "liqmap-des-" + MOEDAS_BOT[a.m].s; const l = d[k] ? JSON.parse(d[k]) : [];
+    l.push({id: a.id, tipo: "horizontal", pts: [{t: 0, p: a.p}], alerta: true, nota: a.nota}); d[k] = JSON.stringify(l); }
+  return d;
+}
+async function criarConvite(env, b){
+  const al = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789", r = crypto.getRandomValues(new Uint8Array(8));
+  const codigo = [...r].map(x => al[x % al.length]).join("");
+  b.bu.convites = (b.bu.convites || []).filter(c => c.ate > Date.now()).slice(-9).concat([{codigo, ate: Date.now() + 24 * 36e5}]);
+  await salvarBotU(env, b.gid, b.bu);
+  const link = TG.bot ? `https://t.me/${TG.bot}?start=${codigo}` : null;
+  return `👥 Convite criado (vale 24 horas e para uma única pessoa). Mande este ${link ? "link" : "código"} para a pessoa:
+
+${link || codigo}
+
+` +
+    (link ? `Ela abre o link e toca em Iniciar. (Ou, dentro do bot, envia /entrar ${codigo})` : `Ela abre o seu bot no Telegram e envia /entrar ${codigo}`) +
+    `
+
+O convidado vê preço, gráfico, Painel de fundo e relatório, recebe os avisos automáticos e tem os próprios alertas de preço. Seus desenhos, alertas, diário e carteiras continuam só seus. /convidados para ver ou remover.`;
+}
+function listaConvidados(bu){
+  const l = bu.convidados || [];
+  if (!l.length) return {txt: "Nenhum convidado. Crie um convite com /convidar"};
+  return {txt: "👥 Convidados:\n\n" + l.map((c, i) => `${i + 1}. ${c.nome || "sem nome"} — desde ${c.desde.split("-").reverse().join("/")} · ${(c.alertas || []).length} alerta(s)${c.auto === false ? " · avisos pausados" : ""}`).join("\n"),
+    extra: {reply_markup: {inline_keyboard: l.map((c, i) => [{text: `🗑 Remover ${i + 1}. ${c.nome || ""}`.trim(), callback_data: "crm:" + c.chat}])}}};
+}
+async function entrarConvite(env, b, chat, de, arg){
+  const cod = String(arg || "").trim().toUpperCase();
+  const c = (b.bu.convites || []).find(x => x.codigo === cod && x.ate > Date.now());
+  if (!c) return enviar("Convite inválido ou vencido (vale 24 horas). Peça um novo para quem te convidou.", {chat_id: chat});
+  if ((b.bu.convidados || []).length >= 15) return enviar("Este bot já atingiu o limite de convidados.", {chat_id: chat});
+  const nome = [de && de.first_name, de && de.last_name].filter(Boolean).join(" ") || (de && de.username ? "@" + de.username : "");
+  b.bu.convites = b.bu.convites.filter(x => x !== c);
+  b.bu.convidados = (b.bu.convidados || []).filter(x => String(x.chat) !== String(chat)).concat([{chat, nome, desde: new Date().toISOString().slice(0, 10), alertas: []}]);
+  await salvarBotU(env, b.gid, b.bu);
+  await enviar("✅ Pronto! Você já pode usar o bot do LiqMap.\n\n" + AJUDA_CONVIDADO, Object.assign({chat_id: chat}, TECLADO_CONVIDADO));
+  await enviar(`👥 ${nome || "Alguém"} entrou com o seu convite. /convidados para ver ou remover.`);
+}
+async function removerConvidado(env, b, chat){
+  const c = (b.bu.convidados || []).find(x => String(x.chat) === String(chat));
+  b.bu.convidados = (b.bu.convidados || []).filter(x => String(x.chat) !== String(chat));
+  await salvarBotU(env, b.gid, b.bu);
+  if (c) await enviar("Seu acesso ao bot do LiqMap foi encerrado. Obrigado por usar!", {chat_id: c.chat}).catch(() => {});
+  const l = listaConvidados(b.bu); return enviar("Removido. " + l.txt, l.extra || {});
+}
+async function atenderConvidado(env, b, c, upd){
+  const cq = upd.callback_query, msg = upd.message, para = {chat_id: c.chat};
+  const diga = (t, extra = {}) => enviar(t, Object.assign({}, extra, para));
+  const salvar = () => salvarBotU(env, b.gid, b.bu);
+  let cmd, m = null, args = "";
+  if (cq) {
+    await tg("answerCallbackQuery", {callback_query_id: cq.id});
+    const [acao, x, id] = String(cq.data || "").split(":");
+    if (acao === "gdel") { c.alertas = (c.alertas || []).filter(a => a.id !== id); await salvar(); return diga("🗑 Alerta apagado."); }
+    cmd = acao; m = MOEDAS_BOT[x] ? x : null;
+  } else {
+    const txt = (msg && msg.text || "").trim();
+    const r = txt.match(/^\/([^\s@\d]+?)(btc|eth|sol|xrp|qnt)?(?:@\w+)?(?:\s+([\s\S]*))?$/i);
+    if (!r) return diga("Não entendi. Envie /ajuda para ver os comandos.");
+    cmd = r[1].toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); m = r[2] ? r[2].toUpperCase() : null; args = (r[3] || "").trim();
+    if (!m && args) { const t = args.split(/\s+/)[0].toUpperCase(); if (MOEDAS_BOT[t]) { m = t; args = args.slice(t.length).trim(); } }
+  }
+  cmd = {help: "ajuda", start: "ajuda", chart: "grafico"}[cmd] || cmd;
+  const dados = dadosConvidado(c);
+  if (cmd === "ajuda") return diga(AJUDA_CONVIDADO, TECLADO_CONVIDADO);
+  if (cmd === "silenciar" || cmd === "retomar") { c.auto = cmd === "retomar"; await salvar(); return diga(cmd === "retomar" ? "🔔 Avisos automáticos ligados." : "🔕 Avisos automáticos pausados (seus alertas de preço continuam). /retomar para voltar."); }
+  if (cmd === "sair") { if (args.toLowerCase() !== "sim") return diga("Para deixar de usar o bot (seus alertas serão apagados), envie: /sair sim");
+    b.bu.convidados = b.bu.convidados.filter(x => x !== c); await salvar(); await enviar(`👥 ${c.nome || "Um convidado"} saiu do bot.`); return diga("Até mais! Se quiser voltar, peça um novo convite."); }
+  if (cmd === "alertas") {
+    const l = (c.alertas || []).filter(a => !m || a.m === m);
+    if (!l.length) return diga("Você não tem alertas. Crie com /alertaBTC 60000 (ou /alertaBTC -5%).");
+    return diga("Seus alertas de preço (avisam uma vez quando o preço chega lá):\n\n" + l.map(a => `🔔 ${a.m} ${P(a.p)}${a.nota ? ' "' + a.nota + '"' : ""}`).join("\n"),
+      {reply_markup: {inline_keyboard: l.map(a => [{text: "🗑 " + a.m + " " + P(a.p), callback_data: "gdel:" + a.m + ":" + a.id}])}});
+  }
+  const precisa = {preco: "preço", alerta: "alerta", fundo: "painel de fundo", relatorio: "relatório", grafico: "gráfico"}[cmd];
+  if (!precisa) return diga("Esse comando não está disponível para convidados. Envie /ajuda para ver o que você pode usar.");
+  if (!m) return diga("Escolha a moeda:", Object.assign(botoesMoeda(cmd === "alerta" ? "preco" : cmd, cmd === "fundo" ? ["BTC", "ETH"] : undefined)));
+  const atal = {reply_markup: {inline_keyboard: atalhos(m).reply_markup.inline_keyboard.map(l => l.filter(x => !x.callback_data.startsWith("analise")))}};
+  if (cmd === "preco") return diga(await textoPreco(m, dados), atal);
+  if (cmd === "grafico") return enviarGrafico(m, args, dados, c.chat);
+  if (cmd === "fundo") { if (!MOEDAS_BOT[m].cm) return diga("O Painel de fundo existe para BTC e ETH."); const f = await calcFundo(m); aplicarOI(f, m, b.bot); return diga(textoFundo(m, f)); }
+  if (cmd === "relatorio") return diga((await textoRelatorio(m, dados, b.bot)).replace("6) MINHAS LINHAS", "6) MEUS ALERTAS"));
+  if (cmd === "alerta") {
+    const h = await pega(kraken(m, 60)), ref = h ? h[h.length - 1].c : null;
+    if (!args) return diga(`${m} está em ${P(ref)}. Envie o preço do alerta, por exemplo:\n/alerta${m} ${ref ? +ref.toPrecision(3) : 1000}\n/alerta${m} -5% (5% abaixo do preço atual)`);
+    const [pt, ...resto] = args.split(/\s+/), pc = pt.match(/^([+-]?\d+(?:[.,]\d+)?)%$/);
+    const p = pc ? (ref ? ref * (1 + parseFloat(pc[1].replace(",", ".")) / 100) : null) : lerPrecoTxt(pt, ref);
+    if (!p || !isFinite(p) || p <= 0) return diga(`Faltou o preço. Exemplo: /alerta${m} ${ref ? Math.round(ref) : 1000}`);
+    if (ref && Math.abs(p / ref - 1) > 0.6) return diga(`${P(p)} está muito longe do preço atual de ${m} (${P(ref)}). Confira o valor.`);
+    if ((c.alertas || []).length >= 20) return diga("Você já tem 20 alertas. Apague algum em /alertas.");
+    c.alertas = (c.alertas || []).concat([{id: "g" + Date.now().toString(36), m, p, nota: resto.join(" ").slice(0, 40) || undefined, criado: Date.now()}]);
+    await salvar();
+    return diga(`✅ Alerta criado: ${m} em ${P(p)}${ref ? " (" + pcB((p / ref - 1) * 100) + " do preço atual " + P(ref) + ")" : ""}. Aviso aqui quando o preço chegar lá.`);
+  }
+}
+// confere os alertas de preço dos convidados com as velas de 1 minuto (dispara uma vez e apaga)
+async function verificarConvidados(env, b){
+  const cs = (b.bu.convidados || []).filter(c => (c.alertas || []).length); if (!cs.length) return [];
+  const moedas = [...new Set(cs.flatMap(c => c.alertas.map(a => a.m)))], velas = {};
+  for (const m of moedas) { try {
+    velas[m] = MOEDAS_BOT[m].hl ? (await hl({type: "candleSnapshot", req: {coin: MOEDAS_BOT[m].hl, interval: "1m", startTime: Date.now() - 6 * 6e4, endTime: Date.now()}})).map(x => ({t: x.t, h: +x.h, l: +x.l, c: +x.c}))
+      : (await kraken(m, 1)).slice(-6); } catch (e) {} }
+  const feitos = []; let mudou = false;
+  for (const c of cs) {
+    const ficam = [];
+    for (const a of c.alertas) {
+      const v = (velas[a.m] || []).filter(k => k.t + 6e4 > (a.criado || 0));
+      const toque = v.find(k => k.l <= a.p && k.h >= a.p);
+      if (toque) { try { await enviar(`🔔 ${a.m} chegou em ${P(a.p)}${a.nota ? ' — "' + a.nota + '"' : ""}. Agora: ${P(v[v.length - 1].c)}.`, {chat_id: c.chat}); } catch (e) {} feitos.push("convidado " + a.m); mudou = true; }
+      else ficam.push(a);
+    }
+    c.alertas = ficam;
+  }
+  if (mudou) await salvarBotU(env, b.gid, b.bu);
+  return feitos;
 }
