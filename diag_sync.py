@@ -83,3 +83,32 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def diag_bot():
+    """Estado do bot do Telegram (sem token, chat nem preços das operações)."""
+    import urllib.request
+    try:
+        r = json.loads(urllib.request.urlopen("https://liqmap-vigia.gefersonmarques.workers.dev/rodar", timeout=60).read())
+        print("\n/rodar:", {k: r.get(k) for k in ("ok", "versao", "telegram", "ativos", "bot", "botPendentes", "botUltimoErro", "fontesPreco", "errosPreco", "erro")})
+    except Exception as e:
+        print("\n/rodar: erro", e)
+    g = gh("/gists/" + achar_gist())
+    b = conteudo(g, "liqmap-bot.json") or {}
+    u = conteudo(g, "liqmap-bot-usuario.json") or {}
+    print("Bot: placar do fundo guardado", b.get("fundo"), "| resumo da manhã enviado em", b.get("resumo"), "| semana", b.get("semana"),
+          "| último pregão de ETF visto", b.get("etfDia"), "| foto diária do OI", b.get("oiDia"))
+    print("Bot: avisos bruscos (UTC)", {k: time.strftime("%d/%m %H:%M", time.gmtime(v)) for k, v in (b.get("brusco") or {}).items()},
+          "| extremos (UTC)", {k: time.strftime("%d/%m %H:%M", time.gmtime(v)) for k, v in (b.get("ext") or {}).items()},
+          "| pontos de OI na última hora", {k: len(v) for k, v in (b.get("oiR") or {}).items()})
+    ops = u.get("ops") or {}
+    print("Bot (seus dados): alertas de indicador", len(u.get("ind") or []), "| tipos", [a.get("m", "") + " " + a.get("tipo", "") for a in u.get("ind") or []],
+          "| automáticos", "pausados" if u.get("auto") is False else "ligados",
+          "| posições abertas no diário", sum(1 for p in (ops.get("pos") or {}).values() if p.get("q")), "| operações fechadas", len(ops.get("hist") or []))
+
+
+if __name__ == "__main__":
+    try:
+        diag_bot()
+    except Exception as e:
+        print("diag bot erro:", e)
