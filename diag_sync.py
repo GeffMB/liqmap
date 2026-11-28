@@ -112,3 +112,20 @@ if __name__ == "__main__":
         diag_bot()
     except Exception as e:
         print("diag bot erro:", e)
+
+
+def diag_apagados():
+    g = gh("/gists/" + achar_gist())
+    pac = conteudo(g, ARQ_SYNC) or {}
+    ap = pac.get("apagados") or {}
+    print("Registro de apagados na nuvem:", len(ap), "| últimos (UTC):", sorted(time.strftime("%d/%m %H:%M", time.gmtime(t / 1000)) for t in ap.values())[-5:])
+    for i in ("dmwzb709hnwq25", "dmwzblh3hlcvxb"):
+        esta = any(i in (v or "") for k, v in (pac.get("dados") or {}).items() if k.startswith("liqmap-des-"))
+        print("linha devolvida", i, "está na nuvem:", esta)
+
+
+if __name__ == "__main__":
+    try:
+        diag_apagados()
+    except Exception as e:
+        print("diag apagados erro:", e)

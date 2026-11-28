@@ -2,6 +2,11 @@ name: Diagnóstico da sincronização
 
 on:
   workflow_dispatch:
+    inputs:
+      historico:
+        description: "Ler também o histórico de desenhos (demora ~10 min)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -15,4 +20,4 @@ jobs:
       - name: Ler a nuvem (só contagens)
         env:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
-        run: python3 diag_sync.py && python3 diag_hist.py
+        run: python3 diag_sync.py && if [ "${{ inputs.historico }}" = "true" ]; then python3 diag_hist.py; fi
