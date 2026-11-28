@@ -89,7 +89,7 @@ def diag_bot():
     """Estado do bot do Telegram (sem token, chat nem preços das operações)."""
     import urllib.request
     try:
-        r = json.loads(urllib.request.urlopen("https://liqmap-vigia.gefersonmarques.workers.dev/rodar", timeout=60).read())
+        r = json.loads(urllib.request.urlopen(urllib.request.Request("https://liqmap-vigia.gefersonmarques.workers.dev/rodar", headers={"User-Agent": "Mozilla/5.0 (liqmap-diag)"}), timeout=60).read())
         print("\n/rodar:", {k: r.get(k) for k in ("ok", "versao", "telegram", "ativos", "bot", "botPendentes", "botUltimoErro", "fontesPreco", "errosPreco", "erro")})
     except Exception as e:
         print("\n/rodar: erro", e)
