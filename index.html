@@ -2566,17 +2566,22 @@ function hashTxt(t){ let h = 2166136261; for (let i = 0; i < t.length; i++) { h 
 // desenhos antigos não tinham id: usa um id fixo tirado do próprio conteúdo (igual nos dois aparelhos)
 function comIds(lista){ return (Array.isArray(lista) ? lista : []).map(d => d && d.id ? d : Object.assign({}, d, {id: "h" + hashTxt(JSON.stringify(d))})); }
 const lerLista = t => { try { return comIds(JSON.parse(t || "[]")); } catch (e) { return []; } };
-function juntarDesenhos(lTxt, rTxt, bTxt){
+// Junta os desenhos deste aparelho (L), da nuvem (R) e da última sincronização (B).
+// Apagar só vale com registro em "apagados" (feito pelo aparelho que apagou). Um desenho que sumiu da nuvem SEM esse
+// registro foi perdido por duas gravações ao mesmo tempo (dois computadores, ou o vigia) e é devolvido, em vez de apagado.
+function juntarDesenhos(lTxt, rTxt, bTxt, apag = {}){
   const L = lerLista(lTxt), R = lerLista(rTxt), B = lerLista(bTxt);
   const mL = new Map(L.map(d => [d.id, d])), mR = new Map(R.map(d => [d.id, d])), mB = new Map(B.map(d => [d.id, d]));
   const js = x => x ? JSON.stringify(Object.assign({}, x, {mod: 0})) : "";
   const ordem = [...L.map(d => d.id), ...R.map(d => d.id).filter(id => !mL.has(id))];
   const out = [];
   for (const id of ordem) {
-    const l = mL.get(id), r = mR.get(id), b = mB.get(id), lc = js(l) !== js(b), rc = js(r) !== js(b);
+    const l = mL.get(id), r = mR.get(id), b = mB.get(id);
     let v;
-    if (!rc) v = l; else if (!lc) v = r;
-    else v = l && r ? ((r.mod || 0) > (l.mod || 0) ? r : l) : (l || r);   // os dois mexeram: fica a edição mais recente (editar vence apagar)
+    if (l && r) { const lc = js(l) !== js(b), rc = js(r) !== js(b); v = !rc ? l : !lc ? r : ((r.mod || 0) > (l.mod || 0) ? r : l); }
+    else if (l) v = l;                 // novo daqui, ou sumiu da nuvem sem registro de apagado: fica
+    else v = b ? null : r;             // estava aqui e foi apagado aqui: fica apagado; senão é novo de outro aparelho
+    if (v && apag[id] && (v.mod || 0) <= apag[id]) v = null;   // apagado em outro aparelho (ou pelo bot)
     if (v) out.push(v);
   }
   return JSON.stringify(out);
@@ -2613,14 +2618,21 @@ async function sincronizar(){
     const R = rem.dados || {}, Rmod = rem.mod || {}, B = lerJ(CH_BASE, {}), Lmod = lerJ(CH_MOD, {});
     const final = {}, finalMod = {}, mudouLocal = [];
     let mudouNuvem = false;
+    // registra o que foi apagado NESTE aparelho desde a última sincronização (para os outros apagarem também)
+    const apag = {}, agoraMs = Date.now();
+    for (const [id, t] of Object.entries(rem.apagados || {})) if (agoraMs - t < 90 * 864e5) apag[id] = t;
+    for (const k of Object.keys(B)) if (k.startsWith("liqmap-des-")) {
+      const aqui = new Set(lerLista(valorLocal(k)).map(d => d.id));
+      for (const d of lerLista(B[k])) if (!aqui.has(d.id) && !apag[d.id]) { apag[d.id] = agoraMs; mudouNuvem = true; }
+    }
     for (const k of new Set([...chavesLocais(), ...Object.keys(R), ...Object.keys(B)])) {
       if (!deveSync(k)) { if (k in R) mudouNuvem = true; continue; }   // limpa da nuvem o que não deve ir para lá
       const l = valorLocal(k), r = k in R ? R[k] : null, b = k in B ? B[k] : null;
       const lc = l !== b, rc = r !== b;
       let v, m;
-      if (!rc) { v = l; m = Lmod[k] || Rmod[k] || 0; }
+      if (k.startsWith("liqmap-des-") && rc) { v = juntarDesenhos(l, r, b, apag); m = Math.max(Lmod[k] || 0, Rmod[k] || 0); }
+      else if (!rc) { v = l; m = Lmod[k] || Rmod[k] || 0; }
       else if (!lc) { v = r; m = Rmod[k] || 0; }
-      else if (k.startsWith("liqmap-des-")) { v = juntarDesenhos(l, r, b); m = Math.max(Lmod[k] || 0, Rmod[k] || 0); }
       else if (ehHistorico(k)) {   // históricos (baleias, liquidações): junta os dois lados sem repetir
         let a = []; try { a = JSON.parse(l || "[]").concat(JSON.parse(r || "[]")); } catch (e) {}
         const vistos = new Set(); a = a.filter(x => { const h = x.t + "|" + x.p + "|" + x.u; if (vistos.has(h)) return false; vistos.add(h); return true; }).sort((x, y) => x.t - y.t).slice(-300);
@@ -2635,7 +2647,7 @@ async function sincronizar(){
       if (v !== r) mudouNuvem = true;
     }
     if (mudouNuvem) {
-      const pac = Object.assign({}, rem, {versao: 2, atualizado: Date.now(), dados: final, mod: finalMod});
+      const pac = Object.assign({}, rem, {versao: 2, atualizado: Date.now(), dados: final, mod: finalMod, apagados: apag});
       await gh("/gists/" + c.gist, {method: "PATCH", body: JSON.stringify({files: {[SYNC_ARQ]: {content: JSON.stringify(pac)}}})});
     }
     for (const k of mudouLocal) { if (k in final) gravar(k, final[k]); else localStorage.removeItem(k); }

@@ -184,6 +184,7 @@ async function vigiar(env, quando, forcarStatus = false) {
   for (const [k, v] of Object.entries(estado.disparados || {})) if (agora - v < 30 * 86400) disparados[k] = v;
 
   let mudouSync = false, ativos = 0;
+  const desligar = {};   // desenhos cujo alerta o vigia desligou (aplicados sobre uma cópia nova da nuvem na hora de gravar)
   const avisos = [], fontesPreco = {}, errosPreco = {};
   // olha desde a última verificação registrada (com folga), no máximo 60 min
   const desde = Math.max(agora - JANELA_MAX * 60, (estado.ultimo || agora - 600) - 120);
@@ -201,7 +202,7 @@ async function vigiar(env, quando, forcarStatus = false) {
     let mudou = false;
     for (const d of comAlerta) {
       const ch = await chave(simb, d);
-      if (disparados[ch]) { d.alerta = false; mudou = true; continue; }
+      if (disparados[ch]) { d.alerta = false; mudou = true; (desligar[k] = desligar[k] || []).push(d); continue; }
       let achou = null;
       const ligado = (d.alertaDesde || 0) / 1000;   // só vale o que aconteceu depois de o alerta ser ligado
       for (const c of ks) {
@@ -214,7 +215,7 @@ async function vigiar(env, quando, forcarStatus = false) {
         const hora = new Date(c.t * 1000).toLocaleTimeString("pt-BR", {timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit"});
         avisos.push(simb + " " + (c.c >= c.o ? "subiu" : "caiu") + " e tocou " + desc + " às " + hora + (d.nota ? " — " + d.nota : ""));
         d.alerta = false; d.disparadoVigia = Date.now();
-        disparados[ch] = agora; mudou = true;
+        disparados[ch] = agora; mudou = true; (desligar[k] = desligar[k] || []).push(d);
       }
     }
     if (mudou) { dados[k] = JSON.stringify(desenhos); mudouSync = true; }
@@ -281,8 +282,18 @@ async function vigiar(env, quando, forcarStatus = false) {
   if (mudouCart || (rastreadas.length && minuto % 10 === 0)) arquivos[ARQ_CART] = {content: JSON.stringify({ultimo: agora, fonte: "cloudflare", snaps: novosSnaps})};
   if (novoEv) arquivos[ARQ_EV] = {content: novoEv};
   if (mudouSync) {
-    pac.dados = dados; pac.atualizado = Date.now();
-    arquivos[ARQ_SYNC] = {content: JSON.stringify(pac)};
+    // relê a nuvem agora (um computador pode ter gravado durante esta verificação) e só desliga os alertas disparados,
+    // sem regravar o resto — assim nenhum desenho feito nesse meio-tempo se perde
+    const novo = (await conteudo(await gh(env, "/gists/" + gid), ARQ_SYNC)) || pac;
+    novo.dados = novo.dados || {}; novo.mod = novo.mod || {};
+    const igual = (a, b) => a.id && b.id ? a.id === b.id : a.tipo === b.tipo && JSON.stringify(a.pts) === JSON.stringify(b.pts);
+    for (const [k, lista] of Object.entries(desligar)) {
+      let ds; try { ds = JSON.parse(novo.dados[k] || "[]"); } catch (e) { continue; }
+      for (const d of ds) { const x = lista.find(y => igual(y, d)); if (x && d.alerta) { d.alerta = false; if (x.disparadoVigia) d.disparadoVigia = x.disparadoVigia; } }
+      novo.dados[k] = JSON.stringify(ds); novo.mod[k] = Date.now();
+    }
+    novo.atualizado = Date.now();
+    arquivos[ARQ_SYNC] = {content: JSON.stringify(novo)};
   }
   if (Object.keys(arquivos).length) await gh(env, "/gists/" + gid, {method: "PATCH", body: {files: arquivos}});
   return {ok: true, versao: 8, telegram: TG ? "conectado (@" + (TG.bot || "bot") + ")" : "desligado", gist: gid, ativos, disparados: avisos, carteiras: rastreadas.length, avisosCarteiras: avisosCart, avisosEventos: avisosEv, fontesPreco, errosPreco, quando: quando.toISOString()};
@@ -669,6 +680,7 @@ function lerPrecoTxt(t, ref){
   if (!t.includes(".") || !ref) return a;
   return Math.abs(Math.log(a / ref)) <= Math.abs(Math.log(b / ref)) ? a : b;
 }
+const MARCAR_APAGADOS = [];   // ids de desenhos apagados pelo bot: vão para pac.apagados (lista de apagados que os computadores respeitam)
 async function mexerDesenhos(env, sym, f){
   const gid = await acharGist(env);
   const g = await gh(env, "/gists/" + gid);
@@ -677,6 +689,7 @@ async function mexerDesenhos(env, sym, f){
   const r = f(ds);
   if (r === false) return false;
   pac.dados[k] = JSON.stringify(ds); pac.mod[k] = Date.now(); pac.atualizado = Date.now();
+  if (MARCAR_APAGADOS.length) { pac.apagados = pac.apagados || {}; for (const id of MARCAR_APAGADOS.splice(0)) if (id) pac.apagados[id] = Date.now(); }
   await gh(env, "/gists/" + gid, {method: "PATCH", body: {files: {[ARQ_SYNC]: {content: JSON.stringify(pac)}}}});
   return r;
 }
@@ -721,7 +734,7 @@ async function atenderTelegram(env, upd, b){
     const [acao, m, id] = String(cq.data || "").split(":");
     if ((acao === "off" || acao === "del") && MOEDAS_BOT[m]) {
       const ok = await mexerDesenhos(env, MOEDAS_BOT[m].s, ds => { const i = ds.findIndex(d => d.id === id); if (i < 0) return false;
-        if (acao === "del") ds.splice(i, 1); else { ds[i].alerta = false; ds[i].mod = Date.now(); } return true; });
+        if (acao === "del") { MARCAR_APAGADOS.push(ds[i].id); ds.splice(i, 1); } else { ds[i].alerta = false; ds[i].mod = Date.now(); } return true; });
       return enviar(ok ? (acao === "del" ? "🗑 Linha apagada." : "🔕 Alerta desligado (a linha continua no gráfico).") : "Não achei essa linha (talvez já tenha sido apagada).");
     }
     if (acao === "deli") { const n = (b.bu.ind || []).length; b.bu.ind = (b.bu.ind || []).filter(a => a.id !== id);
@@ -1063,7 +1076,7 @@ async function operar(env, b, m, lado, args){
     L.push(`${pnl >= 0 ? "✅" : "🔻"} Fechou ${f2(fecha, 4)} ${m} ${dir > 0 ? "long" : "short"}: entrada ${P(pos.pm)} → saída ${P(p)} = ${usB(pnl, true)} (${pcB((p / pos.pm - 1) * 100 * dir, 2)})`);
     if (Math.abs(pos.q) < 1e-12) {
       pos.q = 0;
-      if (pos.ids && pos.ids.length) { const ids = pos.ids; await mexerDesenhos(env, MOEDAS_BOT[m].s, ds => { for (let i = ds.length - 1; i >= 0; i--) if (ids.includes(ds[i].id)) ds.splice(i, 1); }); L.push("Linhas de stop/alvo dessa operação foram removidas do gráfico."); }
+      if (pos.ids && pos.ids.length) { const ids = pos.ids; await mexerDesenhos(env, MOEDAS_BOT[m].s, ds => { for (let i = ds.length - 1; i >= 0; i--) if (ids.includes(ds[i].id)) { MARCAR_APAGADOS.push(ds[i].id); ds.splice(i, 1); } }); L.push("Linhas de stop/alvo dessa operação foram removidas do gráfico."); }
       pos.ids = []; pos.stop = pos.alvo = null; pos.t = null;
     } else L.push(`Ainda aberto: ${f2(Math.abs(pos.q), 4)} ${m} a ${P(pos.pm)}`);
   }
@@ -1074,7 +1087,7 @@ async function operar(env, b, m, lado, args){
   if (pos.q && (stop || alvo)) {
     const novos = [];
     await mexerDesenhos(env, MOEDAS_BOT[m].s, ds => {
-      if (pos.ids && pos.ids.length) for (let i = ds.length - 1; i >= 0; i--) if (pos.ids.includes(ds[i].id)) ds.splice(i, 1);   // troca stop/alvo antigos
+      if (pos.ids && pos.ids.length) for (let i = ds.length - 1; i >= 0; i--) if (pos.ids.includes(ds[i].id)) { MARCAR_APAGADOS.push(ds[i].id); ds.splice(i, 1); }   // troca stop/alvo antigos
       for (const [val, nome] of [[stop, "stop"], [alvo, "alvo"]]) if (val) { const id = "o" + nome[0] + agora.toString(36); novos.push(id);
         ds.push({id, tipo: "horizontal", pts: [{t: Math.floor(agora / 1000), p: val}], alerta: true, alertaDesde: agora, mod: agora, nota: nome + " " + (pos.q > 0 ? "long" : "short")}); }
     });

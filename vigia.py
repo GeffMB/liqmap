@@ -316,6 +316,7 @@ def main():
     disparados = {k: v for k, v in (estado.get("disparados") or {}).items() if agora - v < 30 * 86400}
 
     mudou_sync, avisos, ativos = False, [], 0
+    desligar = {}   # desenhos cujo alerta foi desligado: aplicados sobre uma cópia nova da nuvem na hora de gravar
     for k, v in list(dados.items()):
         if not k.startswith("liqmap-des-"):
             continue
@@ -338,6 +339,7 @@ def main():
             if ch in disparados:
                 d["alerta"] = False
                 mudou_sync = True
+                desligar.setdefault(k, []).append(d)
                 continue
             achou = None
             ligado = (d.get("alertaDesde") or 0) / 1000   # só vale o que aconteceu depois de o alerta ser ligado
@@ -359,6 +361,7 @@ def main():
                 d["disparadoVigia"] = int(agora * 1000)
                 disparados[ch] = agora
                 mudou_sync = True
+                desligar.setdefault(k, []).append(d)
         dados[k] = json.dumps(desenhos, separators=(",", ":"))
 
     for a in avisos:
@@ -379,9 +382,25 @@ def main():
     if novo_ev:
         arquivos[ARQ_EV] = {"content": novo_ev}
     if mudou_sync:
-        pac["dados"] = dados
-        pac["atualizado"] = int(agora * 1000)
-        arquivos[ARQ_SYNC] = {"content": json.dumps(pac, separators=(",", ":"))}
+        # relê a nuvem (um computador pode ter gravado durante a verificação) e só desliga os alertas disparados
+        novo = conteudo(gh("/gists/" + gid), ARQ_SYNC) or pac
+        nd, nm = novo.setdefault("dados", {}), novo.setdefault("mod", {})
+        igual = lambda a, b: a.get("id") == b.get("id") if a.get("id") and b.get("id") else (a.get("tipo") == b.get("tipo") and a.get("pts") == b.get("pts"))
+        for k, lista in desligar.items():
+            try:
+                ds = json.loads(nd.get(k) or "[]")
+            except Exception:
+                continue
+            for d in ds:
+                x = next((y for y in lista if igual(y, d)), None)
+                if x and d.get("alerta"):
+                    d["alerta"] = False
+                    if x.get("disparadoVigia"):
+                        d["disparadoVigia"] = x["disparadoVigia"]
+            nd[k] = json.dumps(ds, separators=(",", ":"))
+            nm[k] = int(agora * 1000)
+        novo["atualizado"] = int(agora * 1000)
+        arquivos[ARQ_SYNC] = {"content": json.dumps(novo, separators=(",", ":"))}
     gh("/gists/" + gid, "PATCH", {"files": arquivos})
     print(f"Verificado: {ativos} alerta(s) ativo(s), {len(avisos)} disparado(s).")
 
