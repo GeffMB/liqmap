@@ -1,0 +1,23 @@
+name: Restaurar desenhos sumidos
+
+on:
+  workflow_dispatch:
+    inputs:
+      ids:
+        description: "ids dos desenhos (separados por vírgula)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  restaurar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Devolver da história do Gist
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          IDS: ${{ inputs.ids }}
+        run: python3 restaurar_desenhos.py
