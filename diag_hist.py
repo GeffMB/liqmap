@@ -5,15 +5,27 @@ import time
 from vigia import gh, achar_gist, conteudo, ARQ_SYNC
 
 gid = achar_gist()
-commits = gh(f"/gists/{gid}/commits?per_page=100")
 limite = time.time() - 36 * 3600
+commits = []
+for pg in range(1, 20):
+    lote = gh(f"/gists/{gid}/commits?per_page=100&page={pg}")
+    commits += lote
+    if len(lote) < 100 or time.mktime(time.strptime(lote[-1]["committed_at"], "%Y-%m-%dT%H:%M:%SZ")) < limite:
+        break
+print("versões do Gist lidas:", len(commits))
 vistos = {}      # id -> (simb, tipo, primeira vez, última vez)
 linha_ant = None
 for c in reversed(commits):
     t = time.mktime(time.strptime(c["committed_at"], "%Y-%m-%dT%H:%M:%SZ"))
     if t < limite:
         continue
-    g = gh(f"/gists/{gid}/{c['version']}")
+    if (c.get("change_status") or {}).get("total", 1) == 0:
+        continue
+    try:
+        g = gh(f"/gists/{gid}/{c['version']}")
+    except Exception as e:
+        print("erro na versão", c["committed_at"], e)
+        continue
     pac = conteudo(g, ARQ_SYNC) or {}
     dados = pac.get("dados") or {}
     cont = {}
