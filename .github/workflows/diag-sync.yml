@@ -15,4 +15,4 @@ jobs:
       - name: Ler a nuvem (só contagens)
         env:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
-        run: python3 diag_sync.py
+        run: python3 diag_sync.py && python3 diag_hist.py
